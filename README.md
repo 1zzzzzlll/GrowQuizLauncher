@@ -22,7 +22,7 @@
 
 **成长桌面**把 Android TV 的桌面换成一个小而快的启动器，并按你设定的间隔把全屏答题弹到最前面：题答错了就换一道继续，答对了才回到桌面。题目全部离线内置，音量键、返回键都进不去动画片——想继续看，先答对一题。
 
-它基于开源桌面 [Plume Launcher](https://github.com/aradhyas8/Plume_Launcher)（同样是 0.5 MB 级、无广告、无账号、无统计的极简 TV 桌面），在保留原桌面全部功能的前提下加入儿童问答模块。
+它基于开源桌面 [Plume Launcher](https://github.com/aradhyas8/Plume_Launcher)（无广告、无账号、无统计的极简 TV 桌面，APK 约 0.4 MB），在保留原桌面全部功能的前提下加入儿童问答模块；成长桌面自身安装包约 0.5 MB。
 
 ## 核心功能
 
