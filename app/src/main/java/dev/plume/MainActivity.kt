@@ -627,6 +627,14 @@ class MainActivity : Activity() {
         val root = findViewById<ViewGroup>(R.id.root) ?: return
         webPromptShown = true
 
+        // GrowQuiz: the prompt must fit everything from a small 720p set to a 4K one. The card's side
+        // margins follow the screen's width, the text sits under a scroll cap of the screen's height,
+        // and the OK button stays below the scroll so it is always reachable with the remote.
+        val dm = resources.displayMetrics
+        val sideMargin = (dm.widthPixels * 0.10f).toInt().coerceIn(dp(32), dp(180))
+        val scrollCap = (dm.heightPixels * 0.62f).toInt()
+        val small = dm.heightPixels / dm.density < 480 // short screens: squeeze the padding a little
+
         val overlay = FrameLayout(this).apply {
             setBackgroundColor(Color.argb(238, 7, 15, 28))
             isFocusable = true
@@ -636,33 +644,46 @@ class MainActivity : Activity() {
         }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(44), dp(34), dp(44), dp(30))
+            setPadding(dp(if (small) 26 else 44), dp(if (small) 22 else 34), dp(if (small) 26 else 44), dp(if (small) 20 else 30))
             background = GradientDrawable().apply {
                 cornerRadius = dp(24).toFloat()
                 setColor(Color.rgb(20, 35, 63))
                 setStroke(dp(2), Color.rgb(39, 68, 108))
             }
         }
-        card.addView(TextView(this).apply {
-            text = getString(R.string.web_admin_prompt_title)
-            textSize = 31f
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, Typeface.BOLD)
-        })
-        card.addView(TextView(this).apply {
-            text = getString(R.string.web_admin_prompt_message, dev.plume.web.WebAdminServer.url())
-            textSize = 20f
-            setTextColor(Color.rgb(203, 218, 243))
-            setLineSpacing(0f, 1.25f)
-            setPadding(0, dp(16), 0, dp(24))
-        })
+        val scroll = object : android.widget.ScrollView(this) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                // At most [scrollCap] tall; less when the text is shorter. The scrollbar shows the overflow.
+                super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(scrollCap, MeasureSpec.AT_MOST))
+            }
+        }.apply {
+            isVerticalScrollBarEnabled = true
+            isFocusable = true // D-pad Up/Down scrolls the text where the screen is too small to show it all
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(TextView(this@MainActivity).apply {
+                    text = getString(R.string.web_admin_prompt_title)
+                    textSize = if (small) 24f else 31f
+                    setTextColor(Color.WHITE)
+                    setTypeface(typeface, Typeface.BOLD)
+                })
+                addView(TextView(this@MainActivity).apply {
+                    text = getString(R.string.web_admin_prompt_message, dev.plume.web.WebAdminServer.url())
+                    textSize = if (small) 16f else 20f
+                    setTextColor(Color.rgb(203, 218, 243))
+                    setLineSpacing(0f, 1.25f)
+                    setPadding(0, dp(16), 0, dp(8))
+                })
+            })
+        }
+        card.addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val ok = android.widget.Button(this).apply {
             text = getString(R.string.web_admin_prompt_button)
-            textSize = 22f
+            textSize = if (small) 18f else 22f
             isAllCaps = false
             setTextColor(Color.rgb(26, 35, 50))
             backgroundTintList = ColorStateList.valueOf(Color.rgb(255, 209, 102))
-            minHeight = dp(64)
+            minHeight = dp(if (small) 48 else 64)
             setOnClickListener {
                 root.removeView(overlay)
                 webPromptShown = false // allows the menu's 后台管理 button to bring the prompt up again
@@ -672,10 +693,10 @@ class MainActivity : Activity() {
                 this@MainActivity.findViewById<View>(R.id.wifi)?.requestFocus()
             }
         }
-        card.addView(ok, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        card.addView(ok, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) })
         overlay.addView(card, FrameLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {
-            leftMargin = dp(120)
-            rightMargin = dp(120)
+            leftMargin = sideMargin
+            rightMargin = sideMargin
         })
         root.addView(overlay, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         overlay.bringToFront()
@@ -2914,6 +2935,9 @@ class MainActivity : Activity() {
     /**
      * No layout PIN, but the family set the web admin password: that password guards the Wi-Fi, system
      * settings and launcher settings entries, so the child cannot reconfigure the TV on their own.
+     * GrowQuiz: the stock AlertDialog looks out of place on the launcher, so the card, the input and the
+     * buttons are styled like the rest of the app: the same dark blue, the same rounded card, the same
+     * yellow primary button. The remote works as on any dialog: the buttons take D-pad focus, OK presses.
      */
     private fun unlockWithAdminPassword(then: () -> Unit) {
         val now = SystemClock.elapsedRealtime()
@@ -2924,13 +2948,67 @@ class MainActivity : Activity() {
         val input = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             hint = getString(R.string.enter_admin_password)
+            setSingleLine()
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.rgb(125, 148, 184))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(Color.rgb(12, 24, 46))
+                setStroke(dp(2), Color.rgb(39, 68, 108))
+            }
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+        }
+        val status = TextView(this).apply {
+            textSize = 14f
+            setTextColor(Color.rgb(255, 138, 128))
+            setPadding(dp(4), dp(8), dp(4), 0)
+            visibility = View.GONE
+        }
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(28), dp(26), dp(28), dp(10))
+            addView(TextView(this@MainActivity).apply {
+                text = getString(R.string.admin_password_required)
+                textSize = 22f
+                setTextColor(Color.WHITE)
+                setTypeface(typeface, Typeface.BOLD)
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = getString(R.string.admin_password_hint)
+                textSize = 14f
+                setTextColor(Color.rgb(154, 176, 210))
+                setPadding(0, dp(6), 0, 0)
+            })
+            addView(input, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
+            addView(status)
         }
         val dialog = AlertDialog.Builder(this)
-            .setTitle(getString(R.string.admin_password_required))
-            .setView(input)
-            .setPositiveButton(android.R.string.ok, null)
+            .setView(body)
+            .setPositiveButton(R.string.confirm_button, null)
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+        // The card the platform draws around the body gets the app's own rounded dark blue.
+        dialog.window?.setBackgroundDrawable(GradientDrawable().apply {
+            cornerRadius = dp(22).toFloat()
+            setColor(Color.rgb(20, 35, 63))
+            setStroke(dp(2), Color.rgb(39, 68, 108))
+        })
+        fun style(button: android.widget.Button, filled: Boolean) = button.apply {
+            isAllCaps = false
+            textSize = 16f
+            minHeight = dp(52)
+            minWidth = dp(128)
+            if (filled) {
+                setTextColor(Color.rgb(26, 35, 50))
+                backgroundTintList = ColorStateList.valueOf(Color.rgb(255, 209, 102))
+            } else {
+                setTextColor(Color.rgb(203, 218, 243))
+                backgroundTintList = ColorStateList.valueOf(Color.rgb(39, 68, 108))
+            }
+        }
+        style(dialog.getButton(AlertDialog.BUTTON_POSITIVE), true)
+        style(dialog.getButton(AlertDialog.BUTTON_NEGATIVE), false)
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if (dev.plume.web.WebAdminServer.verifyPassword(this, input.text.toString())) {
                 pinFails = 0
@@ -2943,8 +3021,11 @@ class MainActivity : Activity() {
                 dialog.dismiss()
                 toast(getString(R.string.too_many_tries, 30), long = true)
             } else {
-                input.error = getString(R.string.wrong_password)
+                // The message sits in the card (a TV is read from the couch; the stock error pop-up is tiny).
+                status.text = getString(R.string.wrong_password_retry, PIN_TRIES - pinFails)
+                status.visibility = View.VISIBLE
                 input.text.clear()
+                input.requestFocus()
             }
         }
         input.requestFocus()
@@ -4764,7 +4845,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /** 关于: this build's version and build number, the project's GitHub link, and a manual update check. */
+    /** 关于: this build's version and build number, the project's GitHub repo, the QQ group, and a manual update check. */
     private fun showAbout() {
         val info = packageManager.getPackageInfo(packageName, 0)
         val ver = availableUpdate()
@@ -4782,7 +4863,23 @@ class MainActivity : Activity() {
                     toast(getString(R.string.open_link_failed), long = true)
                 }
             },
-        ), back = { renderSettings(R.string.about) })
+            page(getString(R.string.join_qq_group), getString(R.string.qq_group_number)) {
+                // TVs have neither QQ nor a browser; copying the invite keeps the button from being a dead end.
+                var opened = false
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(QQ_GROUP_URL)))
+                    opened = true
+                } catch (_: Exception) {
+                }
+                if (!opened) try {
+                    val clip = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clip.setPrimaryClip(android.content.ClipData.newPlainText("QQ group", QQ_GROUP_URL))
+                    toast(getString(R.string.qq_link_copied), long = true)
+                } catch (_: Exception) {
+                    toast(getString(R.string.open_link_failed), long = true)
+                }
+            },
+        ), styles = listOf(null, RowStyle(R.drawable.ic_github), RowStyle(R.drawable.ic_qq)), back = { renderSettings(R.string.about) })
         @Suppress("DEPRECATION")
         settingsList.addView(label(getString(R.string.about_version, info.versionName, info.versionCode), 13f).apply {
             alpha = 0.7f
@@ -4792,10 +4889,36 @@ class MainActivity : Activity() {
             alpha = 0.7f
             setPadding(dp(14), dp(4), dp(14), dp(8))
         })
-        // The link as a QR: a phone scans the screen even where the TV has no browser to open it.
-        settingsList.addView(ImageView(this).apply {
-            setImageBitmap(qrBitmap(GITHUB_URL, dp(168)))
-            setPadding(dp(14), dp(4), dp(14), dp(20))
+        // Both links as QRs side by side: a phone scans the screen, which is the only way into the QQ group from a
+        // TV (the TV has neither QQ nor a browser). The QQ one is the group card's own image: its invite link is far
+        // too long to draw as a QR that still scans from the couch.
+        fun qrColumn(caption: String, qr: ImageView) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            addView(label(caption, 12f).apply {
+                gravity = Gravity.CENTER
+                alpha = 0.8f
+                maxLines = 2
+                ellipsize = null
+            })
+            qr.setPadding(0, dp(8), 0, 0)
+            addView(qr)
+        }
+        val qrSide = dp(170)
+        settingsList.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(14), dp(6), dp(14), dp(20))
+            addView(qrColumn(getString(R.string.scan_qr_github), ImageView(this@MainActivity).apply {
+                setImageBitmap(qrBitmap(GITHUB_URL, qrSide))
+            }))
+            addView(qrColumn(getString(R.string.scan_qr_qq), ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.qq_group_qr)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                layoutParams = LinearLayout.LayoutParams(qrSide, qrSide)
+            }), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = dp(44)
+            })
         })
     }
 
@@ -5846,6 +5969,8 @@ class MainActivity : Activity() {
         const val UPDATE_BASE = "https://updates.invalid:8443/growquiz"
         /** The project's own repository, shown and linked on the About page. */
         const val GITHUB_URL = "https://github.com/1zzzzzlll/GrowQuizLauncher"
+        /** The users' QQ group invite, on the About page; a TV can only copy or QR it, phones join from there. */
+        const val QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=mnDL7L31MX%2BHWlUc902M0kntN21TzkV%2FeCZc6v0TYm1QXUL7%2FLfHkmL%2BCTqPgEzL&busi_data=eyJncm91cENvZGUiOiIxMTMxMjMwNjY5IiwidG9rZW4iOiJGUS85NlgwdDQwOWF2REI5VDhUN3RWUVQrdWs2SHc5U0k1QkY1STl1dzNZUklUbHdRcUZqU2ZPVEpodWY2OFBUIiwidWluIjoiMjkyODY2ODk5In0%3D&data=ILNK8S71lcbC9vvUuE2FO9MC6CnUPsx0RIA1oIhefp6jRZ0v-5SbFxwpqnJD3ubqqZlquj55FvMU3fNYMHkxWQ&svctype=4&tempid=h5_group_info"
         const val UPDATE_STATUS = "dev.plume.UPDATE_STATUS"
         const val WRITE_EPG ="com.android.providers.tv.permission.WRITE_EPG_DATA"
         const val TV_SETTINGS = "com.android.tv.settings"

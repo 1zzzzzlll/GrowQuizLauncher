@@ -14,6 +14,13 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.6.1
+
+- **启动提示自适应屏幕。** 提示框按屏幕分辨率调整大小，内容过长时可滚动，小屏电视也能看全。
+- **管理密码框重做。** 密码输入框改为与应用一致的外观；遥控器可直接操作，输错时提示更清楚。
+- **关于页新增 QQ 群。** 加入用户交流 QQ 群的按钮与群二维码；电视上让手机扫码即可加群。
+- **GitHub 链接更明确。** 关于页的项目链接改为 GitHub 仓库，并配 GitHub 图标。
+
 ## 1.6.0
 
 - **正式签名。** 应用改用正式密钥签名。此后所有新版本都可直接覆盖安装。
