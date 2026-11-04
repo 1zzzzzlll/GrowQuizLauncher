@@ -129,8 +129,11 @@
     <string name="enter_pin">输入 PIN</string>
     <string name="wrong_pin">PIN 错误</string>
     <string name="wrong_password">密码错误</string>
+    <string name="wrong_password_retry">密码错误，还可尝试 %1$d 次</string>
     <string name="enter_admin_password">输入管理密码</string>
     <string name="admin_password_required">此设置已被管理密码保护</string>
+    <string name="admin_password_hint">请用遥控器输入管理密码，按方向键移动，OK 键确认</string>
+    <string name="confirm_button">确认</string>
     <string name="choose_pin">设置 PIN</string>
     <string name="enter_again">再次输入</string>
     <string name="pins_mismatch">两次输入的 PIN 不一致，请重新设置。</string>
@@ -280,7 +283,12 @@
     <string name="install_update">安装 %1$s</string>
     <string name="about">关于</string>
     <string name="about_version">当前版本：%1$s（内部版本 %2$d）</string>
-    <string name="project_link">项目主页</string>
+    <string name="project_link">GitHub 仓库</string>
+    <string name="join_qq_group">加入用户交流 QQ 群</string>
+    <string name="qq_group_number">群号 1131230669</string>
+    <string name="qq_link_copied">链接已复制，也可用手机扫描下方二维码加群</string>
+    <string name="scan_qr_github">手机扫码打开 GitHub 仓库</string>
+    <string name="scan_qr_qq">手机扫码加入 QQ 群（群号 1131230669）</string>
     <string name="help_about">查看当前版本、项目主页，或手动检查更新。</string>
     <string name="open_link_failed">电视上没有能打开链接的应用，请用手机扫描二维码访问。</string>
     <string name="row_position">位置</string>
