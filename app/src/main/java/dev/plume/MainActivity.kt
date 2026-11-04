@@ -386,6 +386,7 @@ class MainActivity : Activity() {
         dev.plume.quiz.QuizDeviceOwner.configure(this)
         dev.plume.quiz.QuizScheduler.ensureScheduled(this)
         dev.plume.web.WebAdminServer.start(this)
+        dev.plume.quiz.TtsProbe.start(this) // the web console reports whether this TV can read aloud
         glass = GlassLayer(this)
         findViewById<ViewGroup>(R.id.root).addView(glass, 2, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)) // over both wallpaper layers
         videoWallpaper = VideoWallpaper(findViewById<SurfaceView>(R.id.videoWallpaper),
@@ -405,7 +406,9 @@ class MainActivity : Activity() {
         if (info.firstInstallTime == info.lastUpdateTime && !prefs.contains("wp_light") && !prefs.contains("wp_dark"))
             prefs.edit().putString("wp_light", FIRST_WALLPAPER).putString("wp_dark", FIRST_WALLPAPER)
                 .putString("theme", "light").putString("glass_style", GlassStyle.FROSTED.key).apply()
-        fetchFirstWallpaper4k()
+        // GrowQuiz: the bundled 1080p wallpaper is what ships; the 4K upgrade download is disabled on
+        // purpose — a TV box on a slow or air-gapped LAN must never wait on the network to show its home.
+        // fetchFirstWallpaper4k()
         if (!prefs.getBoolean("wp_shared", false)) {
             val wasDark = wantDark()
             val choice = prefs.getString(if (wasDark) "wp_dark" else "wp_light", null)
@@ -494,7 +497,10 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (!resumed) showWebAdminPrompt()
+        // Coming back from a just-finished quiz: land straight on the desktop, no admin prompt.
+        val fromQuiz = dev.plume.quiz.QuizActivity.justFinished
+        dev.plume.quiz.QuizActivity.justFinished = false
+        if (!resumed && !fromQuiz) showWebAdminPrompt()
         resumed = true
         if (currentWallpaper().startsWith("video:")) videoWallpaper.resume()
         returnTo = null // back by another way than Home: the next Home starts again at the first tile
@@ -660,7 +666,8 @@ class MainActivity : Activity() {
                 webPromptShown = false // allows the menu's 后台管理 button to bring the prompt up again
                 // Stay on the GrowQuiz desktop: the launcher is the home experience, and backgrounding here
                 // would land on the system home instead (and re-trigger the prompt on the next resume).
-                findViewById<View>(R.id.wifi).requestFocus()
+                // Qualified: inside this apply block "this" is the button, not the activity.
+                this@MainActivity.findViewById<View>(R.id.wifi)?.requestFocus()
             }
         }
         card.addView(ok, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -1122,6 +1129,7 @@ class MainActivity : Activity() {
         appsInk = inkBehind(apps + findViewById<View>(R.id.appScroll))
         for (v in apps) ink(v, appsInk, fade = true)
         ink(findViewById(R.id.rowLabel), appsInk, fade = true)
+        ink(findViewById(R.id.rowEmptyHint), appsInk, fade = true)
         val cols = (0 until watchRow.childCount).map { watchRow.getChildAt(it) as ViewGroup }
         val watch = listOf(watchTitle) + cols.flatMap { col -> (0 until col.childCount).mapNotNull { col.getChildAt(it) as? TextView } }
         watchInk = inkBehind(watch)
@@ -1574,19 +1582,8 @@ class MainActivity : Activity() {
         packDir().listFiles { f -> f.isFile && packFileName(f.name) && packPhotoName(f.name) == bundled }?.firstOrNull()
 
     /** While Arctic Aurora is in use, get its 4K photo once; until then, and if that fails, the 1080p copy shows. */
-    private fun fetchFirstWallpaper4k() {
-        if (FIRST_WALLPAPER !in listOf(currentWallpaper(false), currentWallpaper(true))) return
-        if (File(packDir(), FIRST_WALLPAPER_4K.file).isFile) return
-        io.execute {
-            val ok = try {
-                FIRST_WALLPAPER_4K.download(packDir()) { openStream(PACK_URL + FIRST_WALLPAPER_4K.file + "?v=" + FIRST_WALLPAPER_4K.sha) }
-            } catch (e: Exception) {
-                android.util.Log.w("Plume", "first wallpaper 4K", e)
-                false
-            }
-            if (ok) ui.post { if (!isDestroyed && currentWallpaper() == FIRST_WALLPAPER) loadWallpaper() }
-        }
-    }
+    // GrowQuiz: fetchFirstWallpaper4k() is gone — the home screen never waits on the network. The
+    // bundled Arctic Aurora picture shows right away; a parent can still pick any local wallpaper.
 
     private fun decodeWallpaper(choice: String): Bitmap? {
         // A plain colour has no picture. It is the fallback when a picture fails (Bing not downloaded yet): not a file.
@@ -3614,12 +3611,16 @@ class MainActivity : Activity() {
         val tiles = sortedApps().filter { inRow(it.pkg, hidden) }.map { appTile(it, labeled = false) }
         if (tiles.isEmpty()) {
             showNames()
+            val hint = findViewById<TextView>(R.id.rowEmptyHint)
+            hint.visibility = View.VISIBLE
+            ink(hint, appsInk, fade = true)
             if (!rowEmptyNoted) { // GrowQuiz: guide the parent to the All apps grid, the fastest way to add a tile
                 rowEmptyNoted = true
                 toast(getString(R.string.row_empty_hint), long = true)
             }
             return
         }
+        findViewById<View>(R.id.rowEmptyHint).visibility = View.GONE
         tiles.forEachIndexed { i, t ->
             t.id = View.generateViewId()
             appRow.addView(t, LinearLayout.LayoutParams(width, tileH).apply { if (i > 0) marginStart = gap })

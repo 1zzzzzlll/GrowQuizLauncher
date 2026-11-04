@@ -24,6 +24,7 @@ import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 
 /** Full-screen, remote-first quiz. A wrong answer advances to a different question. */
 class QuizActivity : Activity() {
@@ -41,6 +42,7 @@ class QuizActivity : Activity() {
     // GrowQuiz: the question is read aloud for children who cannot read yet, then repeated every 20 seconds.
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var ttsNoted = false // the "no TTS engine" toast shows once
     private val speakLoop: Runnable = object : Runnable {
         override fun run() {
             speakQuestion()
@@ -66,13 +68,29 @@ class QuizActivity : Activity() {
             }
         }.start()
         tts = TextToSpeech(applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                try { tts?.language = Locale.SIMPLIFIED_CHINESE } catch (e: Exception) {}
-                ttsReady = true
-                // The bank may already be showing a question by the time the engine is up.
-                runOnUiThread { if (current != null && !solved && !isFinishing) startReading() }
+            val engine = tts
+            if (status != TextToSpeech.SUCCESS || engine == null) {
+                android.util.Log.w("GrowQuiz", "tts init failed: $status")
+                runOnUiThread { ttsMissing() }
+                return@TextToSpeech
             }
+            // zh-CN first, then plain Chinese, then the device's own locale: an engine that only has
+            // the latter still beats silence, and some engines miss the Chinese data until installed.
+            val ok = listOf(Locale.SIMPLIFIED_CHINESE, Locale.CHINESE, Locale.getDefault())
+                .any { l -> engine.setLanguage(l) >= TextToSpeech.LANG_AVAILABLE }
+            ttsReady = ok
+            android.util.Log.i("GrowQuiz", "tts ready=$ok lang=${engine.language}")
+            if (!ok) runOnUiThread { ttsMissing() }
+            // The bank may already be showing a question by the time the engine is up.
+            runOnUiThread { if (current != null && !solved && !isFinishing) startReading() }
         }
+    }
+
+    /** No TTS engine (or no usable language) on this device: say so once, instead of reading nothing in silence. */
+    private fun ttsMissing() {
+        if (isFinishing || ttsNoted) return
+        ttsNoted = true
+        Toast.makeText(this, "本机没有可用的语音（TTS）引擎，无法朗读题目", Toast.LENGTH_LONG).show()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -196,6 +214,7 @@ class QuizActivity : Activity() {
     }
 
     private fun finishAfterCorrect() {
+        justFinished = true // MainActivity skips the admin prompt right after a quiz
         if (lockActive) {
             stopLockTask()
             lockActive = false
@@ -272,5 +291,8 @@ class QuizActivity : Activity() {
 
     companion object {
         private const val READ_REPEAT_MS = 20_000L // after the first reading, repeat question + options every 20 s
+
+        /** Set when a quiz is completed; MainActivity reads (and clears) it to skip the admin prompt then. */
+        @Volatile var justFinished = false
     }
 }

@@ -66,7 +66,8 @@
         <div class="pill"><div class="k">宝贝年龄</div><div id="stAge" class="v">--</div></div>
         <div class="pill"><div class="k">答题间隔</div><div id="stInterval" class="v">--</div></div>
         <div class="pill"><div class="k">下次答题</div><div id="stNext" class="v">--</div></div>
-        <div class="pill"><div class="k">当前地址</div><div id="stUrl" class="v">--</div></div>
+        <div class="pill"><div class="k">语音朗读</div><div id="stTts" class="v">--</div></div>
+        <div class="pill" style="grid-column:1/-1"><div class="k">当前地址</div><div id="stUrl" class="v">--</div></div>
       </div>
 
       <div class="row">
@@ -92,6 +93,12 @@
         <button id="startBtn" class="success">立即开始答题</button>
       </div>
       <div id="panelMsg" class="msg"></div>
+
+      <div class="field" style="margin-top:16px">
+        <label>语音朗读检查</label>
+        <button id="ttsBtn" class="ghost">在电视上播放一句测试语音</button>
+        <div id="ttsMsg" class="msg"></div>
+      </div>
 
       <div style="margin-top:16px; display:flex; gap:12px; flex-wrap:wrap">
         <button id="refreshBtn" class="ghost" style="flex:1">刷新状态</button>
@@ -133,6 +140,8 @@
       $('stAge').textContent = s.age + ' 岁';
       $('stInterval').textContent = s.interval + ' 分钟';
       $('stNext').textContent = s.enabled ? fmtTime(s.next) : '已停用';
+      const tts = { 'available': '可用', 'initializing': '检测中…' }[s.tts] || (s.tts === 'no-engine' ? '不可用（无引擎）' : s.tts === 'no-language' ? '不可用（缺中文语音）' : s.tts);
+      $('stTts').textContent = tts;
       show('panel');
     }
 
@@ -172,6 +181,13 @@
         await api('/api/start', {});
         msg($('panelMsg'), '已开始答题', true);
       } catch (e) { msg($('panelMsg'), e.message, false); }
+    };
+
+    $('ttsBtn').onclick = async () => {
+      try {
+        const r = await api('/api/tts_test', {});
+        msg($('ttsMsg'), r.spoke ? '已播放，请听电视是否出声' : '播放失败：电视上没有可用的语音引擎', r.spoke);
+      } catch (e) { msg($('ttsMsg'), e.message, false); }
     };
 
     $('refreshBtn').onclick = refresh;

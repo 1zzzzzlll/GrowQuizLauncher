@@ -124,6 +124,7 @@ object WebAdminServer {
                         .put("enabled", prefs.enabled)
                         .put("next", prefs.nextTriggerAt)
                         .put("owner", QuizDeviceOwner.isOwner(context))
+                        .put("tts", dev.plume.quiz.TtsProbe.describe())
                 } else {
                     JSONObject()
                         .put("initialized", initialized(context))
@@ -182,6 +183,13 @@ object WebAdminServer {
                 val intent = Intent(context, QuizActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 main.post { context.startActivity(intent) }
                 reply(out, 200, "application/json; charset=utf-8", ok())
+            }
+
+            path == "/api/tts_test" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val spoke = dev.plume.quiz.TtsProbe.speak("语音测试：宝贝你好，我是你的答题小助手")
+                val json = JSONObject().put("ok", true).put("spoke", spoke)
+                reply(out, 200, "application/json; charset=utf-8", json.toString())
             }
 
             else -> reply(out, if (method == "GET" || method == "POST") 404 else 405, "application/json; charset=utf-8", error("not found"))
