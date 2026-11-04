@@ -1,16 +1,16 @@
 <p align="center">
-  <img src="docs/img/banner.svg" alt="成长桌面 GrowQuiz Launcher" width="100%">
+  <img src="docs/img/banner.png" alt="宝贝成长桌面 GrowQuiz Launcher" width="100%">
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
   <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3ddc84">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-100%25-7f52ff">
-  <img alt="Questions" src="https://img.shields.io/badge/%E9%A2%98%E5%BA%93-1800%20%E9%81%93-f2c14e">
+  <img alt="Questions" src="https://img.shields.io/badge/%E9%A2%98%E5%BA%93-8000%20%E9%81%93-f2c14e">
   <img alt="Offline" src="https://img.shields.io/badge/%E8%BF%90%E8%A1%8C-%E7%A6%BB%E7%BA%BF%E6%97%A0%E9%9C%80%E7%99%BB%E5%BD%95-lightgrey">
 </p>
 
-<h1 align="center">成长桌面 · GrowQuiz Launcher</h1>
+<h1 align="center">宝贝成长桌面 · GrowQuiz Launcher</h1>
 
 <p align="center"><em>一台会提问的电视桌面：到点自动出题，答对才回到动画片。</em></p>
 
@@ -20,9 +20,9 @@
 
 孩子看完一集还想再看一集，家长不可能每次都守在旁边。
 
-**成长桌面**把 Android TV 的桌面换成一个小而快的启动器，并按你设定的间隔把全屏答题弹到最前面：题答错了就换一道继续，答对了才回到桌面。题目全部离线内置，音量键、返回键都进不去动画片——想继续看，先答对一题。
+**宝贝成长桌面**把 Android TV 的桌面换成一个小而快的启动器，并按你设定的间隔把全屏答题弹到最前面：题答错了就换一道继续，答对了才回到桌面。题目全部离线内置，音量键、返回键都进不去动画片——想继续看，先答对一题。
 
-它基于开源桌面 [Plume Launcher](https://github.com/aradhyas8/Plume_Launcher)（无广告、无账号、无统计的极简 TV 桌面，APK 约 0.4 MB），在保留原桌面全部功能的前提下加入儿童问答模块；成长桌面自身安装包约 0.5 MB。
+它基于开源桌面 [Plume Launcher](https://github.com/aradhyas8/Plume_Launcher)（无广告、无账号、无统计的极简 TV 桌面，APK 约 0.4 MB），在保留原桌面全部功能的前提下加入儿童问答模块；宝贝成长桌面自身安装包约 0.65 MB。
 
 ## 核心功能
 
@@ -30,7 +30,7 @@
 |---|---|---|
 | ⏱ | **定时全屏问答** | 到达设定间隔（1 分钟 – 24 小时）自动弹出问答，抢占前台并全屏显示 |
 | 🔁 | **答错换题，答对返回** | 答案错误只换一道题，不提供"退出"；答对后自动返回桌面并重新计时 |
-| 🧠 | **1800 道离线题库** | 5–10 岁六个年龄段，每段 300 题，无需联网、无需登录 |
+| 🧠 | **8000 道离线题库** | 5–14 岁十个年龄段，每段 800 题，无需联网、无需登录 |
 | 🔊 | **语音朗读题目** | 调用系统 TTS 朗读题干，识字不多的孩子也能独立完成 |
 | 🔒 | **设备所有者锁定** | 配置 Device Owner 后启用 Lock Task，答题期间无法用遥控器切走 |
 | 📱 | **手机当管理台** | 电视内置一个局域网网页控制台（默认 `:8081`），手机浏览器即可改年龄、间隔、立即出题 |
@@ -47,7 +47,7 @@
 ## 界面
 
 <p align="center">
-  <img src="docs/img/home.png" alt="成长桌面主界面" width="49%">
+  <img src="docs/img/home.png" alt="宝贝成长桌面主界面" width="49%">
   <img src="docs/img/admin-prompt.png" alt="启动时提示用手机打开管理台" width="49%">
 </p>
 
@@ -78,7 +78,7 @@ adb install -r app-release.apk
 
 ### 3. 设为默认桌面
 
-打开 **设置 → 应用 → 默认应用 → 主屏幕**，选择「成长桌面」。安装脚本 `tools/growquiz-install.sh` 也封装了安装与切换步骤：
+打开 **设置 → 应用 → 默认应用 → 主屏幕**，选择「宝贝成长桌面」。安装脚本 `tools/growquiz-install.sh` 也封装了安装与切换步骤：
 
 ```sh
 sh tools/growquiz-install.sh app/build/outputs/apk/release/app-release.apk 192.168.1.20:5555
@@ -111,7 +111,7 @@ adb shell dpm set-device-owner dev.plume.growquiz/dev.plume.quiz.QuizDeviceAdmin
 | 开机恢复 | `quiz/BootReceiver.kt` | 监听开机广播，读取上次排定时间并重新调度 |
 | 答题界面 | `quiz/QuizActivity.kt` | 全屏、遥控器优先；错误答案换题，正确答案 1.3 秒后返回；有 Device Owner 时 `startLockTask()` |
 | 答题规则 | `quiz/QuizRules.kt` | 纯 Kotlin 逻辑，脱离 Android 框架，便于单元测试 |
-| 题库 | `app/src/main/assets/questions.json` | 1800 题，含年龄段、分类、选项、答案下标与解析 |
+| 题库 | `app/src/main/assets/questions.json` | 8000 题，含年龄段、分类、选项、答案下标与解析 |
 | 题目生成 | `tools/generate_questions.py` | 确定性生成 + 校验题库（数值干扰项自动去重、答案唯一） |
 | 局域网管理台 | `web/WebAdminServer.kt` | 纯 JDK `ServerSocket` 单页服务，SHA-256 加盐口令、24 小时会话 Cookie，无第三方依赖 |
 | 语音 | `quiz/TtsProbe.kt` + `QuizActivity` | 系统 TTS 朗读题干，检测引擎可用性 |
@@ -121,7 +121,9 @@ adb shell dpm set-device-owner dev.plume.growquiz/dev.plume.quiz.QuizDeviceAdmin
 
 | 年龄段 | 题量 | 分类分布（全库） |
 |---|---|---|
-| 5 – 10 岁，每岁一段 | 300 × 6 = **1800** | 数学 893 · 应用 345 · 逻辑 130 · 语文 120 · 科学 120 · 图形 72 · 安全 64 · 生活 56 |
+| 5 – 14 岁，每岁一段 | 800 × 10 = **8000** | 数学 3515 · 语文 1386 · 应用 731 · 英语 614 · 图形 492 · 科学 376 · 逻辑 262 · 安全 226 · 生活 200 · 历史 100 · 地理 98 |
+
+每岁构成：数学/逻辑/图形/应用 500 题（程序化生成）+ 语文与英语 200 题 + 科学/安全/生活/历史/地理 100 题。语文、英语、历史、地理等文科内容按 5-6、7-8、9-10、11-12、13-14 五个年龄段分层，对齐部编版语文、PEP 英语与中小学常识范围。
 
 重新生成或扩充题库：
 

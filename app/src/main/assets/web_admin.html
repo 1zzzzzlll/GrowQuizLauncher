@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>成长桌面 · 控制端</title>
+  <title>宝贝成长桌面 · 控制端</title>
   <style>
     :root{--bg:#0b1526;--card:#14233f;--card2:#0f1c33;--line:#27446c;--text:#eef4ff;--muted:#9fb3d6;--gold:#ffd166;--green:#2ea67b;--red:#d9534f;--blue:#3d7bfd}
     *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#08101f,#0b1526);color:var(--text);font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
@@ -22,22 +22,43 @@
     .switch{display:flex;align-items:center;gap:10px}.switch input{width:auto;transform:scale(1.2)}
     .hidden{display:none!important}.link{color:var(--gold);text-decoration:none}.link:hover{text-decoration:underline}
     .footer{margin-top:10px;color:var(--muted);font-size:13px}
+    .cats{display:flex;flex-wrap:wrap;gap:8px}
+    .cats .cat{display:flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.04);font-size:14px;color:var(--text);margin:0;cursor:pointer}
+    .cats .cat input{width:auto;margin:0}
+    .qlist{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+    .qrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+    .qrow:last-child{border-bottom:0}
+    .qrow.off{opacity:.55}
+    .qrow input.qchk{width:auto;flex:none;transform:scale(1.2)}
+    .qrow .qmain{flex:1;min-width:0}
+    .qrow .qtitle{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .qrow .qmeta{color:var(--muted);font-size:12px;margin-top:2px}
+    .badge{flex:none;font-size:12px;padding:2px 8px;border-radius:8px}
+    .badge.off{background:rgba(217,83,79,.18);color:#ffb3b3}
+    .badge.auto{background:rgba(255,209,102,.16);color:var(--gold)}
+    .badge.custom{background:rgba(61,123,253,.18);color:#a9c6ff}
+    .qdel{flex:none;width:auto;padding:4px 10px;font-size:12px;border-radius:8px}
+    .pager{display:flex;gap:10px;align-items:center;margin-top:12px}
+    .pager button{flex:1;padding:10px}
+    .pager .pinfo{flex:none;color:var(--muted);font-size:14px;white-space:nowrap}
+    button:disabled{opacity:.4;cursor:default}
+    .qrow{flex-wrap:wrap}
     @media (max-width:640px){.row,.row3,.actions,.status{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="brand">
-      <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#ffd166,#f7b733)"></div>
+      <img src="data:image/png;base64,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" alt="宝贝成长桌面" style="width:44px;height:44px;flex:none;border-radius:50%">
       <div>
-        <h1>成长桌面 · 控制端</h1>
+        <h1>宝贝成长桌面 · 控制端</h1>
         <p>局域网内使用，所有配置都在浏览器里完成</p>
       </div>
     </div>
 
     <div id="setup" class="card hidden">
       <h2>首次使用</h2>
-      <p class="muted">为这台电视设置一个管理密码，之后进入控制端都需要它。</p>
+      <p class="muted">为这台电视设置一个管理密码，之后进入控制端都需要它。设置后，电视上的 Wi-Fi、系统设置和桌面设置入口也会要求输入此密码。</p>
       <div class="field">
         <label>管理密码</label>
         <input id="setupPassword" type="password" placeholder="至少 6 位">
@@ -74,13 +95,18 @@
         <div class="field">
           <label>宝贝年龄</label>
           <select id="age">
-            <option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
+            <option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option>
           </select>
         </div>
         <div class="field">
           <label>答题间隔（分钟）</label>
           <input id="interval" type="number" min="1" max="1440" step="1">
         </div>
+      </div>
+
+      <div class="field">
+        <label>题目分类（多选，一个都不勾选即为全部）</label>
+        <div id="catList" class="cats"><span class="muted">加载中…</span></div>
       </div>
 
       <div class="field switch">
@@ -100,7 +126,11 @@
         <div id="ttsMsg" class="msg"></div>
       </div>
 
-      <div style="margin-top:16px; display:flex; gap:12px; flex-wrap:wrap">
+      <div style="margin-top:16px">
+        <button id="bankBtn" class="primary">题库管理（出题 · 编辑 · 禁用）</button>
+      </div>
+
+      <div style="margin-top:12px; display:flex; gap:12px; flex-wrap:wrap">
         <button id="refreshBtn" class="ghost" style="flex:1">刷新状态</button>
         <button id="logoutBtn" class="ghost" style="flex:1">退出登录</button>
       </div>
@@ -109,28 +139,150 @@
         提示：如果是在手机上测试，确认手机和电视在同一 Wi-Fi 下；电视上显示的本机地址也可在设置里查看。
       </div>
     </div>
+
+    <div id="maker" class="card hidden">
+      <h2 id="makerTitle">自定义出题</h2>
+      <p class="muted" style="margin-top:0">自己出的题会和内置题库一起随机出现；分类可以随意填写，也可以从已有分类中选。内置题也能在下方列表里点「编辑」生成修改版。</p>
+      <div class="row">
+        <div class="field">
+          <label>适合年龄</label>
+          <select id="cqAge">
+            <option>5</option><option>6</option><option selected>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>题目分类</label>
+          <input id="cqCategory" list="catOptions" placeholder="如：数学、识字、安全常识">
+          <datalist id="catOptions"></datalist>
+        </div>
+      </div>
+      <div class="field">
+        <label>题目</label>
+        <input id="cqQuestion" placeholder="题干，例如：小明有 3 个苹果，吃了 1 个，还剩几个？">
+      </div>
+      <div class="row">
+        <div class="field"><label>选项 A</label><input id="cqOpt0"></div>
+        <div class="field"><label>选项 B</label><input id="cqOpt1"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>选项 C</label><input id="cqOpt2"></div>
+        <div class="field"><label>选项 D</label><input id="cqOpt3"></div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>正确答案</label>
+          <select id="cqAnswer">
+            <option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>解析（可选）</label>
+          <input id="cqExplanation" placeholder="答对后显示给宝贝看">
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <button id="cqBtn" class="primary" style="flex:1">保存题目</button>
+        <button id="cqCancelBtn" class="ghost hidden" style="flex:1">取消编辑</button>
+      </div>
+      <div id="cqMsg" class="msg"></div>
+    </div>
+
+    <div id="bank" class="card hidden">
+      <button id="bankBack" class="ghost" style="width:auto;padding:8px 16px;margin-bottom:14px">← 返回控制台</button>
+      <h2>题库管理</h2>
+      <div class="row3">
+        <div class="field">
+          <label>年龄</label>
+          <select id="bkAge">
+            <option value="">全部</option>
+            <option>5</option><option>6</option><option selected>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>分类</label>
+          <select id="bkCategory"><option value="">全部</option></select>
+        </div>
+        <div class="field">
+          <label>状态</label>
+          <select id="bkState">
+            <option value="all">全部</option>
+            <option value="enabled">启用中</option>
+            <option value="disabled">已禁用</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="bkLoad" class="ghost">刷新列表</button>
+        <button id="bkPickAll" class="ghost">全选 / 全不选</button>
+        <button id="bkDisable" class="danger">禁用选中</button>
+        <button id="bkEnable" class="success">启用选中</button>
+      </div>
+      <div class="actions">
+        <button id="bkDisableAll" class="danger">一键禁用全部题目</button>
+        <button id="bkEnableAll" class="success">一键开启全部题目</button>
+      </div>
+      <div id="bkMsg" class="msg"></div>
+      <div id="bkList" class="qlist hidden"></div>
+      <div id="bkPager" class="pager hidden"></div>
+      <div class="footer">每页 10 题；勾选、批量启停只作用于当前页。「自定义」分类代表全部自己出的题；同一道题答对满 5 次会自动禁用；内置题可「编辑」生成修改版（随时「恢复原题」）但不能删除，自定义题可编辑、可删除。</div>
+    </div>
+
+    <div id="passwd" class="card hidden">
+      <h2>修改管理密码</h2>
+      <p class="muted" style="margin-top:0">修改后请牢记新密码：控制端登录和电视上的设置解锁都需要它。</p>
+      <div class="field">
+        <label>原密码</label>
+        <input id="pwOld" type="password" placeholder="输入当前管理密码">
+      </div>
+      <div class="field">
+        <label>新密码</label>
+        <input id="pwNew" type="password" placeholder="至少 6 位">
+      </div>
+      <div class="field">
+        <label>确认新密码</label>
+        <input id="pwNew2" type="password" placeholder="再输入一次">
+      </div>
+      <button id="pwBtn" class="primary">确认修改</button>
+      <div id="pwMsg" class="msg"></div>
+    </div>
   </div>
 
   <script>
     const $ = id => document.getElementById(id);
     const msg = (el, text, ok) => { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); };
-    const show = id => ['setup','login','panel'].forEach(s => $(s).classList.toggle('hidden', s !== id));
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const HOME_CARDS = ['panel', 'passwd'];
+    const BANK_CARDS = ['maker', 'bank'];
+    const ALL_CARDS = ['setup', 'login', ...HOME_CARDS, ...BANK_CARDS];
+    let authed = false;
+    const show = id => ALL_CARDS.forEach(s =>
+      $(s).classList.toggle('hidden',
+        id === 'home' ? !HOME_CARDS.includes(s) :
+        id === 'bank' ? !BANK_CARDS.includes(s) :
+        s !== id));
+    const route = () => { if (authed) show(location.hash === '#/bank' ? 'bank' : 'home'); };
+    window.addEventListener('hashchange', route);
     const api = async (path, body) => {
       const r = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: body ? {'Content-Type':'application/json'} : {}, body: body ? JSON.stringify(body) : undefined });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
       return j;
     };
-    const status = async () => {
-      const r = await fetch('/api/status', { credentials: 'same-origin' });
-      return r.json();
+    const get = async path => {
+      const r = await fetch(path, { credentials: 'same-origin' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+      return j;
     };
+    const status = () => get('/api/status');
     const fmtTime = ts => ts > 0 ? new Date(ts).toLocaleString() : '--';
+    const AUTO_DISABLE_AFTER = 5; // 与电视端 QuestionBank.AUTO_DISABLE_AFTER 一致
 
     async function refresh() {
       const s = await status();
       $('stUrl').textContent = location.origin;
       if (!s.authenticated) {
+        authed = false;
         show(s.initialized ? 'login' : 'setup');
         return;
       }
@@ -142,7 +294,25 @@
       $('stNext').textContent = s.enabled ? fmtTime(s.next) : '已停用';
       const tts = { 'available': '可用', 'initializing': '检测中…' }[s.tts] || (s.tts === 'no-engine' ? '不可用（无引擎）' : s.tts === 'no-language' ? '不可用（缺中文语音）' : s.tts);
       $('stTts').textContent = tts;
-      show('panel');
+      authed = true;
+      route();
+      await loadCategories(s.categories || []);
+      await loadBank();
+    }
+
+    async function loadCategories(selectedFromStatus) {
+      try {
+        const j = await get('/api/categories');
+        const selected = new Set(selectedFromStatus || j.selected || []);
+        $('catList').innerHTML = j.categories.length
+          ? j.categories.map(c => `<label class="cat"><input type="checkbox" value="${esc(c.name)}" ${selected.has(c.name) ? 'checked' : ''}> ${esc(c.name)}（${c.count}）</label>`).join('')
+          : '<span class="muted">暂无分类</span>';
+        $('catOptions').innerHTML = j.categories.map(c => `<option value="${esc(c.name)}">`).join('');
+        const current = $('bkCategory').value;
+        $('bkCategory').innerHTML = '<option value="">全部</option>' + j.categories.map(c => `<option ${c.name === current ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+      } catch (e) {
+        $('catList').innerHTML = '<span class="muted">分类加载失败</span>';
+      }
     }
 
     $('setupBtn').onclick = async () => {
@@ -166,10 +336,12 @@
 
     $('saveBtn').onclick = async () => {
       try {
+        const categories = [...document.querySelectorAll('#catList input:checked')].map(i => i.value);
         await api('/api/settings', {
           age: Number($('age').value),
           interval: Number($('interval').value),
-          enabled: $('enabled').checked
+          enabled: $('enabled').checked,
+          categories
         });
         msg($('panelMsg'), '已保存', true);
         await refresh();
@@ -190,9 +362,209 @@
       } catch (e) { msg($('ttsMsg'), e.message, false); }
     };
 
+    // ---------- 自定义出题 / 编辑题目 ----------
+
+    let editingId = null;
+
+    function startEdit(q) {
+      editingId = q.id;
+      $('makerTitle').textContent = q.custom ? '编辑自定义题' : '编辑内置题';
+      $('cqAge').value = q.age;
+      $('cqCategory').value = q.category;
+      $('cqQuestion').value = q.question;
+      [0, 1, 2, 3].forEach(i => $('cqOpt' + i).value = (q.options && q.options[i]) || '');
+      $('cqAnswer').value = q.answerIndex;
+      $('cqExplanation').value = q.explanation || '';
+      $('cqBtn').textContent = '保存修改';
+      $('cqCancelBtn').classList.remove('hidden');
+      msg($('cqMsg'), q.custom
+        ? '正在编辑这道自定义题，保存后立即生效'
+        : '内置题：保存后生成「修改版」，原题不会丢，可随时在列表里点「恢复原题」', true);
+      $('maker').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function resetMaker() {
+      editingId = null;
+      $('makerTitle').textContent = '自定义出题';
+      $('cqBtn').textContent = '保存题目';
+      $('cqCancelBtn').classList.add('hidden');
+      $('cqCategory').value = '';
+      $('cqQuestion').value = '';
+      [0, 1, 2, 3].forEach(i => $('cqOpt' + i).value = '');
+      $('cqExplanation').value = '';
+      $('cqMsg').textContent = '';
+      $('cqMsg').className = 'msg';
+    }
+
+    $('cqCancelBtn').onclick = resetMaker;
+
+    $('cqBtn').onclick = async () => {
+      const options = [0, 1, 2, 3].map(i => $('cqOpt' + i).value.trim());
+      const payload = {
+        age: Number($('cqAge').value),
+        category: $('cqCategory').value.trim(),
+        question: $('cqQuestion').value.trim(),
+        options,
+        answerIndex: Number($('cqAnswer').value),
+        explanation: $('cqExplanation').value.trim()
+      };
+      try {
+        if (editingId) {
+          await api('/api/question/update', { id: editingId, ...payload });
+          resetMaker();
+          msg($('cqMsg'), '修改已保存', true);
+        } else {
+          await api('/api/question/add', payload);
+          msg($('cqMsg'), '已保存，宝贝答题时可能会抽到它', true);
+          $('cqQuestion').value = '';
+          [0, 1, 2, 3].forEach(i => $('cqOpt' + i).value = '');
+          $('cqExplanation').value = '';
+        }
+        await loadCategories();
+        await loadBank();
+      } catch (e) { msg($('cqMsg'), e.message, false); }
+    };
+
+    // ---------- 题库管理 ----------
+
+    let bkPage = 1;
+    const BK_PAGE_SIZE = 10;
+    let bkQuestions = [];
+
+    async function loadBank() {
+      try {
+        const p = new URLSearchParams();
+        if ($('bkAge').value) p.set('age', $('bkAge').value);
+        if ($('bkCategory').value) p.set('category', $('bkCategory').value);
+        p.set('state', $('bkState').value);
+        p.set('page', bkPage);
+        p.set('pageSize', BK_PAGE_SIZE);
+        const j = await get('/api/questions?' + p.toString());
+        bkPage = j.page || 1;
+        bkQuestions = j.questions || [];
+        const pages = Math.max(1, Math.ceil(j.total / BK_PAGE_SIZE));
+        msg($('bkMsg'), '共 ' + j.total + ' 题' + (pages > 1 ? ' · 第 ' + bkPage + ' / ' + pages + ' 页' : ''), true);
+        const list = $('bkList');
+        list.classList.toggle('hidden', bkQuestions.length === 0);
+        list.innerHTML = bkQuestions.map(q => {
+          const auto = !q.enabled && q.correct >= AUTO_DISABLE_AFTER;
+          const badges =
+            (q.custom ? '<span class="badge custom">自定义</span>' : '') +
+            (q.overridden ? '<span class="badge auto">已修改</span>' : '') +
+            (auto ? '<span class="badge auto">自动禁用</span>' : (!q.enabled ? '<span class="badge off">已禁用</span>' : ''));
+          const edit = `<button class="qdel ghost" data-edit="${esc(q.id)}">编辑</button>`;
+          const revert = q.overridden ? `<button class="qdel ghost" data-revert="${esc(q.id)}">恢复原题</button>` : '';
+          const del = q.custom ? `<button class="qdel danger" data-del="${esc(q.id)}">删除</button>` : '';
+          return `<div class="qrow ${q.enabled ? '' : 'off'}">
+            <input type="checkbox" class="qchk" value="${esc(q.id)}">
+            <div class="qmain">
+              <div class="qtitle">${esc(q.question)}</div>
+              <div class="qmeta">${q.age} 岁 · ${esc(q.category)} · 答案 ${'ABCD'[q.answerIndex]} · 答对 ${q.correct} 次</div>
+            </div>
+            ${badges}${edit}${revert}${del}
+          </div>`;
+        }).join('');
+        list.querySelectorAll('[data-edit]').forEach(btn => btn.onclick = () => {
+          const q = bkQuestions.find(x => x.id === btn.dataset.edit);
+          if (q) startEdit(q);
+        });
+        list.querySelectorAll('[data-revert]').forEach(btn => btn.onclick = async () => {
+          if (!confirm('恢复这道内置题的默认内容？当前的修改版会被丢弃。')) return;
+          try {
+            await api('/api/question/revert', { id: btn.dataset.revert });
+            if (editingId === btn.dataset.revert) resetMaker();
+            await loadCategories();
+            await loadBank();
+          } catch (e) { msg($('bkMsg'), e.message, false); }
+        });
+        list.querySelectorAll('[data-del]').forEach(btn => btn.onclick = async () => {
+          if (!confirm('确定删除这道自定义题？')) return;
+          try {
+            await api('/api/question/delete', { id: btn.dataset.del });
+            if (editingId === btn.dataset.del) resetMaker();
+            await loadCategories();
+            await loadBank();
+          } catch (e) { msg($('bkMsg'), e.message, false); }
+        });
+        renderPager(pages);
+      } catch (e) {
+        msg($('bkMsg'), e.message, false);
+      }
+    }
+
+    function renderPager(pages) {
+      const pager = $('bkPager');
+      if (pages <= 1) { pager.classList.add('hidden'); pager.innerHTML = ''; return; }
+      pager.classList.remove('hidden');
+      pager.innerHTML =
+        `<button class="ghost" id="bkPrev" ${bkPage <= 1 ? 'disabled' : ''}>上一页</button>` +
+        `<span class="pinfo">第 ${bkPage} / ${pages} 页</span>` +
+        `<button class="ghost" id="bkNext" ${bkPage >= pages ? 'disabled' : ''}>下一页</button>`;
+      $('bkPrev').onclick = () => { if (bkPage > 1) { bkPage--; loadBank(); } };
+      $('bkNext').onclick = () => { if (bkPage < pages) { bkPage++; loadBank(); } };
+    }
+
+    $('bkLoad').onclick = () => { bkPage = 1; loadBank(); };
+    ['bkAge', 'bkCategory', 'bkState'].forEach(id => $(id).onchange = () => { bkPage = 1; loadBank(); });
+
+    $('bkPickAll').onclick = () => {
+      const boxes = [...document.querySelectorAll('.qchk')];
+      const target = boxes.some(c => !c.checked);
+      boxes.forEach(c => c.checked = target);
+    };
+
+    const setState = async enabled => {
+      const ids = [...document.querySelectorAll('.qchk:checked')].map(c => c.value);
+      if (!ids.length) return msg($('bkMsg'), '请先勾选题目', false);
+      try {
+        await api('/api/questions/state', { ids, enabled });
+        msg($('bkMsg'), (enabled ? '已启用 ' : '已禁用 ') + ids.length + ' 题', true);
+        await loadCategories();
+        await loadBank();
+      } catch (e) { msg($('bkMsg'), e.message, false); }
+    };
+    $('bkDisable').onclick = () => setState(false);
+    $('bkEnable').onclick = () => setState(true);
+
+    $('bkDisableAll').onclick = async () => {
+      if (!confirm('确定禁用全部题目？禁用后宝贝将无题可答（可随时一键开启恢复）。')) return;
+      try {
+        await api('/api/questions/state_all', { enabled: false });
+        msg($('bkMsg'), '已禁用全部题目', true);
+        await loadCategories();
+        await loadBank();
+      } catch (e) { msg($('bkMsg'), e.message, false); }
+    };
+
+    $('bkEnableAll').onclick = async () => {
+      try {
+        await api('/api/questions/state_all', { enabled: true });
+        msg($('bkMsg'), '已开启全部题目', true);
+        await loadCategories();
+        await loadBank();
+      } catch (e) { msg($('bkMsg'), e.message, false); }
+    };
+
+    // ---------- 修改管理密码 ----------
+
+    $('pwBtn').onclick = async () => {
+      const old = $('pwOld').value, fresh = $('pwNew').value, again = $('pwNew2').value;
+      if (!old) return msg($('pwMsg'), '请输入原密码', false);
+      if (fresh.length < 6) return msg($('pwMsg'), '新密码至少 6 位', false);
+      if (fresh !== again) return msg($('pwMsg'), '两次输入的新密码不一致', false);
+      try {
+        await api('/api/password_change', { old, new: fresh });
+        msg($('pwMsg'), '密码已修改，下次登录请使用新密码', true);
+        $('pwOld').value = ''; $('pwNew').value = ''; $('pwNew2').value = '';
+      } catch (e) { msg($('pwMsg'), e.message, false); }
+    };
+
+    $('bankBtn').onclick = () => { location.hash = '#/bank'; };
+    $('bankBack').onclick = () => { location.hash = '#/'; };
     $('refreshBtn').onclick = refresh;
     $('logoutBtn').onclick = async () => {
       try { await api('/api/logout', {}); } catch (e) {}
+      authed = false;
       show('login');
     };
 
