@@ -14,6 +14,15 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.2.0
+
+- **自动更新。** 每天自动检查一次新版本，发现后自动下载并安装；更新来源改为自有服务器，不再指向上游 Plume。
+- **题库分类与多选。** 题库按年龄和分类两个维度整理，答题可按分类多选抽题，不选即为全部。
+- **家长自定义出题。** 管理控制台新增自定义出题，题目需选择年龄和分类，与内置题一起随机出现。
+- **题库维护。** 管理控制台可按年龄、分类、状态筛选题目，勾选后批量禁用或启用，也可一键开启或禁用全部题目。
+- **答对自动退休。** 同一道题答对满 5 次后自动禁用，避免已掌握的题目反复出现。
+- **设置密码保护。** 设置管理密码后，电视上的 Wi-Fi、系统设置和桌面设置入口也需输入密码。
+
 ## 1.0.0
 
 - **Grow Quiz launcher.** Add a Chinese children quiz to the open-source Plume TV home screen.
