@@ -351,6 +351,12 @@ class MainActivity : Activity() {
         override fun onReceive(c: Context, i: Intent) {
             appsDirty = true
             i.data?.schemeSpecificPart?.let { GLYPHS.remove(it); ACCENTS.remove(it) } // an update may bring a new icon
+            // GrowQuiz: a newly installed app joins All apps only; the desktop stays exactly as the parent set it.
+            if (i.action == Intent.ACTION_PACKAGE_ADDED && !i.getBooleanExtra(Intent.EXTRA_REPLACING, false)) {
+                i.data?.schemeSpecificPart?.let { pkg ->
+                    if (pkg != packageName) prefs.edit().putStringSet("row_hidden", rowHiddenSet() + pkg).apply()
+                }
+            }
             // The system can tell us after we are back in front, for example after an uninstall: onResume has run already.
             if (resumed) {
                 ui.removeCallbacks(refreshIfDirty)
@@ -484,11 +490,11 @@ class MainActivity : Activity() {
         if (checkSelfPermission(TV_LISTINGS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(TV_LISTINGS), 1)
         }
-        showWebAdminPrompt()
     }
 
     override fun onResume() {
         super.onResume()
+        if (!resumed) showWebAdminPrompt()
         resumed = true
         if (currentWallpaper().startsWith("video:")) videoWallpaper.resume()
         returnTo = null // back by another way than Home: the next Home starts again at the first tile
@@ -651,6 +657,7 @@ class MainActivity : Activity() {
             minHeight = dp(64)
             setOnClickListener {
                 root.removeView(overlay)
+                webPromptShown = false // allows the menu's 后台管理 button to bring the prompt up again
                 moveTaskToBack(true)
             }
         }
@@ -665,6 +672,7 @@ class MainActivity : Activity() {
     }
 
     private var webPromptShown = false
+    private var rowEmptyNoted = false // the empty-desktop hint shows once per session
 
     /** Compared as components: Settings may store us in short form (dev.plume/.HomeOverride). */
     private fun homeServiceOn(): Boolean {
@@ -2775,14 +2783,10 @@ class MainActivity : Activity() {
             group(R.string.group_tv) +
             sectionRow(R.string.section_remote_home) +
             Triple(R.string.lock_layout, rows[R.string.lock_layout]!!, RowStyle(R.drawable.ms_lock, help = getString(R.string.lock_note))) +
-            Triple(R.string.quiz_settings, page(getString(R.string.quiz_settings),
-                "${dev.plume.quiz.QuizPrefs(this).age} 岁 · ${dev.plume.quiz.QuizPrefs(this).intervalMinutes} 分钟 ›") {
-                closeLauncherSettings()
-                startActivity(Intent(this, dev.plume.quiz.QuizSettingsActivity::class.java))
-            }, RowStyle(R.drawable.ms_lock, help = getString(R.string.quiz_settings_help))) +
             Triple(R.string.web_admin, page(getString(R.string.web_admin), dev.plume.web.WebAdminServer.url()) {
+                // GrowQuiz: re-show the startup prompt (same Wi-Fi + admin URL), as on every return from background.
                 closeLauncherSettings()
-                toast(dev.plume.web.WebAdminServer.url(), long = true)
+                showWebAdminPrompt()
             }, RowStyle(R.drawable.ms_public, help = getString(R.string.web_admin_help))) +
             listOfNotNull(if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) null
                 else Triple(R.string.preview_home_setup, page(getString(R.string.preview_home_setup)) { closeLauncherSettings(); previewHomeSetup() },
@@ -3463,6 +3467,11 @@ class MainActivity : Activity() {
             ui.post {
                 if (isDestroyed) return@post
                 if (inputs.isNotEmpty() && !prefs.getBoolean("inputs_moved", false)) moveInputsToSources(inputs)
+                // GrowQuiz: the desktop starts with no apps; a parent adds them from All apps (hold OK) or the row settings.
+                if (!prefs.getBoolean("row_apps_manual", false)) {
+                    prefs.edit().putBoolean("row_apps_manual", true)
+                        .putStringSet("row_hidden", list.map { it.pkg }.toSet()).apply()
+                }
                 apps = list
                 APPS = list
                 sources = inputs
@@ -3601,7 +3610,14 @@ class MainActivity : Activity() {
         appRow.removeAllViews()
         val hidden = rowHiddenSet()
         val tiles = sortedApps().filter { inRow(it.pkg, hidden) }.map { appTile(it, labeled = false) }
-        if (tiles.isEmpty()) return showNames()
+        if (tiles.isEmpty()) {
+            showNames()
+            if (!rowEmptyNoted) { // GrowQuiz: guide the parent to the All apps grid, the fastest way to add a tile
+                rowEmptyNoted = true
+                toast(getString(R.string.row_empty_hint), long = true)
+            }
+            return
+        }
         tiles.forEachIndexed { i, t ->
             t.id = View.generateViewId()
             appRow.addView(t, LinearLayout.LayoutParams(width, tileH).apply { if (i > 0) marginStart = gap })

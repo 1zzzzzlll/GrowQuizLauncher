@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -36,6 +38,16 @@ class QuizActivity : Activity() {
     private var changing = false
     private var lockActive = false
 
+    // GrowQuiz: the question is read aloud for children who cannot read yet, then repeated every 20 seconds.
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private val speakLoop: Runnable = object : Runnable {
+        override fun run() {
+            speakQuestion()
+            ui.postDelayed(this, READ_REPEAT_MS)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -53,6 +65,14 @@ class QuizActivity : Activity() {
                 showNextQuestion()
             }
         }.start()
+        tts = TextToSpeech(applicationContext) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                try { tts?.language = Locale.SIMPLIFIED_CHINESE } catch (e: Exception) {}
+                ttsReady = true
+                // The bank may already be showing a question by the time the engine is up.
+                runOnUiThread { if (current != null && !solved && !isFinishing) startReading() }
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -130,12 +150,36 @@ class QuizActivity : Activity() {
             button.backgroundTintList = null
         }
         answerButtons.first().requestFocus()
+        startReading()
+    }
+
+    /** Reads the current question and its options aloud, then keeps repeating every 20 seconds. */
+    private fun startReading() {
+        stopReading()
+        speakLoop.run()
+    }
+
+    private fun stopReading() {
+        ui.removeCallbacks(speakLoop)
+        try { tts?.stop() } catch (e: Exception) {}
+    }
+
+    private fun speakQuestion() {
+        val q = current ?: return
+        val engine = tts ?: return
+        if (!ttsReady) return
+        val text = buildString {
+            append("题目：").append(q.prompt)
+            q.options.forEachIndexed { i, option -> append("。选项").append('A' + i).append("：").append(option) }
+        }
+        try { engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "quiz_question") } catch (e: Exception) {}
     }
 
     private fun answer(index: Int) {
         val question = current ?: return
         if (changing || solved) return
         changing = true
+        stopReading() // the child answered; the next question (or the exit) restarts narration as needed
         answerButtons.forEach { it.isEnabled = false }
         if (QuizRules.isCorrect(question, index)) {
             solved = true
@@ -201,6 +245,9 @@ class QuizActivity : Activity() {
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
+        stopReading()
+        try { tts?.shutdown() } catch (e: Exception) {}
+        tts = null
         super.onDestroy()
     }
 
@@ -222,4 +269,8 @@ class QuizActivity : Activity() {
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+
+    companion object {
+        private const val READ_REPEAT_MS = 20_000L // after the first reading, repeat question + options every 20 s
+    }
 }
