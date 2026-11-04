@@ -4,10 +4,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import dev.plume.quiz.QuestionBank
 import dev.plume.quiz.QuizActivity
 import dev.plume.quiz.QuizDeviceOwner
 import dev.plume.quiz.QuizPrefs
 import dev.plume.quiz.QuizScheduler
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.IOException
@@ -16,6 +18,7 @@ import java.io.OutputStream
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URLDecoder
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Collections
@@ -68,6 +71,24 @@ object WebAdminServer {
         return "http://$address:$port"
     }
 
+    /** True once the family has set the admin password; the TV-side settings entries gate on this too. */
+    fun hasPassword(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_HASH, null) != null
+
+    /** Checks a password against the stored salted hash (used by the on-TV unlock dialog). */
+    fun verifyPassword(context: Context, password: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val salt = prefs.getString(KEY_SALT, null) ?: return false
+        val stored = prefs.getString(KEY_HASH, null) ?: return false
+        return sha256(salt + password) == stored
+    }
+
+    @Volatile private var bank: QuestionBank? = null
+
+    /** One bank per server run; mutations reload it, and disabled state lives in shared preferences. */
+    private fun bank(context: Context): QuestionBank =
+        bank ?: QuestionBank(context.applicationContext).also { bank = it }
+
     private fun serve(context: Context) {
         val socket = server ?: return
         while (running) {
@@ -94,7 +115,9 @@ object WebAdminServer {
         val out = socket.getOutputStream()
         val request = readLine(input) ?: return
         val method = request.substringBefore(' ').uppercase()
-        val path = request.substringAfter(' ').substringBefore(' ')
+        val target = request.substringAfter(' ').substringBefore(' ')
+        val path = target.substringBefore('?')
+        val query = parseQuery(target.substringAfter('?', ""))
         val headers = HashMap<String, String>()
         while (true) {
             val line = readLine(input) ?: break
@@ -122,6 +145,7 @@ object WebAdminServer {
                         .put("age", prefs.age)
                         .put("interval", prefs.intervalMinutes)
                         .put("enabled", prefs.enabled)
+                        .put("categories", JSONArray(prefs.categories.toList()))
                         .put("next", prefs.nextTriggerAt)
                         .put("owner", QuizDeviceOwner.isOwner(context))
                         .put("tts", dev.plume.quiz.TtsProbe.describe())
@@ -164,17 +188,179 @@ object WebAdminServer {
                 reply(out, 200, "application/json; charset=utf-8", ok(), cookie = clearCookie())
             }
 
+            path == "/api/password_change" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val json = JSONObject(body.ifEmpty { "{}" })
+                val old = json.optString("old")
+                val fresh = json.optString("new")
+                if (!verifyPassword(context, old)) return reply(out, 403, "application/json; charset=utf-8", error("wrong password"))
+                if (fresh.length < MIN_PASSWORD) return reply(out, 400, "application/json; charset=utf-8", error("password too short"))
+                val salt = randomHex(16)
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                    .putString(KEY_SALT, salt)
+                    .putString(KEY_HASH, sha256(salt + fresh))
+                    .commit()
+                reply(out, 200, "application/json; charset=utf-8", ok())
+            }
+
             path == "/api/settings" && method == "POST" -> {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
                 val json = JSONObject(body.ifEmpty { "{}" })
                 val age = json.optInt("age", -1)
                 val interval = json.optInt("interval", -1)
                 val enabled = json.optBoolean("enabled", true)
-                if (age !in 5..10) return reply(out, 400, "application/json; charset=utf-8", error("invalid age"))
+                if (age !in 5..14) return reply(out, 400, "application/json; charset=utf-8", error("invalid age"))
                 if (interval !in 1..1440) return reply(out, 400, "application/json; charset=utf-8", error("invalid interval"))
-                QuizPrefs(context).save(age, interval, enabled)
+                val prefs = QuizPrefs(context)
+                val categories = json.optJSONArray("categories")?.let { arr ->
+                    (0 until arr.length()).map { arr.getString(it) }.filter { it.isNotBlank() }.toSet()
+                } ?: prefs.categories
+                prefs.save(age, interval, enabled, categories)
                 QuizScheduler.reschedule(context)
                 QuizDeviceOwner.configure(context)
+                reply(out, 200, "application/json; charset=utf-8", ok())
+            }
+
+            path == "/api/categories" && method == "GET" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val b = bank(context)
+                val age = query["age"]?.toIntOrNull()
+                val questions = b.list(age = age)
+                val disabled = b.disabledIds()
+                val arr = JSONArray()
+                for (name in b.categories(age)) {
+                    val inCategory = if (name == QuestionBank.CUSTOM_CATEGORY) {
+                        questions.filter { it.custom }
+                    } else {
+                        questions.filter { it.category == name }
+                    }
+                    arr.put(
+                        JSONObject()
+                            .put("name", name)
+                            .put("count", inCategory.size)
+                            .put("disabled", inCategory.count { it.id in disabled }),
+                    )
+                }
+                val json = JSONObject()
+                    .put("ok", true)
+                    .put("categories", arr)
+                    .put("selected", JSONArray(QuizPrefs(context).categories.toList()))
+                reply(out, 200, "application/json; charset=utf-8", json.toString())
+            }
+
+            path == "/api/questions" && method == "GET" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val b = bank(context)
+                val age = query["age"]?.toIntOrNull()
+                val category = query["category"]?.takeIf { it.isNotEmpty() }
+                val onlyDisabled = when (query["state"]) {
+                    "enabled" -> false
+                    "disabled" -> true
+                    else -> null
+                }
+                val items = b.list(age, category, onlyDisabled)
+                val pageSize = query["pageSize"]?.toIntOrNull()?.coerceIn(1, 100)
+                val requestedPage = query["page"]?.toIntOrNull()?.coerceAtLeast(1)
+                val page: Int
+                val paged: List<dev.plume.quiz.Question>
+                if (pageSize != null && requestedPage != null) {
+                    val lastPage = maxOf(1, (items.size + pageSize - 1) / pageSize)
+                    page = requestedPage.coerceAtMost(lastPage)
+                    paged = items.drop((page - 1) * pageSize).take(pageSize)
+                } else {
+                    page = 1
+                    paged = items
+                }
+                val disabled = b.disabledIds()
+                val arr = JSONArray()
+                for (q in paged) {
+                    arr.put(
+                        JSONObject()
+                            .put("id", q.id)
+                            .put("age", q.age)
+                            .put("category", q.category)
+                            .put("question", q.prompt)
+                            .put("options", JSONArray(q.options))
+                            .put("answerIndex", q.answerIndex)
+                            .put("explanation", q.explanation)
+                            .put("custom", q.custom)
+                            .put("overridden", b.isOverridden(q.id))
+                            .put("correct", b.correctCount(q.id))
+                            .put("enabled", q.id !in disabled),
+                    )
+                }
+                val json = JSONObject()
+                    .put("ok", true)
+                    .put("total", items.size)
+                    .put("page", page)
+                    .put("pageSize", pageSize ?: items.size)
+                    .put("questions", arr)
+                reply(out, 200, "application/json; charset=utf-8", json.toString())
+            }
+
+            path == "/api/question/add" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val (draft, failure) = parseDraft(body)
+                if (draft == null) return reply(out, 400, "application/json; charset=utf-8", error(failure ?: "invalid question"))
+                val id = bank(context).addCustom(draft.age, draft.category, draft.prompt, draft.options, draft.answerIndex, draft.explanation)
+                reply(out, 200, "application/json; charset=utf-8", JSONObject().put("ok", true).put("id", id).toString())
+            }
+
+            path == "/api/question/update" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val id = JSONObject(body.ifEmpty { "{}" }).optString("id").trim()
+                if (id.isEmpty()) return reply(out, 400, "application/json; charset=utf-8", error("id required"))
+                val (draft, failure) = parseDraft(body)
+                if (draft == null) return reply(out, 400, "application/json; charset=utf-8", error(failure ?: "invalid question"))
+                val b = bank(context)
+                val target = b.list().firstOrNull { it.id == id }
+                    ?: return reply(out, 404, "application/json; charset=utf-8", error("question not found"))
+                // Custom questions are rewritten in place; bundled ones get an override so the original stays intact.
+                val saved = if (target.custom) {
+                    b.updateCustom(id, draft.age, draft.category, draft.prompt, draft.options, draft.answerIndex, draft.explanation)
+                } else {
+                    b.saveOverride(id, draft.age, draft.category, draft.prompt, draft.options, draft.answerIndex, draft.explanation)
+                }
+                if (!saved) return reply(out, 400, "application/json; charset=utf-8", error("update failed"))
+                reply(out, 200, "application/json; charset=utf-8", ok())
+            }
+
+            path == "/api/question/revert" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val id = JSONObject(body.ifEmpty { "{}" }).optString("id")
+                if (!bank(context).removeOverride(id)) {
+                    return reply(out, 400, "application/json; charset=utf-8", error("only overridden bundled questions can be reverted"))
+                }
+                reply(out, 200, "application/json; charset=utf-8", ok())
+            }
+
+            path == "/api/question/delete" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val id = JSONObject(body.ifEmpty { "{}" }).optString("id")
+                if (!bank(context).deleteCustom(id)) {
+                    return reply(out, 400, "application/json; charset=utf-8", error("only custom questions can be deleted"))
+                }
+                reply(out, 200, "application/json; charset=utf-8", ok())
+            }
+
+            path == "/api/questions/state" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val json = JSONObject(body.ifEmpty { "{}" })
+                val idsJson = json.optJSONArray("ids")
+                    ?: return reply(out, 400, "application/json; charset=utf-8", error("ids required"))
+                val enabled = json.optBoolean("enabled", true)
+                val ids = (0 until idsJson.length()).map { idsJson.getString(it) }
+                bank(context).setDisabled(ids, !enabled)
+                reply(out, 200, "application/json; charset=utf-8", JSONObject().put("ok", true).put("count", ids.size).toString())
+            }
+
+            path == "/api/questions/state_all" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val json = JSONObject(body.ifEmpty { "{}" })
+                val enabled = json.optBoolean("enabled", true)
+                val age = if (json.has("age")) json.optInt("age") else null
+                val category = json.optString("category").ifEmpty { null }
+                bank(context).setAllDisabled(!enabled, age, category)
                 reply(out, 200, "application/json; charset=utf-8", ok())
             }
 
@@ -196,8 +382,52 @@ object WebAdminServer {
         }
     }
 
-    private fun initialized(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_HASH, null) != null
+    private fun initialized(context: Context): Boolean = hasPassword(context)
+
+    /** Validated question fields shared by the add and update endpoints. */
+    private data class QuestionDraft(
+        val age: Int,
+        val category: String,
+        val prompt: String,
+        val options: List<String>,
+        val answerIndex: Int,
+        val explanation: String,
+    )
+
+    /** Parses a question body; on failure returns null draft plus an error message. */
+    private fun parseDraft(body: String): Pair<QuestionDraft?, String?> {
+        val json = JSONObject(body.ifEmpty { "{}" })
+        val age = json.optInt("age", -1)
+        val category = json.optString("category").trim()
+        val prompt = json.optString("question").trim()
+        val optionsJson = json.optJSONArray("options")
+        val answerIndex = json.optInt("answerIndex", -1)
+        val explanation = json.optString("explanation").trim()
+        val options = optionsJson?.let { arr -> List(arr.length()) { arr.optString(it).trim() } }.orEmpty()
+        val failure = when {
+            age !in 5..14 -> "invalid age"
+            category.isEmpty() -> "category required"
+            prompt.isEmpty() -> "question required"
+            options.size != 4 || options.any { it.isEmpty() } || options.toSet().size != 4 -> "four distinct options required"
+            answerIndex !in 0..3 -> "answer index out of range"
+            else -> null
+        }
+        return if (failure != null) {
+            null to failure
+        } else {
+            QuestionDraft(age, category, prompt, options, answerIndex, explanation) to null
+        }
+    }
+
+    private fun parseQuery(raw: String): Map<String, String> {
+        if (raw.isEmpty()) return emptyMap()
+        return raw.split('&')
+            .filter { it.contains('=') }
+            .associate {
+                URLDecoder.decode(it.substringBefore('='), Charsets.UTF_8.name()) to
+                    URLDecoder.decode(it.substringAfter('='), Charsets.UTF_8.name())
+            }
+    }
 
     private fun newSession(): String {
         val token = randomHex(32)

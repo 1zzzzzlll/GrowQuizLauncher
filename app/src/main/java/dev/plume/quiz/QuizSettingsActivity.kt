@@ -25,6 +25,7 @@ import java.util.Date
 class QuizSettingsActivity : Activity() {
     private lateinit var prefs: QuizPrefs
     private lateinit var ageButton: Button
+    private lateinit var categoryButton: Button
     private lateinit var intervalButton: Button
     private lateinit var enabledButton: Button
     private lateinit var nextText: TextView
@@ -32,6 +33,8 @@ class QuizSettingsActivity : Activity() {
     private var selectedAge = 7
     private var selectedInterval = 30
     private var selectedEnabled = true
+    private var selectedCategories: MutableSet<String> = mutableSetOf()
+    private var bank: QuestionBank? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,6 +42,7 @@ class QuizSettingsActivity : Activity() {
         selectedAge = prefs.age
         selectedInterval = INTERVALS.minByOrNull { kotlin.math.abs(it - prefs.intervalMinutes) } ?: 30
         selectedEnabled = prefs.enabled
+        selectedCategories = prefs.categories.toMutableSet()
         setContentView(createContent())
         QuizDeviceOwner.configure(this)
         QuizScheduler.ensureScheduled(this)
@@ -60,11 +64,14 @@ class QuizSettingsActivity : Activity() {
             setPadding(dp(64), dp(30), dp(64), dp(36))
         }
         content.addView(label("儿童定时问答", 34f, Color.WHITE))
-        content.addView(label("5–10 岁离线题库，每个年龄 300 题。答错自动换题，答对后返回。", 18f, Color.rgb(184, 199, 217)), margins(bottom = 18))
+        content.addView(label("5–14 岁离线题库，每个年龄 800 题。答错自动换题，答对后返回。", 18f, Color.rgb(184, 199, 217)), margins(bottom = 18))
         content.addView(label("儿童年龄", 18f, Color.rgb(255, 209, 102)))
-        ageButton = actionButton("") { selectedAge = if (selectedAge == 10) 5 else selectedAge + 1; refreshChoices() }
-        installStepper(ageButton, { selectedAge = (selectedAge - 1).coerceAtLeast(5); refreshChoices() }, { selectedAge = (selectedAge + 1).coerceAtMost(10); refreshChoices() })
+        ageButton = actionButton("") { selectedAge = if (selectedAge == 14) 5 else selectedAge + 1; refreshChoices() }
+        installStepper(ageButton, { selectedAge = (selectedAge - 1).coerceAtLeast(5); refreshChoices() }, { selectedAge = (selectedAge + 1).coerceAtMost(14); refreshChoices() })
         content.addView(ageButton, margins(bottom = 12))
+        content.addView(label("题目分类（多选，不选为全部）", 18f, Color.rgb(255, 209, 102)))
+        categoryButton = actionButton("") { pickCategories() }
+        content.addView(categoryButton, margins(bottom = 12))
         content.addView(label("答题时间间隔", 18f, Color.rgb(255, 209, 102)))
         intervalButton = actionButton("") { stepInterval(1) }
         installStepper(intervalButton, { stepInterval(-1) }, { stepInterval(1) })
@@ -77,7 +84,7 @@ class QuizSettingsActivity : Activity() {
         content.addView(nextText, margins(bottom = 4))
         content.addView(ownerText, margins(bottom = 18))
         content.addView(actionButton("保存并重新计时") {
-            prefs.save(selectedAge, selectedInterval, selectedEnabled)
+            prefs.save(selectedAge, selectedInterval, selectedEnabled, selectedCategories)
             QuizScheduler.reschedule(this)
             QuizDeviceOwner.configure(this)
             refresh()
@@ -123,8 +130,43 @@ class QuizSettingsActivity : Activity() {
         }
     }
 
+    /** Category multi-select: the bank loads on a worker thread, then a checked dialog does the picking. */
+    private fun pickCategories() {
+        val b = bank ?: QuestionBank(applicationContext).also { bank = it }
+        Toast.makeText(this, "正在读取题库分类…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val cats = b.categories(selectedAge)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (cats.isEmpty()) {
+                    Toast.makeText(this, "$selectedAge 岁题库暂无分类", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                val checked = BooleanArray(cats.size) { cats[it] in selectedCategories }
+                AlertDialog.Builder(this)
+                    .setTitle("选择题目分类（不选为全部）")
+                    .setMultiChoiceItems(cats.toTypedArray(), checked) { _, which, isChecked -> checked[which] = isChecked }
+                    .setPositiveButton("确定") { _, _ ->
+                        selectedCategories = cats.filterIndexed { i, _ -> checked[i] }.toMutableSet()
+                        refreshChoices()
+                    }
+                    .setNeutralButton("全部") { _, _ ->
+                        selectedCategories.clear()
+                        refreshChoices()
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+        }.start()
+    }
+
     private fun refreshChoices() {
         ageButton.text = "$selectedAge 岁  （左右键调整）"
+        categoryButton.text = if (selectedCategories.isEmpty()) {
+            "全部分类  （点击多选）"
+        } else {
+            "已选 ${selectedCategories.size} 类：${selectedCategories.joinToString("、").take(28)}"
+        }
         intervalButton.text = "$selectedInterval 分钟  （左右键调整）"
         enabledButton.text = if (selectedEnabled) "已开启" else "已停用"
     }

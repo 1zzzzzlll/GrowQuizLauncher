@@ -44,9 +44,9 @@
     </queries>
 
     <application
-        android:label="成长桌面"
+        android:label="@string/app_name"
         android:banner="@drawable/banner"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">

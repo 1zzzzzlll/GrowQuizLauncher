@@ -156,7 +156,8 @@ class QuizActivity : Activity() {
     private fun showNextQuestion() {
         val quiz = bank ?: return
         changing = false
-        val next = quiz.next(QuizPrefs(this).age, current?.id)
+        val prefs = QuizPrefs(this)
+        val next = quiz.next(prefs.age, prefs.categories, current?.id)
         current = next
         progressText.text = "${next.age} 岁 · ${next.category} · 答对后即可返回"
         questionText.text = next.prompt
@@ -201,6 +202,7 @@ class QuizActivity : Activity() {
         answerButtons.forEach { it.isEnabled = false }
         if (QuizRules.isCorrect(question, index)) {
             solved = true
+            bank?.registerCorrect(question.id) // mastered questions retire themselves after enough correct answers
             answerButtons[index].backgroundTintList = ColorStateList.valueOf(Color.rgb(46, 158, 107))
             feedbackText.text = "回答正确！${question.explanation}"
             feedbackText.setTextColor(Color.rgb(160, 235, 190))

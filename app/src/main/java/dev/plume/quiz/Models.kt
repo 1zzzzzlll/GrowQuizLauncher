@@ -9,4 +9,6 @@ data class Question(
     val options: List<String>,
     val answerIndex: Int,
     val explanation: String,
+    /** True for questions written by parents through the admin console, false for the bundled bank. */
+    val custom: Boolean = false,
 )
