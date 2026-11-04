@@ -1,294 +1,172 @@
-# 成长桌面（GrowQuiz Launcher）
+<p align="center">
+  <img src="docs/img/banner.svg" alt="成长桌面 GrowQuiz Launcher" width="100%">
+</p>
 
-基于 [Plume Launcher](https://github.com/aradhyas8/Plume_Launcher) 二次开发，上游评估提交为 `e7e663ba85a5028e29206ad9a67ad248c500042d`。本定制版保留原桌面功能，新增：
+<p align="center">
+  <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
+  <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3ddc84">
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-100%25-7f52ff">
+  <img alt="Questions" src="https://img.shields.io/badge/%E9%A2%98%E5%BA%93-1800%20%E9%81%93-f2c14e">
+  <img alt="Offline" src="https://img.shields.io/badge/%E8%BF%90%E8%A1%8C-%E7%A6%BB%E7%BA%BF%E6%97%A0%E9%9C%80%E7%99%BB%E5%BD%95-lightgrey">
+</p>
 
-- 开机恢复定时，按设定间隔弹出全屏选择题；答错换题，答对返回。
-- 5–10 岁离线题库，每个年龄 300 题，共 1800 题。
-- 桌面设置中的儿童年龄、答题间隔、开关和立即测试。
-- Device Owner + Lock Task 增强锁定；普通默认桌面模式不提供同等级防退出保证。
+<h1 align="center">成长桌面 · GrowQuiz Launcher</h1>
 
-## 构建与安装
+<p align="center"><em>一台会提问的电视桌面：到点自动出题，答对才回到动画片。</em></p>
+
+---
+
+## 这是什么
+
+孩子看完一集还想再看一集，家长不可能每次都守在旁边。
+
+**成长桌面**把 Android TV 的桌面换成一个小而快的启动器，并按你设定的间隔把全屏答题弹到最前面：题答错了就换一道继续，答对了才回到桌面。题目全部离线内置，音量键、返回键都进不去动画片——想继续看，先答对一题。
+
+它基于开源桌面 [Plume Launcher](https://github.com/aradhyas8/Plume_Launcher)（同样是 0.5 MB 级、无广告、无账号、无统计的极简 TV 桌面），在保留原桌面全部功能的前提下加入儿童问答模块。
+
+## 核心功能
+
+| | 功能 | 说明 |
+|---|---|---|
+| ⏱ | **定时全屏问答** | 到达设定间隔（1 分钟 – 24 小时）自动弹出问答，抢占前台并全屏显示 |
+| 🔁 | **答错换题，答对返回** | 答案错误只换一道题，不提供"退出"；答对后自动返回桌面并重新计时 |
+| 🧠 | **1800 道离线题库** | 5–10 岁六个年龄段，每段 300 题，无需联网、无需登录 |
+| 🔊 | **语音朗读题目** | 调用系统 TTS 朗读题干，识字不多的孩子也能独立完成 |
+| 🔒 | **设备所有者锁定** | 配置 Device Owner 后启用 Lock Task，答题期间无法用遥控器切走 |
+| 📱 | **手机当管理台** | 电视内置一个局域网网页控制台（默认 `:8081`），手机浏览器即可改年龄、间隔、立即出题 |
+| ♻️ | **开机自动恢复** | 重启电视后自动重新排定下一次问答，不必手动打开应用 |
+| 🖥 | **完整桌面功能** | 应用行、继续观看、HDMI 信号源、壁纸/屏保、遥控器按键自定义等上游能力全部保留 |
+| 🚫 | **不联网更新** | 已关闭上游的自动更新检查，不会被上游包覆盖 |
+
+## 一次答题循环
+
+<p align="center">
+  <img src="docs/img/flow.svg" alt="答题循环：定时到点 → 全屏出题 → 答错换题 / 答对返回" width="100%">
+</p>
+
+## 界面
+
+<p align="center">
+  <img src="docs/img/home.png" alt="成长桌面主界面" width="49%">
+  <img src="docs/img/admin-prompt.png" alt="启动时提示用手机打开管理台" width="49%">
+</p>
+
+左：默认启动后的极简桌面（可自由添加应用）。右：启动时提示家长在手机浏览器打开局域网管理台，首次进入需设置管理密码。
+
+## 快速开始
+
+### 1. 构建 APK
 
 ```sh
+git clone https://github.com/1zzzzzlll/GrowQuizLauncher.git
+cd GrowQuizLauncher
 ./gradlew assembleRelease
-sh tools/growquiz-install.sh app/build/outputs/apk/release/app-release.apk [电视IP:5555]
+# 产物：app/build/outputs/apk/release/app-release.apk
 ```
 
-也可以手动安装 APK，然后在安卓“主屏幕”设置中选择“成长桌面”。脚本不会禁用原桌面。
+需要 JDK 17+ 与 Android SDK（`compileSdk 36`）。未提供 `keystore.properties` 时，release 包使用本机 debug 签名，自用安装没有问题。
 
-增强锁定需要在合适的测试设备上通过 ADB 配置：
+### 2. 安装到电视
+
+```sh
+# 电视开启开发者选项与网络调试后
+adb connect 192.168.1.20:5555
+adb install -r app-release.apk
+```
+
+也可以用 U 盘 + 文件管理器、或电视上的 Downloader 类应用侧载安装。
+
+### 3. 设为默认桌面
+
+打开 **设置 → 应用 → 默认应用 → 主屏幕**，选择「成长桌面」。安装脚本 `tools/growquiz-install.sh` 也封装了安装与切换步骤：
+
+```sh
+sh tools/growquiz-install.sh app/build/outputs/apk/release/app-release.apk 192.168.1.20:5555
+```
+
+脚本只切换默认桌面，不会禁用原桌面，出问题随时切回去。
+
+### 4. 父母设置
+
+- **电视端**：桌面 → 设置 → 「儿童定时问答」，选择孩子年龄、答题间隔、开关，可立即测试。
+- **手机端**：电视屏幕会显示形如 `http://10.0.2.15:8081` 的地址。让手机连同一个 Wi-Fi，在浏览器打开即可设置年龄、间隔、立即出题（首次进入需设置至少 6 位管理密码）。
+
+> 管理台只在局域网内可达，随桌面进程运行，不上传任何数据。
+
+### 5.（可选）开启强锁定
+
+普通默认桌面模式下，孩子仍可能通过系统设置或语音搜索切走应用。需要更强的约束时，配置 Device Owner：
 
 ```sh
 adb shell dpm set-device-owner dev.plume.growquiz/dev.plume.quiz.QuizDeviceAdminReceiver
 ```
 
-Device Owner 不是 root，也不等于重刷完整 ROM。部分电视要求无账号或未配置其他设备所有者；配置前备份数据，并确认新桌面可以正常使用。生产版本的 Device Owner 移除方式取决于厂商系统，必要时应通过系统管理入口或恢复出厂设置处理。
+配置后答题期间启用 Lock Task，返回/主页键无法脱离。**注意**：Device Owner 不是 root，也不等于刷机；部分电视要求设备未登录账号、且没有其他设备所有者。移除方式取决于厂商系统，必要时需通过系统管理入口或恢复出厂设置处理，**请先备份数据并在可折腾的设备上试**。
 
-本项目按上游 **GPL-3.0** 发布，完整许可见 `LICENSE`。以下保留上游 Plume 文档。
+## 工作原理
 
----
+| 模块 | 位置 | 职责 |
+|---|---|---|
+| 定时调度 | `quiz/QuizScheduler.kt` | 用 `AlarmManager.setAlarmClock()` 排定下一次触发；Android 12+ 无精确闹钟权限时降级为 `set()` |
+| 开机恢复 | `quiz/BootReceiver.kt` | 监听开机广播，读取上次排定时间并重新调度 |
+| 答题界面 | `quiz/QuizActivity.kt` | 全屏、遥控器优先；错误答案换题，正确答案 1.3 秒后返回；有 Device Owner 时 `startLockTask()` |
+| 答题规则 | `quiz/QuizRules.kt` | 纯 Kotlin 逻辑，脱离 Android 框架，便于单元测试 |
+| 题库 | `app/src/main/assets/questions.json` | 1800 题，含年龄段、分类、选项、答案下标与解析 |
+| 题目生成 | `tools/generate_questions.py` | 确定性生成 + 校验题库（数值干扰项自动去重、答案唯一） |
+| 局域网管理台 | `web/WebAdminServer.kt` | 纯 JDK `ServerSocket` 单页服务，SHA-256 加盐口令、24 小时会话 Cookie，无第三方依赖 |
+| 语音 | `quiz/TtsProbe.kt` + `QuizActivity` | 系统 TTS 朗读题干，检测引擎可用性 |
+| 桌面本体 | `dev.plume.*` | 上游 Plume 的桌面、壁纸、屏保、按键重映射等 |
 
-<p align="center">
-  <img src="docs/plume-icon.png" alt="Plume logo" width="128">
-</p>
+## 题库
 
-<h1 align="center">Plume Launcher</h1>
+| 年龄段 | 题量 | 分类分布（全库） |
+|---|---|---|
+| 5 – 10 岁，每岁一段 | 300 × 6 = **1800** | 数学 893 · 应用 345 · 逻辑 130 · 语文 120 · 科学 120 · 图形 72 · 安全 64 · 生活 56 |
 
-<p align="center">
-  <em>Light as a feather.</em> A minimal, ad-free home screen for Android TV and Google TV.
-</p>
-
-<p align="center">
-  <a href="https://github.com/aradhyas8/Plume_Launcher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/aradhyas8/Plume_Launcher?label=release"></a>
-  <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3ddc84">
-  <img alt="APK size" src="https://img.shields.io/badge/APK-0.4%20MB-blue">
-  <a href="https://github.com/aradhyas8/Plume_Launcher/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/aradhyas8/Plume_Launcher/total"></a>
-  <a href="LICENSE"><img alt="GPL-3.0 License" src="https://img.shields.io/github/license/aradhyas8/Plume_Launcher"></a>
-</p>
-
-<p align="center">
-  <img src="docs/home-light.jpg" alt="Plume home screen, light theme" width="49%">
-  <img src="docs/home-dark.jpg" alt="Plume home screen, dark theme" width="49%">
-</p>
-
-Plume replaces the cluttered stock home screen with the two things you actually use: your apps and what you were watching. There are no ads, no sponsored rows, no account and no tracking, and it stays out of the way of the apps it launches.
-
-## Highlights
-
-- **Tiny and fast.** A 0.4 MB APK with no third-party libraries. It uses about 50–70 MB of RAM and has no extra background services.
-- **Home button support on Google TV.** The Home button opens Plume directly, even on devices where the system launcher can't be replaced. Holding Home still opens the Google TV dashboard.
-- **Continue Watching.** Resume shows and films from Android TV's Watch Next list and from apps that publish their own "Continue Watching" channel, such as Stremio.
-- **Clean apps row.** Monochrome logos (or the same logos in brand colour, or each app's own banner) in a single row, with names on focus, always or never. Rearrange it by holding OK, sort by most used, or hide apps you don't use (they stay in All apps). An optional PIN locks the layout so small hands can't rearrange it.
-- **Sources list.** The Sources icon in the top bar opens the list of the TV inputs. A console or set-top box that names itself over HDMI-CEC (for example "PlayStation 5") shows with its logo, and selecting it switches the TV to that input. A port with no signal says so. Hold OK on an input to put it in the apps row, and again to take it out.
-- **Remote keys.** Change what a button on your remote does, for example the TV, Netflix or Settings button. A key can do one thing on a press and another when you hold it. See [Remote keys](#remote-keys).
-- **Light, dark or automatic theme**, each with its own wallpaper. Auto follows sunrise and sunset where you are (from 7:00 to 19:00 until Plume has a location; it keeps that location if you turn the weather off later). Add your own photos from your phone by scanning a QR code, or show a folder of photos from the TV or a USB drive that changes on a timer.
-- **Optional Gallery screensaver.** Public-domain landscape paintings in 16:9, downloaded only if you choose it, a folder of your own photos, or Aerial Views: Apple's aerial videos.
-- **Optional weather** under the clock.
-- **Upstream update mechanism.** The original Plume project checks GitHub for updates. This GrowQuiz fork disables that automatic check so it cannot be replaced by an upstream package.
-
-## How it compares
-
-Measured on a Hisense Google TV (Android 12, 1.8 GB RAM):
-
-| | Plume | Projectivy Launcher | Google TV launcher |
-|---|---|---|---|
-| APK size | **0.4 MB** | ~10–14 MB | ~25 MB |
-| RAM while running | **~50–70 MB** | ~65–70 MB | ~93 MB, plus a ~22 MB helper process |
-| Extra background services | **None** | 2 | 1 always-on helper |
-| Return to home from an app | **~95 ms** | – | – |
-
-## Requirements
-
-- Android TV or Google TV running **Android 8.0 (Oreo) or newer**
-- A way to sideload an APK: the *Downloader* app, a USB drive with a file manager, or `adb`
-
-## Installation
-
-1. Download the latest `Plume-<version>.apk` from the [Releases](https://github.com/aradhyas8/Plume_Launcher/releases/latest) page.
-2. Install it on your TV, using any of these:
-   - **Downloader app:** enter the code **`2125356`**. It always points to the latest release.
-   - **USB drive:** copy the APK over and open it with a file manager.
-   - **adb:** `adb install Plume-<version>.apk`
-3. Open **Plume** from your apps. Its settings panel opens automatically on first launch.
-
-### First-run setup
-
-Until one of them is on, Plume settings shows a **Finish setup** card at the top. Both rows are also under **Plume settings → Remote & Home button**:
-
-| Setting | What to do |
-|---|---|
-| **Home button** | Press OK. In the Accessibility screen that opens, select **Plume: Home button** and turn it on. |
-| **Default launcher** | Press OK and choose **Plume** in the dialog. |
-
-Allow the **TV listings** permission when asked; Continue Watching needs it.
-
-> [!NOTE]
-> **Holding Volume moves one step?** Many TVs act on the volume keys before any accessibility service sees them, so with the Home button on, a held Volume key changes the volume only once. Turn on **Plume settings → Remote & Home button → Smooth volume** to get the normal hold back. In exchange, Home shows Google TV for about a second before Plume opens, and Smooth volume stays off while any **Remote keys** are set.
-
-> [!NOTE]
-> Android shows the same generic warning for every accessibility service. Plume's service listens for the Home key, for the keys you set under **Remote keys** and for the system launcher appearing. It cannot read screen content.
-
-> [!TIP]
-> **Android 13 and newer:** Android blocks sideloaded apps from Accessibility at first. Open **Settings → Apps → Plume**, choose **Allow restricted settings** from the menu, then turn the service on.
-
-### Optional: grant one extra permission over adb
+重新生成或扩充题库：
 
 ```sh
-adb shell pm grant dev.plume android.permission.WRITE_SECURE_SETTINGS
+python3 tools/generate_questions.py
 ```
 
-This lets Plume:
-- set the Gallery screensaver from its own settings
-- turn its Home button service back on automatically if the app is ever force-stopped
+脚本会重写 `app/src/main/assets/questions.json` 并做一致性校验。想换成自己出的题，按同样的 JSON 结构替换即可（`age`、`category`、`question`、`options`、`answerIndex`、`explanation`）。
 
-Everything else works without it.
+## 项目结构
 
-### Set up over adb with one command
+```
+app/src/main/java/dev/plume/
+├── quiz/            # 问答模块：调度、答题、题库读取、设备所有者、TTS
+├── web/             # 局域网管理台（内置 HTTP 服务）
+├── MainActivity.kt  # 桌面主界面
+├── Remap.kt         # 遥控器按键重映射
+└── ...              # 上游桌面、壁纸、屏保等
+app/src/main/assets/questions.json   # 离线题库
+docs/                                # 文档、截图、站点页
+tools/                               # 安装脚本、题库生成、上游设备探针
+```
 
-[`tools/plume-install.sh`](tools/plume-install.sh) does the adb steps for you. Turn on ADB debugging on the TV, then run it from a computer on the same network:
+## 已知限制
+
+- **强锁定依赖 Device Owner**：不配置时只是"默认桌面"，无法阻止通过系统设置切走。
+- **精确闹钟**：Android 12+ 若未授予「闹钟和提醒」权限，触发时间可能被系统推迟数分钟。
+- **TTS**：电视没有可用语音引擎时题目不会朗读，其余功能正常。
+- **Fire TV**：Fire OS 不把 Home 键交给第三方应用，首个桌面会先闪现约 5 秒；细节见[上游文档](docs/UPSTREAM-PLUME.md#fire-tv)。
+- **不做家长端远程监督**：管理台只在同一局域网内可用，且仅在桌面进程存活时开启。
+
+## 隐私
+
+没有账号、没有广告、没有统计上报。应用只在以下情况使用网络：加载继续观看的海报、你主动选择的在线壁纸/屏保/天气。管理台只在局域网监听，密码与设置存在电视本地。
+
+## 参与贡献
+
+欢迎提 Issue 与 PR。改动前建议先说明使用场景（电视型号 / Android 版本 / 是否 Device Owner），涉及答题行为的改动请补充 `app/src/test` 下的单元测试，跑通：
 
 ```sh
-./plume-install.sh 192.168.1.20      # your TV's address; add -a plume.apk to install Plume first
+./gradlew test
 ```
 
-It finds out what the TV is (Fire TV and its Fire OS version, Google TV, or Android TV), tells you what it found and what it is going to change, and asks before it changes anything. Then it gives Plume the `WRITE_SECURE_SETTINGS` grant, switches on the Home button service and waits until the TV says the service is running. It checks each change on the TV after it makes it, and it stops with a message when one did not work. On a Fire TV with Android 9 to 11 it also looks whether Plume has set the alarm timing that removes the 5-second wait (see [Fire TV](#fire-tv)). A Plume without the alarm change leaves it, and Home then takes about 5 seconds. `-n` only shows the plan.
+## 许可证与致谢
 
-Before each change, the script writes a line about it in a recovery record on the TV (`/data/local/tmp/plume-install.state`), and it does not make the change if it cannot write and read back that line. `./plume-install.sh --undo` puts back what the record lists and nothing else: it turns the Home button service off only if the script turned it on, waits until Plume has put its alarm setting back, and takes the grant back only if the script gave it. A service that was on already stays on. `--undo` does not uninstall Plume, also when `-a` installed it: remove it in **Settings → Apps**.
-
-The script never turns off the TV's own launcher unless you add `--disable-stock-launcher`, which works on a Fire TV only (it can stop other TVs from starting). It turns the launcher off last, after the recovery record is written and Plume's service runs. Then it opens Settings and presses Home to see that Plume answers. If the service does not run or Home does not open Plume, it turns the launcher on again. `--undo` also turns that launcher on again.
-
-The script is tested against a fake `adb`, with no TV: `sh tools/plume-install-test/run.sh`. It covers the TVs it knows (Fire OS 7, 8 and 14, Google TV), a service that was on already, commands that fail, a recovery record that cannot be written, and the stock launcher with its recovery.
-
-### Home button on Android 13 and newer
-
-Android 13 and newer grey out the Accessibility switch for apps installed outside the Play Store, and most Google TV builds hide the **Allow restricted settings** menu that would unlock it. If Plume's setup reaches the ADB step, unlock it once from a computer (or a phone ADB app) on the same network:
-
-1. On the TV, open **Settings → System → About** and press **Android TV OS build** seven times to turn on Developer options.
-2. In **Settings → System → Developer options**, turn on **Network debugging** (called **USB debugging** on some TVs).
-3. Run these, using the address Plume shows:
-
-   ```sh
-   adb connect <tv-address>:5555
-   adb shell pm grant dev.plume android.permission.WRITE_SECURE_SETTINGS
-   ```
-
-4. Accept the debugging prompt on the TV, then choose **Try again** in Plume. Plume turns its Home button service on by itself.
-
-### Fire TV
-
-Fire OS never gives the Home key to apps, and it keeps Amazon's home as the home screen. So on a Fire TV the Home button service watches for Amazon's home screen and covers it with Plume. This has limits:
-
-- **Plume shows about 5 seconds after you press Home** on Fire OS 7 (Android 9). Amazon's home shows first. Android holds back a start from an app for 5 seconds after Home, and Plume can't skip that wait. See [#153](../../issues/153).
-- **Amazon's Network status screen starts with no highlighted button** while **Plume: Home button** is on. The buttons still work: press Down until **Advanced** is highlighted (four presses on one Fire OS 7 TV). If that doesn't work on your TV, turn the Home button off in **Plume settings → Remote & Home button**, use the screen, and turn it on again. It happens when any accessibility service is on. One other Fire TV launcher reports the same on Fire OS 8.
-- **Remote keys can't be set.** Fire OS doesn't pass the keys to Plume.
-
-If Home doesn't reach Plume on your Fire TV, run [`tools/plume-firetv-probe.sh`](tools/plume-firetv-probe.sh) and post the result in [#153](../../issues/153).
-
-## Using Plume
-
-| Action | How |
-|---|---|
-| Rearrange apps | Hold **OK** on an app, or use **Plume settings → Apps row → Rearrange apps** |
-| Hide a Continue Watching item | Hold **OK** on its card, then **Remove from Continue Watching** |
-| Remove an app from the row | Hold **OK** on it, then **Remove from row** (it stays in *All apps*) |
-| Choose which apps feed Continue Watching | **Plume settings → Shows row → From apps** |
-| Pin an app from *All apps* to the front | Open **All apps**, hold **OK** on the app (this also unhides it) |
-| Hide apps from the row | **Plume settings → Apps row → Choose apps** |
-| Show app names always, on focus or never | **Plume settings → Apps row → App names** |
-| Switch between monochrome icons, colour icons and app banners | **Plume settings → Apps row → Icon style** |
-| Update Plume | **Plume settings → Updates** |
-| Change what a remote key does | **Plume settings → Remote & Home button → Remote keys** |
-| Lock the layout with a PIN | **Plume settings → Lock layout** |
-| Move, hide or add a top-bar icon | Hold **OK** on an icon at the top of the home screen, then select **Move**, **Hide** or **Add icon** |
-| Open the Google TV dashboard | Hold the **Home** button |
-
-### Remote keys
-
-**Plume settings → Remote & Home button → Remote keys → Add a key**, then press the key on your remote. Plume detects it. For each key, choose what a **Press** does and what a **Hold** does:
-
-- open an app or an HDMI input (**Open an app or input…**)
-- a media key: Play / Pause, Next, Previous, Stop, Rewind or Fast-forward
-- a system action: Back, Recent apps, Notifications, Quick settings or the Power menu
-- open **Android settings** or **Network settings**
-- **Do nothing**
-
-Back, OK, the arrows, Home, Power and the volume keys can't be changed, so the remote can't be locked out. While any key is set, **Smooth volume** is off. A key you set stops doing its usual job. **Remove this key** gives it back. The keys work through the Home button service, so **Plume: Home button** must be on in Accessibility settings.
-
-### Custom wallpapers
-
-For moving wallpaper, open **Video wallpapers** under Light wallpaper or Dark wallpaper. Choose a NASA, Apple Aerial, or Amazon Fire TV scene to download and preview it, then select **Use this video**. Pick **Surprise me** for a random scene, or browse the catalog by source and category: [NASA Scientific Visualization Studio](https://svs.gsfc.nasa.gov/4019) (4 scenes), [Apple Aerial](https://github.com/theothernt/AerialViews/blob/master/app/src/main/res/raw/tvos26.json) (139 scenes), and [Amazon Fire TV](https://github.com/theothernt/AerialViews/blob/master/app/src/main/res/raw/fireos8.json) (112 scenes). NASA credit: NASA Goddard Space Flight Center Scientific Visualization Studio and Earth Observatory. You can also choose **Add your video from phone…** and upload an H.264 or HEVC MP4 file up to 1080p and 350 MB. Plume mutes and loops the video on the home screen and stops playback when you leave it. Downloads and uploads need free space on the TV. Each theme has its own wallpaper choice.
-
-Open **Plume settings → Wallpaper & theme → Light wallpaper** or **Dark wallpaper** and choose **Add from phone…**. Scan the QR code with your phone (it must be on the same Wi-Fi as the TV), pick a photo and upload it. It becomes the wallpaper straight away. The TV turns it upright, crops it to the screen around its centre and saves a small copy. The upload page only works while that screen is open. **Remove a photo…** in the same list deletes one.
-
-You can also copy `.jpg`, `.png` or `.webp` files to `Android/data/dev.plume/files/wallpapers/` yourself:
-
-```sh
-adb push my-wallpaper.jpg /sdcard/Android/data/dev.plume/files/wallpapers/
-```
-
-Plume shows the photo as it is. The text picks white or black to suit the picture behind it.
-
-### Photo folders
-
-Choose **Choose a folder on this TV…** in the wallpaper list to use a whole folder of photos, from the TV's storage or a USB drive. Plume asks for access to your photos the first time. The photos take turns in shuffled order; **Plume settings → Wallpaper & theme → Change photo every** sets how often, from every minute to once a day. The screensaver can show a folder too: **Plume settings → Screensaver → Screensaver → Your photos**.
-
-### Lock layout
-
-**Plume settings → Lock layout** sets a 4-digit PIN. While it's on, Plume settings and anything that changes the home screen (moving, removing or pinning apps, hiding shows) ask for the PIN first; opening apps works as usual. One PIN unlocks changes for five minutes, until you leave the home screen. Use the arrows or the remote's number keys to enter it.
-
-The lock keeps the layout safe, it isn't parental control: apps can still be opened by voice search or from Android settings. Forgot the PIN? **Android Settings → Apps → Plume → Clear data** removes it, along with your layout and settings.
-
-### Gallery screensaver
-
-Select **Plume settings → Screensaver → Screensaver** to switch to Gallery. Plume downloads the paintings (4.7 MB) from this repository's releases and stores them privately. Switching back to another screensaver deletes them again, so they only take space while you use them.
-
-### Aerial Views screensaver
-
-Select **Plume settings → Screensaver → Screensaver → Aerial Views**. Select a scene to download it, then select **Use Aerial Views**. The screensaver plays the downloaded scenes in shuffled order. Press ◀ or ▶ to skip a scene. The screensaver and the video wallpaper use the same files, so Plume downloads each scene only once. Select a downloaded scene to delete it. Plume does not delete the scene that the wallpaper uses.
-
-## Privacy
-
-Plume has no analytics, no ads and no account. It only connects to the internet to:
-- load poster images for your Continue Watching items
-- check this repository's GitHub releases for a new version, once a day, and download it when you choose to update
-- download the Gallery paintings from this repository, **only if you choose that screensaver**
-- check this repository for wallpapers **when you open Built-in**. Plume updates photos you already downloaded. New photos download only when you select them.
-- get the Bing picture of the day (about 300 KB), **only if you choose it as your wallpaper**. Plume sends a request to [bing.com](https://www.bing.com) when the home screen opens: once a day, or once an hour until the picture has changed that day, because Bing changes it at a set time for each country. Bing sees the TV's IP address and its language and country, which Plume sends to get the picture for your country. Plume keeps one picture and deletes it when you choose another wallpaper.
-- download one NASA Earth video from [svs.gsfc.nasa.gov](https://svs.gsfc.nasa.gov/4019), **only when you select that scene**. NASA sees the TV's IP address. Plume stores the video on the TV.
-- download an Apple Aerial video from [sylvan.apple.com](https://sylvan.apple.com) or an Amazon Fire TV video from [Amazon's Fire TV CDN](https://aebcs-cdn-prod-na.services.firetv.amazon.dev), **only when you select that scene**. The source sees the TV's IP address. Plume stores the video on the TV.
-- fetch the weather, **only if you turn it on**. It looks up your approximate location from your IP address via [ipwho.is](https://ipwho.is), then gets the forecast from [Open-Meteo](https://open-meteo.com). The Auto theme uses the same location to work out sunrise and sunset on the TV, with no extra request. Plume keeps the location on the TV after you turn the weather off, so Auto still follows the sun; clearing Plume's data removes it.
-
-**Add from phone…** runs a small upload page on the TV itself, reachable only on your home network and only while that screen is open. Photos go straight from your phone to the TV and nowhere else.
-**Add your video from phone…** uses the same local upload page. Videos stay on the TV.
-
-## Troubleshooting
-
-<details>
-<summary><b>The Home button still opens the old home screen</b></summary>
-
-Check that **Plume settings → Remote & Home button → Home button** shows **On**. If the app was force-stopped, Android turns its accessibility service off; open Plume once (or grant the optional adb permission above) to restore it.
-</details>
-
-<details>
-<summary><b>Continue Watching is empty</b></summary>
-
-Make sure the TV listings permission is allowed (**Settings → Apps → Plume → Permissions**), and that the app you watch publishes to Android TV's Watch Next list. Check **Plume settings → Shows row → From apps** in Plume too.
-</details>
-
-<details>
-<summary><b>The screensaver option says it needs an adb permission</b></summary>
-
-Google TV hides third-party screensavers from its own settings, so Plume needs the one-time `WRITE_SECURE_SETTINGS` grant shown above to switch it for you.
-</details>
-
-## Building from source
-
-```sh
-git clone https://github.com/aradhyas8/Plume_Launcher.git
-cd Plume_Launcher
-./gradlew assembleRelease
-```
-
-The APK is written to `app/build/outputs/apk/release/`. Without a `keystore.properties` file, release builds are signed with your local debug key, which is fine for installing your own build.
-
-## Contributing
-
-Bug reports, design ideas, translations and pull requests are welcome. Plume stays small on purpose, so please read [CONTRIBUTING.md](CONTRIBUTING.md) first: it lists what's in and out of scope and how to send a change. Open an issue before starting on a feature.
-
-## Credits
-
-- **Screensaver paintings** (public domain, scans via Wikimedia Commons; files in [`screensaver/`](screensaver)):
-  - Frederic Edwin Church: *The Heart of the Andes*, *The Icebergs*, *Chimborazo*, *Cotopaxi*
-  - Ivan Shishkin: *Rye*
-  - Jasper Francis Cropsey: *Autumn on the Hudson River*
-  - Martin Johnson Heade: *Thunder Storm on Narragansett Bay*
-- **Wallpaper pack:** ten 3840 × 2160 WebP images in [`wallpapers/`](wallpapers), available as an optional 14.9 MB download: Alpine Dawn, Forest Mist, Coastal Dusk, Autumn Canopy, Arctic Aurora, Sand Dunes, Aerial River, Ocean Reef, Cherry Blossom, and Moonlit Ridge.
-- **Aerial Views:** the Apple Aerial scene list comes from the [Aerial Views](https://github.com/theothernt/AerialViews) project (GPL-3.0). Plume's Aerial Views screensaver is not part of that app.
-- **App logos:** [Simple Icons](https://simpleicons.org) (CC0). All trademarks belong to their respective owners.
-- **HDMI input and settings icons:** [Material Symbols](https://fonts.google.com/icons) by Google (Apache 2.0)
-
-## License
-
-Copyright (C) 2026 aradhyas8
-
-Plume Launcher is free software, released under the [GNU General Public License v3.0](LICENSE). You may use, modify and redistribute it, but any distributed version, modified or not, must also be released under the GPL-3.0 with its full source code.
+- 本项目基于 [Plume Launcher](https://github.com/aradhyas8/Plume_Launcher)（作者 aradhyas8）二次开发，上游评估提交 `e7e663ba85a5028e29206ad9a67ad248c500042d`，遵循 **GPL-3.0** 发布，完整许可见 [LICENSE](LICENSE)。任何分发版本（含修改版）都必须同样以 GPL-3.0 开源并提供完整源码。
+- 上游的完整功能说明、安装细节与隐私条目已归档在 [docs/UPSTREAM-PLUME.md](docs/UPSTREAM-PLUME.md)。
+- 屏保油画（公有领域）、壁纸包、Aerial 场景与图标来源见上游文档的 Credits 一节。

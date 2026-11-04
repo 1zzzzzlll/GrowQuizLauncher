@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-label="成长桌面 GrowQuiz Launcher">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101c33"/>
+      <stop offset="0.55" stop-color="#1c3358"/>
+      <stop offset="1" stop-color="#2a4b7c"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffd479" stop-opacity="0.28"/>
+      <stop offset="0.55" stop-color="#ffd479" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#ffd479" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="320" fill="url(#bg)"/>
+  <circle cx="1030" cy="60" r="300" fill="url(#glow)"/>
+
+  <g transform="translate(72,86)">
+    <text x="0" y="0" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="58" font-weight="700" fill="#ffffff">成长桌面</text>
+    <text x="252" y="-6" font-family="'SF Mono',Consolas,monospace" font-size="26" font-weight="600" fill="#ffd479" letter-spacing="2">GrowQuiz</text>
+    <text x="2" y="52" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="24" fill="#c9d8ef">给孩子一台会提问的电视 —— 到点答题，答对才回到桌面</text>
+    <g font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="16" fill="#e8f0ff">
+      <rect x="2" y="86" width="132" height="34" rx="17" fill="#ffffff" fill-opacity="0.12"/>
+      <text x="20" y="108">Android TV</text>
+      <rect x="146" y="86" width="150" height="34" rx="17" fill="#ffffff" fill-opacity="0.12"/>
+      <text x="164" y="108">1800 道离线题</text>
+      <rect x="308" y="86" width="128" height="34" rx="17" fill="#ffffff" fill-opacity="0.12"/>
+      <text x="326" y="108">GPL-3.0</text>
+    </g>
+  </g>
+
+  <g transform="translate(930,150)" opacity="0.95">
+    <rect x="0" y="0" width="196" height="120" rx="10" fill="none" stroke="#ffd479" stroke-width="4"/>
+    <text x="98" y="82" text-anchor="middle" font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif" font-size="60" font-weight="700" fill="#ffd479">?</text>
+    <rect x="72" y="132" width="52" height="8" rx="4" fill="#ffd479"/>
+  </g>
+</svg>

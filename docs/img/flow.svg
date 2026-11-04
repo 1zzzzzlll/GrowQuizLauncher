@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="成长桌面问答循环">
+  <rect width="1200" height="300" rx="16" fill="#f5f8fc"/>
+
+  <g font-family="'PingFang SC','Microsoft YaHei','Noto Sans SC',sans-serif">
+    <!-- step 1 -->
+    <g>
+      <rect x="48" y="86" width="220" height="112" rx="14" fill="#ffffff" stroke="#c8d6ea" stroke-width="2"/>
+      <text x="158" y="132" text-anchor="middle" font-size="19" font-weight="700" fill="#1c3358">定时到点</text>
+      <text x="158" y="163" text-anchor="middle" font-size="14" fill="#5b6f8c">AlarmManager 唤醒</text>
+    </g>
+    <path d="M276 142 L332 142" stroke="#8fa8c8" stroke-width="3"/>
+    <path d="M332 142 l-10 -6 v12 z" fill="#8fa8c8"/>
+
+    <!-- step 2 -->
+    <g>
+      <rect x="340" y="86" width="220" height="112" rx="14" fill="#ffffff" stroke="#c8d6ea" stroke-width="2"/>
+      <text x="450" y="132" text-anchor="middle" font-size="19" font-weight="700" fill="#1c3358">全屏出题</text>
+      <text x="450" y="163" text-anchor="middle" font-size="14" fill="#5b6f8c">语音朗读 + 遥控器作答</text>
+    </g>
+    <path d="M568 142 L624 142" stroke="#8fa8c8" stroke-width="3"/>
+    <path d="M624 142 l-10 -6 v12 z" fill="#8fa8c8"/>
+
+    <!-- step 3 -->
+    <g>
+      <rect x="632" y="86" width="220" height="112" rx="14" fill="#ffffff" stroke="#c8d6ea" stroke-width="2"/>
+      <text x="742" y="132" text-anchor="middle" font-size="19" font-weight="700" fill="#a8442b">答错</text>
+      <text x="742" y="163" text-anchor="middle" font-size="14" fill="#5b6f8c">换一道继续，不退出</text>
+    </g>
+
+    <!-- loop back arrow -->
+    <path d="M742 208 L742 240 L158 240 L158 214" stroke="#c9a227" stroke-width="3" fill="none"/>
+    <path d="M158 206 l-6 10 h12 z" fill="#c9a227"/>
+    <text x="450" y="232" text-anchor="middle" font-size="13" fill="#c9a227">下一轮，按间隔重新计时</text>
+
+    <!-- step 4 -->
+    <g>
+      <rect x="884" y="86" width="268" height="112" rx="14" fill="#fff8e3" stroke="#e8c86a" stroke-width="2"/>
+      <text x="1018" y="132" text-anchor="middle" font-size="19" font-weight="700" fill="#7a5a06">答对</text>
+      <text x="1018" y="163" text-anchor="middle" font-size="14" fill="#7a5a06">返回桌面，重新计时</text>
+    </g>
+
+    <text x="600" y="46" text-anchor="middle" font-size="17" font-weight="700" fill="#1c3358">一次答题循环</text>
+    <text x="450" y="278" text-anchor="middle" font-size="13" fill="#7d8ea8">答案错误不会提供退出口，家长可用管理台或设备所有者模式统一控制</text>
+  </g>
+</svg>
