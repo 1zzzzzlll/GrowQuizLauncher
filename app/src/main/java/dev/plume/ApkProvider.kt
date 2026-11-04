@@ -33,7 +33,7 @@ class ApkProvider : ContentProvider() {
     override fun update(uri: Uri, values: ContentValues?, selection: String?, args: Array<String>?) = 0
 
     companion object {
-        const val NAME = "Plume.apk"
+        const val NAME = "GrowQuiz.apk"
 
         /** The authority is `${applicationId}.apk` in the manifest. */
         fun uri(c: Context): Uri = Uri.parse("content://${c.packageName}.apk/$NAME")

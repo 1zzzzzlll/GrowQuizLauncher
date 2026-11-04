@@ -4,6 +4,7 @@ import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.app.Activity
 import android.app.ActivityOptions
+import android.app.AlertDialog
 import android.app.Dialog
 import android.app.PendingIntent
 import android.app.role.RoleManager
@@ -529,9 +530,10 @@ class MainActivity : Activity() {
         ui.removeCallbacks(wallpaperTick)
         ui.post(wallpaperTick)
         updateFeatured()
+        // Auto update check, at most once a day (throttled inside); a find says so on the home screen once.
+        ui.post { checkUpdate(false) }
         // Gallery chosen but its paintings missing (updated from a version that bundled them): fetch them.
         if (galleryOn() && photoScreensaver() == null && !aerialScreensaverOn() && !paintingsReady(this)) downloadPaintings {}
-        // The GrowQuiz fork must never update itself to the upstream Plume application.
         Bing.onChanged = bingChanged
         Bing.refresh(applicationContext, prefs)
         ui.post { updateBadge() } // after layout, so the icon has its size
@@ -2873,16 +2875,20 @@ class MainActivity : Activity() {
 
     private fun lockOn() = prefs.contains("lock_pin")
 
+    /** GrowQuiz: with no layout PIN, the web admin password still guards Wi-Fi, system and launcher settings. */
+    private fun adminPasswordOn() = dev.plume.web.WebAdminServer.hasPassword(this)
+
     private var unlockedUntil = 0L // one PIN covers a few minutes of changes, until the home screen is left
     private var pinFails = 0
     private var pinWaitUntil = 0L // ponytail: in memory, so restarting Plume resets the wait; fine for kids at a remote
     private var pinBox: View? = null
 
-    private fun locked() = lockOn() && SystemClock.elapsedRealtime() > unlockedUntil
+    private fun locked() = (lockOn() || adminPasswordOn()) && SystemClock.elapsedRealtime() > unlockedUntil
 
     /** Runs [then] at once when unlocked, otherwise after the right PIN. [back] is where Back goes from the PIN page. */
     private fun unlock(back: (() -> Unit)? = null, then: () -> Unit) {
         if (!locked()) return then()
+        if (!lockOn()) return unlockWithAdminPassword(then) // no PIN yet: the admin password takes over the gate
         if (settingsScrim.visibility != View.VISIBLE) showPanel() // from inside the panel, keep where its focus returns to
         pinPage(getString(R.string.enter_pin), back = back) { pin ->
             val now = SystemClock.elapsedRealtime()
@@ -2901,6 +2907,45 @@ class MainActivity : Activity() {
             if (settingsScrim.visibility == View.VISIBLE) pages.addAll(0, under)
             null
         }
+    }
+
+    /**
+     * No layout PIN, but the family set the web admin password: that password guards the Wi-Fi, system
+     * settings and launcher settings entries, so the child cannot reconfigure the TV on their own.
+     */
+    private fun unlockWithAdminPassword(then: () -> Unit) {
+        val now = SystemClock.elapsedRealtime()
+        if (now < pinWaitUntil) {
+            toast(getString(R.string.too_many_tries, (pinWaitUntil - now) / 1000 + 1), long = true)
+            return
+        }
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = getString(R.string.enter_admin_password)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.admin_password_required))
+            .setView(input)
+            .setPositiveButton(android.R.string.ok, null)
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if (dev.plume.web.WebAdminServer.verifyPassword(this, input.text.toString())) {
+                pinFails = 0
+                unlockedUntil = SystemClock.elapsedRealtime() + UNLOCKED_MS
+                dialog.dismiss()
+                then()
+            } else if (++pinFails >= PIN_TRIES) {
+                pinFails = 0
+                pinWaitUntil = SystemClock.elapsedRealtime() + 30_000L
+                dialog.dismiss()
+                toast(getString(R.string.too_many_tries, 30), long = true)
+            } else {
+                input.error = getString(R.string.wrong_password)
+                input.text.clear()
+            }
+        }
+        input.requestFocus()
     }
 
     private fun setLock(): Unit = pinPage(getString(R.string.choose_pin), { renderSettings(R.string.lock_layout) }) { first ->
@@ -4702,11 +4747,13 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------- updates (GitHub releases) ----------
+    // ---------- updates (from this fork's own server) ----------
     // Checked once a day from the home screen; a new version is announced once, then waits in settings.
-    // The APK goes to a file in the cache, then into an install session. TVs without the confirm box open that file in
-    // their own installer (see ApkProvider). The file is deleted when an update fails or is cancelled, and by the new
-    // version when it starts (see Updated).
+    // The server is the nginx directory behind https://www.rengouzi.top:8443/growquiz/ (see tools/publish_update.py):
+    // latest.json tells the version and the APK file name of the newest release. Never the upstream Plume GitHub,
+    // or an update would replace GrowQuiz with Plume. The APK goes to a file in the cache, then into an install
+    // session. TVs without the confirm box open that file in their own installer (see ApkProvider). The file is
+    // deleted when an update fails or is cancelled, and by the new version when it starts (see Updated).
 
     @Volatile private var checking = false
     @Volatile private var updating = false
@@ -4721,13 +4768,19 @@ class MainActivity : Activity() {
         checking = true
         if (force) renderSettings(R.string.updates)
         io.execute {
+            var file = ""
             val latest = try {
-                getJson("https://api.github.com/repos/$REPO/releases/latest").getString("tag_name").removePrefix("v")
+                val meta = getJson("$UPDATE_BASE/latest.json")
+                file = meta.optString("apk", "")
+                meta.getString("version").removePrefix("v")
             } catch (e: Exception) {
                 android.util.Log.w("Plume", "update check failed ($e)")
                 null
             }
-            if (latest != null) prefs.edit().putString("upd_ver", latest).putLong("upd_time", System.currentTimeMillis()).apply()
+            if (latest != null) prefs.edit()
+                .putString("upd_ver", latest)
+                .putString("upd_apk", file)
+                .putLong("upd_time", System.currentTimeMillis()).apply()
             ui.post {
                 if (isDestroyed) return@post
                 checking = false
@@ -4820,7 +4873,9 @@ class MainActivity : Activity() {
         io.execute {
             val ok = try {
                 apk.delete()
-                openStream("https://github.com/$REPO/releases/download/v$ver/Plume.apk").use { input ->
+                // The file name the last check wrote; a missing one falls back to the version-based name.
+                val remote = prefs.getString("upd_apk", null)?.takeIf { it.isNotEmpty() } ?: "GrowQuiz-v$ver.apk"
+                openStream("$UPDATE_BASE/$remote").use { input ->
                     apk.outputStream().use { input.copyTo(it) }
                 }
                 val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
@@ -4831,7 +4886,7 @@ class MainActivity : Activity() {
                 installer.openSession(id).use { session ->
                     try {
                         apk.inputStream().use { input ->
-                            session.openWrite("Plume.apk", 0, apk.length()).use { out ->
+                            session.openWrite(ApkProvider.NAME, 0, apk.length()).use { out ->
                                 input.copyTo(out)
                                 session.fsync(out)
                             }
@@ -5735,6 +5790,8 @@ class MainActivity : Activity() {
         )
         const val CHOSEN = "✓"
         const val REPO = "aradhyas8/Plume_Launcher"
+        /** This fork's own update server: Caddy → nginx static directory; latest.json names the version and APK. */
+        const val UPDATE_BASE = "https://www.rengouzi.top:8443/growquiz"
         const val UPDATE_STATUS = "dev.plume.UPDATE_STATUS"
         const val WRITE_EPG ="com.android.providers.tv.permission.WRITE_EPG_DATA"
         const val TV_SETTINGS = "com.android.tv.settings"
