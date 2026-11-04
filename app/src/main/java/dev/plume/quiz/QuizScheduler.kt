@@ -4,6 +4,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import dev.plume.MainActivity
 
 /** Exact wall-clock scheduling. setAlarmClock also permits the visible alarm to launch its UI. */
@@ -28,7 +29,14 @@ object QuizScheduler {
             context, 1, Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        alarm.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, showIntent), operation(context))
+        val op = operation(context)
+        val exactAllowed = Build.VERSION.SDK_INT < 31 || alarm.canScheduleExactAlarms()
+        if (exactAllowed) {
+            alarm.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, showIntent), op)
+        } else {
+            // Fallback to an inexact alarm when the exact-alarm permission is unavailable.
+            alarm.set(AlarmManager.RTC_WAKEUP, triggerAt, op)
+        }
         prefs.nextTriggerAt = triggerAt
     }
 
