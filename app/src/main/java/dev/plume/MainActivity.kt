@@ -658,7 +658,9 @@ class MainActivity : Activity() {
             setOnClickListener {
                 root.removeView(overlay)
                 webPromptShown = false // allows the menu's 后台管理 button to bring the prompt up again
-                moveTaskToBack(true)
+                // Stay on the GrowQuiz desktop: the launcher is the home experience, and backgrounding here
+                // would land on the system home instead (and re-trigger the prompt on the next resume).
+                findViewById<View>(R.id.wifi).requestFocus()
             }
         }
         card.addView(ok, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
