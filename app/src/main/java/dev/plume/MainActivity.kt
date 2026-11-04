@@ -2789,6 +2789,8 @@ class MainActivity : Activity() {
                 closeLauncherSettings()
                 showWebAdminPrompt()
             }, RowStyle(R.drawable.ms_public, help = getString(R.string.web_admin_help))) +
+            Triple(R.string.about, page(getString(R.string.about), myVersion()) { showAbout() },
+                RowStyle(R.drawable.ms_system_update, help = getString(R.string.help_about))) +
             listOfNotNull(if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) null
                 else Triple(R.string.preview_home_setup, page(getString(R.string.preview_home_setup)) { closeLauncherSettings(); previewHomeSetup() },
                     RowStyle(R.drawable.ms_code)))
@@ -4747,6 +4749,56 @@ class MainActivity : Activity() {
         }
     }
 
+    // ---------- about ----------
+    // This fork's About page: the build's own version, the project's GitHub link as a QR to scan with a
+    // phone (TVs have no browser), and a check for updates by hand.
+
+    /** The update flow re-renders whichever page is on screen: About, Updates, or the settings list as before. */
+    private fun renderUpdatePages() {
+        if (settingsScrim.visibility != View.VISIBLE) return
+        val title = findViewById<TextView>(R.id.settingsTitle).text
+        when {
+            title == getString(R.string.about) -> showAbout()
+            title == getString(R.string.whats_new_title, myVersion()) -> showUpdates()
+            else -> renderSettings(R.string.updates)
+        }
+    }
+
+    /** 关于: this build's version and build number, the project's GitHub link, and a manual update check. */
+    private fun showAbout() {
+        val info = packageManager.getPackageInfo(packageName, 0)
+        val ver = availableUpdate()
+        showPage(getString(R.string.about), listOf(
+            when {
+                updating -> page(getString(R.string.check_updates), getString(R.string.updating)) {}
+                checking -> page(getString(R.string.check_updates), getString(R.string.checking)) {}
+                ver != null -> page(getString(R.string.install_update, ver)) { installUpdate(ver) }
+                else -> page(getString(R.string.check_updates), getString(R.string.up_to_date_row, myVersion())) { checkUpdate(force = true) }
+            },
+            page(getString(R.string.project_link), GITHUB_URL) {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_URL)))
+                } catch (_: Exception) {
+                    toast(getString(R.string.open_link_failed), long = true)
+                }
+            },
+        ), back = { renderSettings(R.string.about) })
+        @Suppress("DEPRECATION")
+        settingsList.addView(label(getString(R.string.about_version, info.versionName, info.versionCode), 13f).apply {
+            alpha = 0.7f
+            setPadding(dp(14), dp(16), dp(14), 0)
+        })
+        settingsList.addView(label(GITHUB_URL, 13f).apply {
+            alpha = 0.7f
+            setPadding(dp(14), dp(4), dp(14), dp(8))
+        })
+        // The link as a QR: a phone scans the screen even where the TV has no browser to open it.
+        settingsList.addView(ImageView(this).apply {
+            setImageBitmap(qrBitmap(GITHUB_URL, dp(168)))
+            setPadding(dp(14), dp(4), dp(14), dp(20))
+        })
+    }
+
     // ---------- updates (from this fork's own server) ----------
     // Checked once a day from the home screen; a new version is announced once, then waits in settings.
     // The server is the nginx directory behind https://www.rengouzi.top:8443/growquiz/ (see tools/publish_update.py):
@@ -4766,7 +4818,7 @@ class MainActivity : Activity() {
     private fun checkUpdate(force: Boolean) {
         if (checking || !force && System.currentTimeMillis() - prefs.getLong("upd_time", 0) < 24 * 3600_000L) return
         checking = true
-        if (force) renderSettings(R.string.updates)
+        if (force) renderUpdatePages()
         io.execute {
             var file = ""
             val latest = try {
@@ -4792,7 +4844,7 @@ class MainActivity : Activity() {
                     toast(if (latest == null) getString(R.string.update_check_failed) else getString(R.string.up_to_date_toast))
                 }
                 updateBadge()
-                if (settingsScrim.visibility == View.VISIBLE) renderSettings(R.string.updates)
+                renderUpdatePages()
             }
         }
     }
@@ -4867,7 +4919,7 @@ class MainActivity : Activity() {
             return openSettings(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
         }
         updating = true
-        renderSettings(R.string.updates)
+        renderUpdatePages()
         val installer = packageManager.packageInstaller
         val apk = File(cacheDir, ApkProvider.NAME)
         io.execute {
@@ -4912,7 +4964,7 @@ class MainActivity : Activity() {
                     updating = false
                     toast(getString(R.string.update_download_failed), long = true)
                 }
-                if (settingsScrim.visibility == View.VISIBLE) renderSettings(R.string.updates)
+                renderUpdatePages()
             }
         }
     }
@@ -4939,7 +4991,7 @@ class MainActivity : Activity() {
                 toast(getString(R.string.update_install_failed), long = true)
             }
         }
-        if (settingsScrim.visibility == View.VISIBLE) renderSettings(R.string.updates)
+        renderUpdatePages()
     }
 
     /** Opens the file in the TV's own installer, for a TV without the confirm box. */
@@ -4953,7 +5005,7 @@ class MainActivity : Activity() {
             installerClosed()
             toast(getString(R.string.update_install_failed), long = true)
         }
-        if (settingsScrim.visibility == View.VISIBLE) renderSettings(R.string.updates)
+        renderUpdatePages()
     }
 
     /**
@@ -5792,6 +5844,8 @@ class MainActivity : Activity() {
         const val REPO = "aradhyas8/Plume_Launcher"
         /** This fork's own update server: Caddy → nginx static directory; latest.json names the version and APK. */
         const val UPDATE_BASE = "https://www.rengouzi.top:8443/growquiz"
+        /** The project's own repository, shown and linked on the About page. */
+        const val GITHUB_URL = "https://github.com/1zzzzzlll/GrowQuizLauncher"
         const val UPDATE_STATUS = "dev.plume.UPDATE_STATUS"
         const val WRITE_EPG ="com.android.providers.tv.permission.WRITE_EPG_DATA"
         const val TV_SETTINGS = "com.android.tv.settings"

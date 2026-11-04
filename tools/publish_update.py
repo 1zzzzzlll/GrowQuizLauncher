@@ -1,29 +1,31 @@
 #!/usr/bin/env python3
-"""把一个新版本 APK 发布到自动更新服务器（mylinux 的 nginx 静态目录）。
+"""发布一个新版本：在 GitHub 仓库创建 release（附 APK 与发版说明）。
 
 用法:
     python tools/publish_update.py path/to/GrowQuiz-vX.Y.Z.apk
 
 流程:
-  1. 校验文件名格式 GrowQuiz-vX.Y.Z.apk
-  2. scp 把 APK 上传到 mylinux:/root/nginx/web/growquiz/
-  3. 生成 latest.json（{"version": "X.Y.Z", "apk": "GrowQuiz-vX.Y.Z.apk"}）并上传
+  1. 校验文件名 GrowQuiz-vX.Y.Z.apk
+  2. 从 CHANGELOG.md 提取该版本小节作为发版说明
+  3. gh release create 上传 APK 资产
 
-依赖 ~/.ssh/config 里的 Host mylinux（root@www.rengouzi.top:2266）。
-应用端在启动时读取 https://www.rengouzi.top:8443/growquiz/latest.json 检查新版本。
+发布后无需再手动传服务器：mylinux 上的同步脚本（growquiz-sync.timer，每 3 小时）会自动
+把 release 的 APK 与发版说明同步到 https://www.rengouzi.top:8443/growquiz/，TV 端即可
+检测到新版本并下载安装。
 
-发版前记得: app/build.gradle.kts 的 versionName/versionCode 与文件名一致且高于已装版本。
+发版前记得:
+  - app/build.gradle.kts 的 versionName/versionCode 与文件名一致且高于已装版本；
+  - 本次改动已提交并推送到 main（release 打在远端最新提交上）；
+  - 本机 gh 已登录（gh auth status）。
 """
 
-import json
 import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-HOST = "mylinux"
-REMOTE_DIR = "/root/nginx/web/growquiz"
+REPO = "1zzzzzlll/GrowQuizLauncher"
 NAME_RE = re.compile(r"^GrowQuiz-v(\d+\.\d+(?:\.\d+)?)\.apk$")
 
 
@@ -45,15 +47,19 @@ def main() -> None:
         sys.exit(f"文件名需形如 GrowQuiz-v1.2.0.apk，当前: {apk.name}")
     version = m.group(1)
 
-    latest = json.dumps({"version": version, "apk": apk.name}, ensure_ascii=False, indent=2) + "\n"
-    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as f:
-        f.write(latest)
-        latest_path = f.name
+    changelog = (Path(__file__).resolve().parent.parent / "CHANGELOG.md").read_text(encoding="utf-8").replace("\r", "")
+    parts = changelog.split(f"## {version}\n", 1)
+    if len(parts) < 2:
+        sys.exit(f"CHANGELOG.md 中没有 \"## {version}\" 小节")
+    notes = parts[1].split("\n## ", 1)[0].strip()
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
+        f.write(notes)
+        notes_path = f.name
 
-    run(["scp", str(apk), f"{HOST}:{REMOTE_DIR}/"])
-    run(["scp", str(latest_path), f"{HOST}:{REMOTE_DIR}/latest.json"])
-    print(f"已发布 {version}: {REMOTE_DIR}/{apk.name}")
-    run(["curl", "-fsSL", f"https://www.rengouzi.top:8443/growquiz/latest.json"])
+    run(["gh", "release", "create", f"v{version}", str(apk),
+         "--repo", REPO, "--title", f"GrowQuiz v{version}", "--notes-file", notes_path])
+    print(f"已发布 v{version}：https://github.com/{REPO}/releases/tag/v{version}")
+    print("mylinux 每 3 小时自动同步到更新目录，无需手动上传。")
 
 
 if __name__ == "__main__":
