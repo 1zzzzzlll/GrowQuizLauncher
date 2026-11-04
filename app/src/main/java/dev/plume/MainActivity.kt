@@ -379,6 +379,7 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         dev.plume.quiz.QuizDeviceOwner.configure(this)
         dev.plume.quiz.QuizScheduler.ensureScheduled(this)
+        dev.plume.web.WebAdminServer.start(this)
         glass = GlassLayer(this)
         findViewById<ViewGroup>(R.id.root).addView(glass, 2, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)) // over both wallpaper layers
         videoWallpaper = VideoWallpaper(findViewById<SurfaceView>(R.id.videoWallpaper),
@@ -579,6 +580,7 @@ class MainActivity : Activity() {
         applicationContext.getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(net)
         getSystemService(TvInputManager::class.java)?.unregisterCallback(inputCallback)
         upload?.stop()
+        dev.plume.web.WebAdminServer.stop()
         try {
             contentResolver.unregisterContentObserver(photoObserver)
         } catch (e: Exception) {
@@ -2718,6 +2720,10 @@ class MainActivity : Activity() {
                 closeLauncherSettings()
                 startActivity(Intent(this, dev.plume.quiz.QuizSettingsActivity::class.java))
             }, RowStyle(R.drawable.ms_lock, help = getString(R.string.quiz_settings_help))) +
+            Triple(R.string.web_admin, page(getString(R.string.web_admin), dev.plume.web.WebAdminServer.url()) {
+                closeLauncherSettings()
+                toast(dev.plume.web.WebAdminServer.url(), long = true)
+            }, RowStyle(R.drawable.ms_public, help = getString(R.string.web_admin_help))) +
             listOfNotNull(if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) null
                 else Triple(R.string.preview_home_setup, page(getString(R.string.preview_home_setup)) { closeLauncherSettings(); previewHomeSetup() },
                     RowStyle(R.drawable.ms_code)))

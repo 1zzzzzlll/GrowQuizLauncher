@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>成长桌面 · 控制端</title>
+  <style>
+    :root{--bg:#0b1526;--card:#14233f;--card2:#0f1c33;--line:#27446c;--text:#eef4ff;--muted:#9fb3d6;--gold:#ffd166;--green:#2ea67b;--red:#d9534f;--blue:#3d7bfd}
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#08101f,#0b1526);color:var(--text);font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .wrap{max-width:760px;margin:0 auto;padding:24px 18px 40px}
+    .brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}.brand img{width:40px;height:40px;border-radius:10px}.brand h1{font-size:22px;margin:0}.brand p{margin:2px 0 0;color:var(--muted);font-size:14px}
+    .card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h2{font-size:18px;margin:0 0 14px}.muted{color:var(--muted)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.row3{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px}
+    label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+    input,select,button{width:100%;padding:14px 14px;border-radius:12px;border:1px solid var(--line);background:#0b1730;color:var(--text);font:inherit;outline:none}
+    input:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(255,209,102,.15)}
+    .field{margin-bottom:14px}.actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+    button{cursor:pointer;border:0;font-weight:600}.primary{background:var(--gold);color:#1a2332}.primary:hover{filter:brightness(1.05)}.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}.danger{background:var(--red);color:#fff}.success{background:var(--green);color:#fff}
+    .status{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}.pill{padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--line)}.pill .k{color:var(--muted);font-size:13px;margin-bottom:4px}.pill .v{font-size:16px;font-weight:600}
+    .msg{margin-top:12px;font-size:14px}.msg.ok{color:#9de8c6}.msg.err{color:#ffb3b3}
+    .switch{display:flex;align-items:center;gap:10px}.switch input{width:auto;transform:scale(1.2)}
+    .hidden{display:none!important}.link{color:var(--gold);text-decoration:none}.link:hover{text-decoration:underline}
+    .footer{margin-top:10px;color:var(--muted);font-size:13px}
+    @media (max-width:640px){.row,.row3,.actions,.status{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#ffd166,#f7b733)"></div>
+      <div>
+        <h1>成长桌面 · 控制端</h1>
+        <p>局域网内使用，所有配置都在浏览器里完成</p>
+      </div>
+    </div>
+
+    <div id="setup" class="card hidden">
+      <h2>首次使用</h2>
+      <p class="muted">为这台电视设置一个管理密码，之后进入控制端都需要它。</p>
+      <div class="field">
+        <label>管理密码</label>
+        <input id="setupPassword" type="password" placeholder="至少 6 位">
+      </div>
+      <div class="field">
+        <label>确认密码</label>
+        <input id="setupPassword2" type="password" placeholder="再输入一次">
+      </div>
+      <button id="setupBtn" class="primary">保存并进入控制端</button>
+      <div id="setupMsg" class="msg"></div>
+    </div>
+
+    <div id="login" class="card hidden">
+      <h2>管理员登录</h2>
+      <div class="field">
+        <label>管理密码</label>
+        <input id="loginPassword" type="password" placeholder="输入管理密码">
+      </div>
+      <button id="loginBtn" class="primary">登录</button>
+      <div id="loginMsg" class="msg"></div>
+    </div>
+
+    <div id="panel" class="card hidden">
+      <h2>控制台</h2>
+      <div class="status">
+        <div class="pill"><div class="k">宝贝年龄</div><div id="stAge" class="v">--</div></div>
+        <div class="pill"><div class="k">答题间隔</div><div id="stInterval" class="v">--</div></div>
+        <div class="pill"><div class="k">下次答题</div><div id="stNext" class="v">--</div></div>
+        <div class="pill"><div class="k">当前地址</div><div id="stUrl" class="v">--</div></div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>宝贝年龄</label>
+          <select id="age">
+            <option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>答题间隔（分钟）</label>
+          <input id="interval" type="number" min="1" max="1440" step="1">
+        </div>
+      </div>
+
+      <div class="field switch">
+        <input id="enabled" type="checkbox">
+        <label for="enabled" style="margin:0">开启定时答题</label>
+      </div>
+
+      <div class="actions">
+        <button id="saveBtn" class="primary">保存设置</button>
+        <button id="startBtn" class="success">立即开始答题</button>
+      </div>
+      <div id="panelMsg" class="msg"></div>
+
+      <div style="margin-top:16px; display:flex; gap:12px; flex-wrap:wrap">
+        <button id="refreshBtn" class="ghost" style="flex:1">刷新状态</button>
+        <button id="logoutBtn" class="ghost" style="flex:1">退出登录</button>
+      </div>
+
+      <div class="footer">
+        提示：如果是在手机上测试，确认手机和电视在同一 Wi-Fi 下；电视上显示的本机地址也可在设置里查看。
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const msg = (el, text, ok) => { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); };
+    const show = id => ['setup','login','panel'].forEach(s => $(s).classList.toggle('hidden', s !== id));
+    const api = async (path, body) => {
+      const r = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: body ? {'Content-Type':'application/json'} : {}, body: body ? JSON.stringify(body) : undefined });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+      return j;
+    };
+    const status = async () => {
+      const r = await fetch('/api/status', { credentials: 'same-origin' });
+      return r.json();
+    };
+    const fmtTime = ts => ts > 0 ? new Date(ts).toLocaleString() : '--';
+
+    async function refresh() {
+      const s = await status();
+      $('stUrl').textContent = location.origin;
+      if (!s.authenticated) {
+        show(s.initialized ? 'login' : 'setup');
+        return;
+      }
+      $('age').value = s.age;
+      $('interval').value = s.interval;
+      $('enabled').checked = s.enabled;
+      $('stAge').textContent = s.age + ' 岁';
+      $('stInterval').textContent = s.interval + ' 分钟';
+      $('stNext').textContent = s.enabled ? fmtTime(s.next) : '已停用';
+      show('panel');
+    }
+
+    $('setupBtn').onclick = async () => {
+      const p1 = $('setupPassword').value, p2 = $('setupPassword2').value;
+      if (p1 !== p2) return msg($('setupMsg'), '两次输入的密码不一致', false);
+      if (p1.length < 6) return msg($('setupMsg'), '密码至少 6 位', false);
+      try {
+        await api('/api/setup', { password: p1 });
+        msg($('setupMsg'), '已保存，正在进入…', true);
+        await refresh();
+      } catch (e) { msg($('setupMsg'), e.message, false); }
+    };
+
+    $('loginBtn').onclick = async () => {
+      try {
+        await api('/api/login', { password: $('loginPassword').value });
+        msg($('loginMsg'), '登录成功', true);
+        await refresh();
+      } catch (e) { msg($('loginMsg'), e.message, false); }
+    };
+
+    $('saveBtn').onclick = async () => {
+      try {
+        await api('/api/settings', {
+          age: Number($('age').value),
+          interval: Number($('interval').value),
+          enabled: $('enabled').checked
+        });
+        msg($('panelMsg'), '已保存', true);
+        await refresh();
+      } catch (e) { msg($('panelMsg'), e.message, false); }
+    };
+
+    $('startBtn').onclick = async () => {
+      try {
+        await api('/api/start', {});
+        msg($('panelMsg'), '已开始答题', true);
+      } catch (e) { msg($('panelMsg'), e.message, false); }
+    };
+
+    $('refreshBtn').onclick = refresh;
+    $('logoutBtn').onclick = async () => {
+      try { await api('/api/logout', {}); } catch (e) {}
+      show('login');
+    };
+
+    refresh().catch(() => show('login'));
+  </script>
+</body>
+</html>
