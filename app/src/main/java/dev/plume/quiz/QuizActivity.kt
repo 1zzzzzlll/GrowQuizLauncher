@@ -159,6 +159,8 @@ class QuizActivity : Activity() {
         finish()
     }
 
+    // TV remotes still dispatch the back key; gesture-back migration would require AndroidX.
+    @android.annotation.SuppressLint("GestureBackNavigation")
     override fun onBackPressed() {
         feedbackText.text = "答对一题后才能退出"
     }
