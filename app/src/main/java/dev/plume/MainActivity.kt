@@ -484,6 +484,7 @@ class MainActivity : Activity() {
         if (checkSelfPermission(TV_LISTINGS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(TV_LISTINGS), 1)
         }
+        showWebAdminPrompt()
     }
 
     override fun onResume() {
@@ -605,6 +606,65 @@ class MainActivity : Activity() {
         Settings.Secure.putString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, if (on.isEmpty()) me else "$on:$me")
         Settings.Secure.putInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
     }
+
+    /** Startup hint for the LAN admin console: same Wi-Fi, phone browser, then background this app. */
+    private fun showWebAdminPrompt() {
+        if (webPromptShown) return
+        val root = findViewById<ViewGroup>(R.id.root) ?: return
+        webPromptShown = true
+
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(Color.argb(238, 7, 15, 28))
+            isFocusable = true
+            isFocusableInTouchMode = true
+            isClickable = true
+            elevation = dp(100).toFloat()
+        }
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(44), dp(34), dp(44), dp(30))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(24).toFloat()
+                setColor(Color.rgb(20, 35, 63))
+                setStroke(dp(2), Color.rgb(39, 68, 108))
+            }
+        }
+        card.addView(TextView(this).apply {
+            text = getString(R.string.web_admin_prompt_title)
+            textSize = 31f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        card.addView(TextView(this).apply {
+            text = getString(R.string.web_admin_prompt_message, dev.plume.web.WebAdminServer.url())
+            textSize = 20f
+            setTextColor(Color.rgb(203, 218, 243))
+            setLineSpacing(0f, 1.25f)
+            setPadding(0, dp(16), 0, dp(24))
+        })
+        val ok = android.widget.Button(this).apply {
+            text = getString(R.string.web_admin_prompt_button)
+            textSize = 22f
+            isAllCaps = false
+            setTextColor(Color.rgb(26, 35, 50))
+            backgroundTintList = ColorStateList.valueOf(Color.rgb(255, 209, 102))
+            minHeight = dp(64)
+            setOnClickListener {
+                root.removeView(overlay)
+                moveTaskToBack(true)
+            }
+        }
+        card.addView(ok, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        overlay.addView(card, FrameLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {
+            leftMargin = dp(120)
+            rightMargin = dp(120)
+        })
+        root.addView(overlay, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        overlay.bringToFront()
+        ui.post { ok.requestFocus() }
+    }
+
+    private var webPromptShown = false
 
     /** Compared as components: Settings may store us in short form (dev.plume/.HomeOverride). */
     private fun homeServiceOn(): Boolean {

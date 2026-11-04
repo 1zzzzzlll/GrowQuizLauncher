@@ -3,6 +3,9 @@
     <string name="quiz_settings_help">选择儿童年龄和答题间隔。每个年龄含 300 道离线题，支持设备所有者锁定模式。</string>
     <string name="web_admin">Web 控制台</string>
     <string name="web_admin_help">在局域网浏览器中设置管理密码并远程修改年龄、答题间隔和立即开始答题。</string>
+    <string name="web_admin_prompt_title">连接同一个 Wi-Fi</string>
+    <string name="web_admin_prompt_message">请让手机连接到与这台电视相同的 Wi-Fi，然后在手机浏览器中打开：\n\n%1$s\n\n首次进入需设置管理密码。点击“知道了”后，应用会退到后台继续运行。</string>
+    <string name="web_admin_prompt_button">知道了</string>
     <string name="override_desc">Opens Plume whenever the Google TV home screen appears, so the Home button lands here.</string>
     <string name="delete_photo">Delete \"%1$s\"?</string>
     <string name="photo_added">Added \"%1$s\". Send another, or press Done.</string>
