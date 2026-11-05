@@ -2949,6 +2949,14 @@ class MainActivity : Activity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             hint = getString(R.string.enter_admin_password)
             setSingleLine()
+            // GrowQuiz: show asterisks (not dots), and never let a full-screen IME echo the raw text —
+            // on TVs the keyboard's own preview box would otherwise spell the password out for the kids.
+            imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_FULLSCREEN
+            transformationMethod = object : android.text.method.TransformationMethod {
+                override fun getTransformation(source: CharSequence, view: View): CharSequence =
+                    "*".repeat(source.length)
+                override fun onFocusChanged(view: View?, sourceText: CharSequence?, focused: Boolean, direction: Int, previouslyFocusedRect: Rect?) {}
+            }
             textSize = 18f
             setTextColor(Color.WHITE)
             setHintTextColor(Color.rgb(125, 148, 184))
@@ -3023,6 +3031,11 @@ class MainActivity : Activity() {
         }
         style(dialog.getButton(AlertDialog.BUTTON_POSITIVE), true)
         style(dialog.getButton(AlertDialog.BUTTON_NEGATIVE), false)
+        // The keyboard's own 完成 key submits too, so the remote never has to hunt for the button.
+        input.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            true
+        }
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if (dev.plume.web.WebAdminServer.verifyPassword(this, input.text.toString())) {
                 pinFails = 0
