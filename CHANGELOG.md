@@ -14,6 +14,10 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.8.1
+
+- **安装包兼容老电视。** 签名改用 v1 加 v2 加 v3 方案。老电视的安装器也能识别安装包。
+
 ## 1.8.0
 
 - **答题前必须思考。** 出题后数秒内选项无效。屏幕显示剩余秒数。默认 5 秒，控制台可调 0–60 秒。
