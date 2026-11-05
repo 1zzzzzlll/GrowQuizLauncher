@@ -89,7 +89,13 @@
         <div class="pill"><div class="k">下次答题</div><div id="stNext" class="v">--</div></div>
         <div class="pill"><div class="k">语音朗读</div><div id="stTts" class="v">--</div></div>
         <div class="pill"><div class="k">开机答题</div><div id="stBoot" class="v">--</div></div>
+        <div class="pill"><div class="k">防蒙题休息</div><div id="stRest" class="v">--</div></div>
         <div class="pill" style="grid-column:1/-1"><div class="k">当前地址</div><div id="stUrl" class="v">--</div></div>
+      </div>
+
+      <div class="field" id="restAction" style="margin-bottom:16px;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(217,83,79,.08)">
+        <button id="restClearBtn" class="danger">立即解除强制休息</button>
+        <div class="muted" style="margin-top:8px;font-size:13px" id="restHint">当前没有在休息</div>
       </div>
 
       <div class="row">
@@ -105,8 +111,19 @@
         </div>
       </div>
 
+      <div class="row">
+        <div class="field">
+          <label>答题思考时间（秒，0–60，0 为关闭）</label>
+          <input id="thinkSeconds" type="number" min="0" max="60" step="1">
+        </div>
+        <div class="field">
+          <label>　</label>
+          <div class="muted" style="font-size:13px;padding-top:14px">出题后这段时间内选项不可点，防止秒选乱蒙</div>
+        </div>
+      </div>
+
       <div class="field">
-        <label>题目分类（多选，一个都不勾选即为全部）</label>
+        <label>题目分类（多选，一个都不勾选即为全部；数量按所选年龄统计，灰色的分类该年龄暂无题目）</label>
         <div id="catList" class="cats"><span class="muted">加载中…</span></div>
       </div>
 
@@ -122,7 +139,12 @@
 
       <div class="field switch">
         <input id="bootQuiz" type="checkbox">
-        <label for="bootQuiz" style="margin:0">开机先答一题（每次开机需答对一道题才能使用电视，默认开启）</label>
+        <label for="bootQuiz" style="margin:0">开机先答一题（开机后管理端提醒点「确定」即开始答题，默认开启）</label>
+      </div>
+
+      <div class="field switch">
+        <input id="restGuard" type="checkbox">
+        <label for="restGuard" style="margin:0">连续答错强制休息（连错 3 题休息 10 分钟，之后每多错一题加 10 分钟；答对即重新计数，默认开启）</label>
       </div>
 
       <div class="actions">
@@ -299,6 +321,7 @@
       }
       $('age').value = s.age;
       $('interval').value = s.interval;
+      $('thinkSeconds').value = s.thinkSeconds ?? 5;
       $('enabled').checked = s.enabled;
       $('voice').checked = s.voice !== false;
       $('bootQuiz').checked = s.bootQuiz !== false;
@@ -308,26 +331,55 @@
       const tts = { 'available': '可用', 'initializing': '检测中…' }[s.tts] || (s.tts === 'no-engine' ? '不可用（无引擎）' : s.tts === 'no-language' ? '不可用（缺中文语音）' : s.tts);
       $('stTts').textContent = s.voice === false ? '已关闭' : tts;
       $('stBoot').textContent = s.bootQuiz === false ? '已关闭' : '开启';
+      $('restGuard').checked = s.restGuard !== false;
+      const restMs = s.restRemainingMs || 0;
+      const resting = s.restGuard !== false && restMs > 0;
+      $('stRest').textContent = s.restGuard === false ? '功能已关闭'
+        : resting ? '休息中（剩 ' + Math.ceil(restMs / 60000) + ' 分钟）'
+        : '未休息' + ((s.wrongStreak || 0) > 0 ? '（已连错 ' + s.wrongStreak + ' 题）' : '');
+      $('restClearBtn').disabled = !resting;
+      $('restHint').textContent = resting
+        ? '宝贝正处于强制休息，点击上方按钮立即解除（连错计数同时清零）'
+        : '当前没有在休息';
       authed = true;
       route();
       await loadCategories(s.categories || []);
       await loadBank();
     }
 
-    async function loadCategories(selectedFromStatus) {
+    async function loadCategories(selectedNames) {
       try {
-        const j = await get('/api/categories');
-        const selected = new Set(selectedFromStatus || j.selected || []);
-        $('catList').innerHTML = j.categories.length
-          ? j.categories.map(c => `<label class="cat"><input type="checkbox" value="${esc(c.name)}" ${selected.has(c.name) ? 'checked' : ''}> ${esc(c.name)}（${c.count}）</label>`).join('')
+        // Two views: all categories (bank dropdowns) and the same list counted at the child's age —
+        // a category with no questions at that age cannot be chosen, so the quiz never has to ignore it.
+        const [all, atAge] = await Promise.all([
+          get('/api/categories'),
+          get('/api/categories?age=' + $('age').value)
+        ]);
+        const countAtAge = {};
+        atAge.categories.forEach(c => { countAtAge[c.name] = c.count; });
+        const selected = new Set(selectedNames || all.selected || []);
+        $('catList').innerHTML = all.categories.length
+          ? all.categories.map(c => {
+              const n = countAtAge[c.name] || 0;
+              const off = n === 0;
+              return `<label class="cat" style="${off ? 'opacity:.45;cursor:default' : ''}">` +
+                `<input type="checkbox" value="${esc(c.name)}" ${selected.has(c.name) && !off ? 'checked' : ''} ${off ? 'disabled' : ''}> ` +
+                `${esc(c.name)}（${n}）${off ? ' · 该年龄无题' : ''}</label>`;
+            }).join('')
           : '<span class="muted">暂无分类</span>';
-        $('catOptions').innerHTML = j.categories.map(c => `<option value="${esc(c.name)}">`).join('');
+        $('catOptions').innerHTML = all.categories.map(c => `<option value="${esc(c.name)}">`).join('');
         const current = $('bkCategory').value;
-        $('bkCategory').innerHTML = '<option value="">全部</option>' + j.categories.map(c => `<option ${c.name === current ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+        $('bkCategory').innerHTML = '<option value="">全部</option>' + all.categories.map(c => `<option ${c.name === current ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
       } catch (e) {
         $('catList').innerHTML = '<span class="muted">分类加载失败</span>';
       }
     }
+
+    // Switching the child's age re-counts every category: some (历史, 地理, 英语) start later than others.
+    $('age').onchange = () => {
+      const sel = [...document.querySelectorAll('#catList input:checked')].map(i => i.value);
+      loadCategories(sel);
+    };
 
     $('setupBtn').onclick = async () => {
       const p1 = $('setupPassword').value, p2 = $('setupPassword2').value;
@@ -354,12 +406,22 @@
         await api('/api/settings', {
           age: Number($('age').value),
           interval: Number($('interval').value),
+          thinkSeconds: Number($('thinkSeconds').value),
           enabled: $('enabled').checked,
           voice: $('voice').checked,
           bootQuiz: $('bootQuiz').checked,
+          restGuard: $('restGuard').checked,
           categories
         });
         msg($('panelMsg'), '已保存', true);
+        await refresh();
+      } catch (e) { msg($('panelMsg'), e.message, false); }
+    };
+
+    $('restClearBtn').onclick = async () => {
+      try {
+        await api('/api/rest/clear', {});
+        msg($('panelMsg'), '已解除强制休息', true);
         await refresh();
       } catch (e) { msg($('panelMsg'), e.message, false); }
     };

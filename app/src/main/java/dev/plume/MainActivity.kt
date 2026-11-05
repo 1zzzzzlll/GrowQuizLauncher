@@ -388,6 +388,17 @@ class MainActivity : Activity() {
         dev.plume.quiz.QuizScheduler.ensureScheduled(this)
         dev.plume.web.WebAdminServer.start(this)
         dev.plume.quiz.TtsProbe.start(this) // the web console reports whether this TV can read aloud
+        // GrowQuiz: a TV has no logcat in reach — surface the last crash once, then forget it.
+        CrashLog.peek(this)?.let { trace ->
+            ui.post {
+                if (isFinishing || isDestroyed) return@post
+                AlertDialog.Builder(this)
+                    .setTitle("应用上次异常退出，已记录现场")
+                    .setMessage(trace)
+                    .setPositiveButton(R.string.confirm_button) { _, _ -> CrashLog.clear(this) }
+                    .show()
+            }
+        }
         glass = GlassLayer(this)
         findViewById<ViewGroup>(R.id.root).addView(glass, 2, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)) // over both wallpaper layers
         videoWallpaper = VideoWallpaper(findViewById<SurfaceView>(R.id.videoWallpaper),
@@ -501,14 +512,10 @@ class MainActivity : Activity() {
         // Coming back from a just-finished quiz: land straight on the desktop, no admin prompt.
         val fromQuiz = dev.plume.quiz.QuizActivity.justFinished
         dev.plume.quiz.QuizActivity.justFinished = false
-        // GrowQuiz: with the boot quiz on, one question is owed after each power-on. It is asked before
-        // the home screen becomes usable, and stays owed until answered, so a Home press just brings it back.
-        val boot = dev.plume.quiz.QuizPrefs(this)
-        if (boot.bootPending && boot.bootQuiz) {
-            startActivity(Intent(this, dev.plume.quiz.QuizActivity::class.java))
-            return
-        }
-        if (!resumed && !fromQuiz) showWebAdminPrompt()
+        // GrowQuiz: with the boot quiz on, the startup admin prompt's OK button starts one question
+        // right away. The old BOOT_COMPLETED gate never fired on some TVs; anchoring the quiz to the
+        // prompt — which always shows after power-on — makes the trigger visible and reliable.
+        if (!resumed && !fromQuiz) showWebAdminPrompt(quizAfterOk = dev.plume.quiz.QuizPrefs(this).bootQuiz)
         resumed = true
         if (currentWallpaper().startsWith("video:")) videoWallpaper.resume()
         returnTo = null // back by another way than Home: the next Home starts again at the first tile
@@ -629,7 +636,7 @@ class MainActivity : Activity() {
     }
 
     /** Startup hint for the LAN admin console: same Wi-Fi, phone browser, then background this app. */
-    private fun showWebAdminPrompt() {
+    private fun showWebAdminPrompt(quizAfterOk: Boolean = false) {
         if (webPromptShown) return
         val root = findViewById<ViewGroup>(R.id.root) ?: return
         webPromptShown = true
@@ -704,6 +711,12 @@ class MainActivity : Activity() {
             setOnClickListener {
                 root.removeView(overlay)
                 webPromptShown = false // allows the menu's 后台管理 button to bring the prompt up again
+                if (quizAfterOk && dev.plume.quiz.QuizPrefs(this@MainActivity).bootQuiz) {
+                    // GrowQuiz: the boot question fires here — after power-on the prompt is the first thing
+                    // on screen, so OK means "I'm ready" and the quiz follows immediately.
+                    startActivity(Intent(this@MainActivity, dev.plume.quiz.QuizActivity::class.java))
+                    return@setOnClickListener
+                }
                 // Stay on the GrowQuiz desktop: the launcher is the home experience, and backgrounding here
                 // would land on the system home instead (and re-trigger the prompt on the next resume).
                 // Qualified: inside this apply block "this" is the button, not the activity.
@@ -1027,8 +1040,23 @@ class MainActivity : Activity() {
             val skip = if (fireTv() || googleTv()) 1 else 0
             if (step > 0) addView(label(getString(R.string.setup_step, step - skip, 3 - skip), 12f).apply { secondary(0.6f) })
             addView(label(title, 22f).apply { setTypeface(typeface, Typeface.BOLD); setPadding(0, dp(4), 0, 0) })
-            body?.let { addView(label(it, 14f).apply { maxLines = 6; secondary(0.8f); setLineSpacing(0f, 1.15f); setPadding(0, dp(10), 0, 0) }) }
-            extra?.let { addView(it) }
+            // Long content (the what's-new notes) scrolls under a height cap, so the buttons below stay
+            // on the screen — and reachable by the remote — on small TVs. Same trick as the admin prompt.
+            val scrollBits = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            body?.let { scrollBits.addView(label(it, 14f).apply { maxLines = 6; secondary(0.8f); setLineSpacing(0f, 1.15f); setPadding(0, dp(10), 0, 0) }) }
+            extra?.let { scrollBits.addView(it) }
+            if (scrollBits.childCount > 0) {
+                val cap = (resources.displayMetrics.heightPixels * 0.60f).toInt()
+                addView(object : android.widget.ScrollView(this@MainActivity) {
+                    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                        super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(cap, MeasureSpec.AT_MOST))
+                    }
+                }.apply {
+                    isVerticalScrollBarEnabled = true
+                    isFocusable = true // D-pad Up/Down scrolls the text where the screen is too small to show it all
+                    addView(scrollBits)
+                }, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
             buttons.forEachIndexed { i, (name, action) ->
                 addView(settingsRow(name, "") { if (previewAt >= 0) previewHomeSetup(previewAt + 1) else action() },
                     LinearLayout.LayoutParams(MATCH_PARENT, dp(44)).apply { topMargin = if (i == 0) dp(20) else dp(4) })
@@ -2484,19 +2512,7 @@ class MainActivity : Activity() {
     }
 
     /** Black on white with the standard 4-module quiet zone, whole pixels per module so it stays sharp. */
-    private fun qrBitmap(text: String, maxPx: Int): Bitmap {
-        val m = Qr.encode(text)
-        val n = m.size + 8
-        val px = maxOf(1, maxPx / n)
-        val bmp = Bitmap.createBitmap(n * px, n * px, Bitmap.Config.RGB_565)
-        bmp.eraseColor(Color.WHITE)
-        val canvas = Canvas(bmp)
-        val paint = Paint().apply { color = Color.BLACK }
-        for (r in m.indices) for (c in m.indices) if (m[r][c]) {
-            canvas.drawRect(((c + 4) * px).toFloat(), ((r + 4) * px).toFloat(), ((c + 5) * px).toFloat(), ((r + 5) * px).toFloat(), paint)
-        }
-        return bmp
-    }
+    private fun qrBitmap(text: String, maxPx: Int): Bitmap = Qr.bitmap(text, maxPx)
 
     // ---------- launcher settings panel (top-bar button; the Settings tile is Android's) ----------
 
@@ -2976,14 +2992,14 @@ class MainActivity : Activity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             hint = getString(R.string.enter_admin_password)
             setSingleLine()
-            // GrowQuiz: show asterisks (not dots), and never let a full-screen IME echo the raw text —
-            // on TVs the keyboard's own preview box would otherwise spell the password out for the kids.
+            // GrowQuiz: hide the password (system dots) and never let a full-screen IME echo the raw text —
+            // on TVs the keyboard's own preview box would otherwise spell it out for the kids.
+            // A hand-written TransformationMethod returning "*".repeat(n) crashed the IME here: TextView
+            // lays out the copy while the IME commits offsets against the source (Paint.getRunAdvance,
+            // IndexOutOfBounds). The platform method keeps the two in step; set after setSingleLine(),
+            // which would otherwise replace it with the single-line transformation.
             imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_FULLSCREEN
-            transformationMethod = object : android.text.method.TransformationMethod {
-                override fun getTransformation(source: CharSequence, view: View): CharSequence =
-                    "*".repeat(source.length)
-                override fun onFocusChanged(view: View?, sourceText: CharSequence?, focused: Boolean, direction: Int, previouslyFocusedRect: Rect?) {}
-            }
+            transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
             textSize = 18f
             setTextColor(Color.WHITE)
             setHintTextColor(Color.rgb(125, 148, 184))

@@ -1,5 +1,9 @@
 package dev.plume
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import kotlin.math.abs
 
 /**
@@ -131,5 +135,20 @@ internal object Qr {
             col -= 2
         }
         return m
+    }
+
+    /** Black on white with the standard 4-module quiet zone, whole pixels per module so it stays sharp. */
+    fun bitmap(text: String, maxPx: Int): Bitmap {
+        val m = encode(text)
+        val n = m.size + 8
+        val px = maxOf(1, maxPx / n)
+        val bmp = Bitmap.createBitmap(n * px, n * px, Bitmap.Config.RGB_565)
+        bmp.eraseColor(Color.WHITE)
+        val canvas = Canvas(bmp)
+        val paint = Paint().apply { color = Color.BLACK }
+        for (r in m.indices) for (c in m.indices) if (m[r][c]) {
+            canvas.drawRect(((c + 4) * px).toFloat(), ((r + 4) * px).toFloat(), ((c + 5) * px).toFloat(), ((r + 5) * px).toFloat(), paint)
+        }
+        return bmp
     }
 }

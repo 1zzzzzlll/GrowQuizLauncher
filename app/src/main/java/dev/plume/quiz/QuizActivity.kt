@@ -22,9 +22,11 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.GridLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import dev.plume.Qr
 
 /** Full-screen, remote-first quiz. A wrong answer advances to a different question. */
 class QuizActivity : Activity() {
@@ -38,6 +40,39 @@ class QuizActivity : Activity() {
     private var solved = false
     private var changing = false
     private var lockActive = false
+    private lateinit var answerGrid: GridLayout
+    private var restPanel: LinearLayout? = null // admin address + QR, visible only while resting
+
+    // GrowQuiz: answers cannot be blurted. The buttons respond only after MIN_THINK_MS of reading time.
+    private var thinkReadyAt = 0L
+    private var thinkLoop: Runnable? = null
+
+    // GrowQuiz: too many wrong answers in a row mean a forced rest, so blind guessing never pays off.
+    private var restLoop: Runnable? = null
+
+    // GrowQuiz: while a question or a rest is up, a watchdog brings the quiz back to the front every
+    // second if anything else stole it (Netflix-style remote keys, notifications, other apps).
+    private var inForeground = false
+    private val guardLoop: Runnable = object : Runnable {
+        override fun run() {
+            if (isFinishing || isDestroyed || solved) return
+            val interactive = getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
+            if (!inForeground && interactive) {
+                try {
+                    startActivity(
+                        Intent(this@QuizActivity, QuizActivity::class.java).addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
+                        ),
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.w("GrowQuiz", "guard relaunch failed", e)
+                }
+            }
+            ui.postDelayed(this, GUARD_POLL_MS)
+        }
+    }
 
     // GrowQuiz: the question is read aloud for children who cannot read yet, then repeated every 20 seconds.
     private var tts: TextToSpeech? = null
@@ -103,6 +138,18 @@ class QuizActivity : Activity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        inForeground = true
+        ui.removeCallbacks(guardLoop) // one watchdog, started here, re-posted by itself
+        ui.postDelayed(guardLoop, GUARD_POLL_MS)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        inForeground = false
+    }
+
     private fun createContent(): View {
         val root = FrameLayout(this).apply { setBackgroundColor(Color.rgb(16, 42, 67)) }
         val content = LinearLayout(this).apply {
@@ -122,7 +169,7 @@ class QuizActivity : Activity() {
             gravity = Gravity.CENTER
             minHeight = dp(48)
         }
-        val grid = GridLayout(this).apply {
+        answerGrid = GridLayout(this).apply {
             columnCount = 2
             rowCount = 2
         }
@@ -138,7 +185,7 @@ class QuizActivity : Activity() {
                 setOnFocusChangeListener { view, focused ->
                     view.animate().scaleX(if (focused) 1.025f else 1f).scaleY(if (focused) 1.025f else 1f).setDuration(100).start()
                 }
-                grid.addView(this, GridLayout.LayoutParams().apply {
+                answerGrid.addView(this, GridLayout.LayoutParams().apply {
                     width = 0
                     height = ViewGroup.LayoutParams.WRAP_CONTENT
                     columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
@@ -146,23 +193,48 @@ class QuizActivity : Activity() {
                 })
             }
         }
+        // GrowQuiz: while the child rests, the parents see where to go to lift the rest early.
+        restPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            visibility = View.GONE
+            addView(text("家长打开手机管理后台，可提前解除休息：", 16f, Color.rgb(184, 199, 217)))
+            val adminUrl = dev.plume.web.WebAdminServer.url()
+            if (dev.plume.web.WebAdminServer.hasLanUrl()) {
+                addView(ImageView(this@QuizActivity).apply {
+                    try { setImageBitmap(Qr.bitmap(adminUrl, dp(140))) } catch (e: Exception) {}
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(10)
+                })
+            }
+            addView(text(adminUrl, 18f, Color.rgb(255, 209, 102)).apply {
+                setPadding(0, dp(10), 0, 0)
+            })
+        }
         content.addView(progressText)
         content.addView(questionText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 0.85f))
-        content.addView(grid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.35f))
+        content.addView(restPanel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        content.addView(answerGrid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.35f))
         content.addView(feedbackText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         return root
     }
 
     private fun showNextQuestion() {
+        if (restRemaining() > 0L) {
+            showRestScreen()
+            return
+        }
         val quiz = bank ?: return
         changing = false
+        answerGrid.visibility = View.VISIBLE
+        restPanel?.visibility = View.GONE
         val prefs = QuizPrefs(this)
         val next = quiz.next(prefs.age, prefs.categories, current?.id)
         current = next
-        progressText.text = "${next.age} 岁 · ${next.category} · 答对后即可返回"
+        val tag = if (prefs.verifyPending) "验证题 · " else ""
+        progressText.text = "$tag${next.age} 岁 · ${next.category} · 答对后即可返回"
         questionText.text = next.prompt
-        feedbackText.text = "请选择正确答案"
         feedbackText.setTextColor(Color.rgb(184, 199, 217))
         answerButtons.forEachIndexed { index, button ->
             button.text = "${'A' + index}  ${next.options[index]}"
@@ -170,7 +242,79 @@ class QuizActivity : Activity() {
             button.backgroundTintList = null
         }
         answerButtons.first().requestFocus()
+        startThinkWindow()
         startReading()
+    }
+
+    /**
+     * The buttons stay focusable for the remote, but [answer] ignores presses until the configured
+     * think time has passed. A countdown in the feedback line tells the child why.
+     */
+    private fun startThinkWindow() {
+        thinkLoop?.let { ui.removeCallbacks(it) }
+        val seconds = QuizPrefs(this).thinkSeconds
+        thinkReadyAt = System.currentTimeMillis() + seconds * 1_000L
+        if (seconds <= 0) {
+            feedbackText.text = "请选择正确答案"
+            return
+        }
+        val loop = object : Runnable {
+            override fun run() {
+                if (isFinishing || solved) return
+                val left = thinkReadyAt - System.currentTimeMillis()
+                if (left <= 0L) {
+                    if (!changing) feedbackText.text = "请选择正确答案"
+                    return
+                }
+                feedbackText.text = "请认真听题和思考，${(left + 999) / 1000} 秒后可以作答"
+                ui.postDelayed(this, 500L)
+            }
+        }
+        thinkLoop = loop
+        loop.run()
+    }
+
+    /** Milliseconds of enforced rest still owed; 0 when none. Side effect: clears an expired deadline. */
+    private fun restRemaining(): Long {
+        val prefs = QuizPrefs(this)
+        if (!prefs.restGuard) return 0L // the parents switched the enforced rest off: never gate on it
+        val until = prefs.restUntil
+        if (until <= 0L) return 0L
+        val left = until - System.currentTimeMillis()
+        if (left <= 0L) {
+            prefs.restUntil = 0L
+            return 0L
+        }
+        return left
+    }
+
+    /** Full-screen rest: no question, no buttons, a countdown, and no way out except the parents' console. */
+    private fun showRestScreen() {
+        changing = true
+        stopReading()
+        thinkLoop?.let { ui.removeCallbacks(it) }
+        answerGrid.visibility = View.GONE
+        restPanel?.visibility = View.VISIBLE
+        progressText.text = "休息一下"
+        if (QuizPrefs(this).voice && ttsReady) {
+            try { tts?.speak("连续答错啦，休息一会再来答题", TextToSpeech.QUEUE_FLUSH, null, "quiz_rest") } catch (e: Exception) {}
+        }
+        val loop = object : Runnable {
+            override fun run() {
+                val left = restRemaining()
+                if (left <= 0L) {
+                    if (!isFinishing) showNextQuestion()
+                    return
+                }
+                val totalSec = (left + 999) / 1000
+                questionText.text = "连续答错啦，休息 ${totalSec / 60} 分 ${totalSec % 60} 秒后再答题"
+                feedbackText.text = "休息期间不能作答，休息结束自动回到答题"
+                feedbackText.setTextColor(Color.rgb(184, 199, 217))
+                ui.postDelayed(this, 1_000L)
+            }
+        }
+        restLoop = loop
+        loop.run()
     }
 
     /** Reads the current question and its options aloud, then keeps repeating every 20 seconds. */
@@ -199,27 +343,65 @@ class QuizActivity : Activity() {
     private fun answer(index: Int) {
         val question = current ?: return
         if (changing || solved) return
+        val now = System.currentTimeMillis()
+        if (now < thinkReadyAt) {
+            // The think window is still closed: no penalty, just a nudge to slow down.
+            feedbackText.text = "再想一想，${(thinkReadyAt - now + 999) / 1000} 秒后可以作答"
+            feedbackText.setTextColor(Color.rgb(255, 209, 102))
+            return
+        }
         changing = true
         stopReading() // the child answered; the next question (or the exit) restarts narration as needed
+        thinkLoop?.let { ui.removeCallbacks(it) }
         answerButtons.forEach { it.isEnabled = false }
+        val prefs = QuizPrefs(this)
+        val snap = QuizRules.isSnapAnswer(now, thinkReadyAt)
         if (QuizRules.isCorrect(question, index)) {
-            solved = true
             bank?.registerCorrect(question.id) // mastered questions retire themselves after enough correct answers
+            if (!prefs.verifyPending && QuizRules.needsVerification(prefs.snapWrongs, snap)) {
+                // Two snap wrongs then a snap correct smells like a lucky guess: prove it with one more question.
+                prefs.verifyPending = true
+                answerButtons[index].backgroundTintList = ColorStateList.valueOf(Color.rgb(46, 158, 107))
+                feedbackText.text = "答得真快！再来一道题验证一下"
+                feedbackText.setTextColor(Color.rgb(255, 209, 102))
+                ui.postDelayed({ if (!isFinishing) { changing = false; showNextQuestion() } }, 1_300L)
+                return
+            }
+            solved = true
             answerButtons[index].backgroundTintList = ColorStateList.valueOf(Color.rgb(46, 158, 107))
             feedbackText.text = "回答正确！${question.explanation}"
             feedbackText.setTextColor(Color.rgb(160, 235, 190))
             ui.postDelayed({ finishAfterCorrect() }, 1_300L)
         } else {
+            if (prefs.verifyPending) {
+                // Failed the verification: the snap correct answer was a guess after all. Count it as 3 in a row.
+                prefs.verifyPending = false
+                prefs.wrongStreak = QuizRules.REST_STREAK_START
+                prefs.snapWrongs = 0
+            } else {
+                prefs.wrongStreak = prefs.wrongStreak + 1
+                prefs.snapWrongs = if (snap) prefs.snapWrongs + 1 else 0
+            }
             answerButtons[index].backgroundTintList = ColorStateList.valueOf(Color.rgb(217, 83, 79))
-            feedbackText.text = "这题不对，换一题再试试"
+            val restMinutes = if (prefs.restGuard) QuizRules.restMinutes(prefs.wrongStreak) else 0
+            if (restMinutes > 0) {
+                prefs.restUntil = now + restMinutes * 60_000L
+                feedbackText.text = "连续答错 ${prefs.wrongStreak} 题，休息 $restMinutes 分钟后再来"
+            } else {
+                feedbackText.text = "这题不对，换一题再试试"
+            }
             feedbackText.setTextColor(Color.rgb(255, 180, 170))
-            ui.postDelayed({ if (!isFinishing) showNextQuestion() }, 750L)
+            ui.postDelayed({ if (!isFinishing) showNextQuestion() }, if (restMinutes > 0) 2_000L else 750L)
         }
     }
 
     private fun finishAfterCorrect() {
         justFinished = true // MainActivity skips the admin prompt right after a quiz
-        QuizPrefs(this).bootPending = false // the boot quiz is owed until a question is answered
+        QuizPrefs(this).apply {
+            wrongStreak = 0 // a finished session proves real work: every anti-guess counter resets
+            snapWrongs = 0
+            verifyPending = false
+        }
         if (lockActive) {
             stopLockTask()
             lockActive = false
@@ -230,7 +412,7 @@ class QuizActivity : Activity() {
     // TV remotes still dispatch the back key; gesture-back migration would require AndroidX.
     @android.annotation.SuppressLint("GestureBackNavigation")
     override fun onBackPressed() {
-        feedbackText.text = "答对一题后才能退出"
+        feedbackText.text = if (restRemaining() > 0L) "休息结束后，答对一题才能退出" else "答对一题后才能退出"
     }
 
     override fun onUserLeaveHint() {
@@ -296,6 +478,7 @@ class QuizActivity : Activity() {
 
     companion object {
         private const val READ_REPEAT_MS = 20_000L // after the first reading, repeat question + options every 20 s
+        private const val GUARD_POLL_MS = 1_000L // while a quiz or rest is up, check the foreground every second
 
         /** Set when a quiz is completed; MainActivity reads (and clears) it to skip the admin prompt then. */
         @Volatile var justFinished = false
