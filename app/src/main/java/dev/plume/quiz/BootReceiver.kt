@@ -11,5 +11,10 @@ class BootReceiver : BroadcastReceiver() {
             QuizDeviceOwner.configure(context)
             QuizScheduler.reschedule(context)
         }
+        // A power-on with the boot quiz on owes one question; MainActivity shows it as soon as it comes up.
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
+            val prefs = QuizPrefs(context)
+            if (prefs.bootQuiz) prefs.bootPending = true
+        }
     }
 }

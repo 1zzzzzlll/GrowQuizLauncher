@@ -501,6 +501,13 @@ class MainActivity : Activity() {
         // Coming back from a just-finished quiz: land straight on the desktop, no admin prompt.
         val fromQuiz = dev.plume.quiz.QuizActivity.justFinished
         dev.plume.quiz.QuizActivity.justFinished = false
+        // GrowQuiz: with the boot quiz on, one question is owed after each power-on. It is asked before
+        // the home screen becomes usable, and stays owed until answered, so a Home press just brings it back.
+        val boot = dev.plume.quiz.QuizPrefs(this)
+        if (boot.bootPending && boot.bootQuiz) {
+            startActivity(Intent(this, dev.plume.quiz.QuizActivity::class.java))
+            return
+        }
         if (!resumed && !fromQuiz) showWebAdminPrompt()
         resumed = true
         if (currentWallpaper().startsWith("video:")) videoWallpaper.resume()
@@ -674,6 +681,16 @@ class MainActivity : Activity() {
                     setLineSpacing(0f, 1.25f)
                     setPadding(0, dp(16), 0, dp(8))
                 })
+                // GrowQuiz: scanning beats typing a LAN address on a phone; the QR opens the console directly.
+                // Only when the TV actually has a LAN address — on localhost there is nothing to scan.
+                if (dev.plume.web.WebAdminServer.hasLanUrl()) {
+                    addView(ImageView(this@MainActivity).apply {
+                        setImageBitmap(qrBitmap(dev.plume.web.WebAdminServer.url(), dp(150)))
+                    }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
+                        topMargin = dp(8)
+                    })
+                }
             })
         }
         card.addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -2945,6 +2962,16 @@ class MainActivity : Activity() {
             toast(getString(R.string.too_many_tries, (pinWaitUntil - now) / 1000 + 1), long = true)
             return
         }
+        // GrowQuiz: besides typing, the parent can scan the QR in the dialog and enter the password on the
+        // phone over the same Wi-Fi — nothing is ever typed where the kid can watch. The token dies with
+        // the dialog, so a screenshot of the QR buys nobody anything later.
+        var dialog: AlertDialog? = null
+        val qrToken = dev.plume.web.WebAdminServer.beginUnlock {
+            pinFails = 0
+            unlockedUntil = SystemClock.elapsedRealtime() + UNLOCKED_MS
+            dialog?.dismiss()
+            then()
+        }
         val input = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             hint = getString(R.string.enter_admin_password)
@@ -2990,14 +3017,31 @@ class MainActivity : Activity() {
             })
             addView(input, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(18) })
             addView(status)
+            // The scan path: the QR opens the admin server's one-off unlock page on the phone.
+            if (dev.plume.web.WebAdminServer.hasLanUrl()) {
+                addView(TextView(this@MainActivity).apply {
+                    text = getString(R.string.admin_password_qr_hint)
+                    textSize = 13f
+                    setTextColor(Color.rgb(154, 176, 210))
+                    setPadding(0, dp(16), 0, 0)
+                })
+                addView(ImageView(this@MainActivity).apply {
+                    setImageBitmap(qrBitmap(dev.plume.web.WebAdminServer.unlockUrl(qrToken), dp(112)))
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    topMargin = dp(8)
+                })
+            }
         }
-        val dialog = AlertDialog.Builder(this)
+        val d = AlertDialog.Builder(this)
             .setView(body)
             .setPositiveButton(R.string.confirm_button, null)
             .setNegativeButton(R.string.cancel, null) // the app's own 取消: not the locale-dependent android.R.string
             .show()
+        dialog = d
+        d.setOnDismissListener { dev.plume.web.WebAdminServer.endUnlock() } // the QR stops working right away
         // The card the platform draws around the body gets the app's own rounded dark blue.
-        dialog.window?.setBackgroundDrawable(GradientDrawable().apply {
+        d.window?.setBackgroundDrawable(GradientDrawable().apply {
             cornerRadius = dp(22).toFloat()
             setColor(Color.rgb(20, 35, 63))
             setStroke(dp(2), Color.rgb(39, 68, 108))
@@ -3029,23 +3073,23 @@ class MainActivity : Activity() {
                 background = fill(Color.rgb(39, 68, 108), Color.rgb(52, 88, 136), Color.rgb(178, 205, 245))
             }
         }
-        style(dialog.getButton(AlertDialog.BUTTON_POSITIVE), true)
-        style(dialog.getButton(AlertDialog.BUTTON_NEGATIVE), false)
+        style(d.getButton(AlertDialog.BUTTON_POSITIVE), true)
+        style(d.getButton(AlertDialog.BUTTON_NEGATIVE), false)
         // The keyboard's own 完成 key submits too, so the remote never has to hunt for the button.
         input.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_DONE) dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+            if (actionId == EditorInfo.IME_ACTION_DONE) d.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
             true
         }
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
             if (dev.plume.web.WebAdminServer.verifyPassword(this, input.text.toString())) {
                 pinFails = 0
                 unlockedUntil = SystemClock.elapsedRealtime() + UNLOCKED_MS
-                dialog.dismiss()
+                d.dismiss()
                 then()
             } else if (++pinFails >= PIN_TRIES) {
                 pinFails = 0
                 pinWaitUntil = SystemClock.elapsedRealtime() + 30_000L
-                dialog.dismiss()
+                d.dismiss()
                 toast(getString(R.string.too_many_tries, 30), long = true)
             } else {
                 // The message sits in the card (a TV is read from the couch; the stock error pop-up is tiny).

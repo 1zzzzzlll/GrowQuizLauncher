@@ -71,6 +71,42 @@ object WebAdminServer {
         return "http://$address:$port"
     }
 
+    // ---- one-off QR unlock: the TV's password dialog can be answered from a phone instead ----
+
+    private const val UNLOCK_MS = 3L * 60 * 1000
+    private const val UNLOCK_TRIES = 5
+
+    @Volatile private var unlockToken: String? = null
+    @Volatile private var unlockDone: (() -> Unit)? = null
+    private var unlockAt = 0L
+    private var unlockFails = 0
+
+    /**
+     * Starts a one-off unlock session while the TV's password dialog is up and returns its token.
+     * The token goes into the QR's URL; anyone on the LAN who can see the screen can reach the page,
+     * but the password is still the only way through, and [endUnlock] kills it the moment the dialog goes away.
+     */
+    @Synchronized fun beginUnlock(onUnlock: () -> Unit): String {
+        val token = randomHex(16)
+        unlockToken = token
+        unlockDone = onUnlock
+        unlockAt = System.currentTimeMillis()
+        unlockFails = 0
+        return token
+    }
+
+    /** The dialog went away (accepted, cancelled, dismissed): the QR on screen must stop working at once. */
+    @Synchronized fun endUnlock() {
+        unlockToken = null
+        unlockDone = null
+    }
+
+    /** The URL the QR on the TV's password dialog encodes: this LAN page takes the password from a phone. */
+    fun unlockUrl(token: String) = url() + "/unlock?t=" + token
+
+    /** Whether the TV has a LAN address the phone can reach; the QR is pointless on localhost. */
+    fun hasLanUrl(): Boolean = !url().startsWith("http://localhost")
+
     /** True once the family has set the admin password; the TV-side settings entries gate on this too. */
     fun hasPassword(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_HASH, null) != null
@@ -134,6 +170,37 @@ object WebAdminServer {
                 reply(out, 200, "text/html; charset=utf-8", page)
             }
 
+            // The page the phone lands on after scanning the TV password dialog's QR. Open to anyone
+            // on the LAN who can see the TV: the one-off token in the URL is the ticket, and it dies
+            // with the dialog. No session, no cookies, nothing persists after the unlock.
+            path == "/unlock" && method == "GET" -> {
+                reply(out, 200, "text/html; charset=utf-8", UNLOCK_PAGE)
+            }
+
+            path == "/api/unlock" && method == "POST" -> {
+                val json = JSONObject(body.ifEmpty { "{}" })
+                val token = json.optString("t")
+                val password = json.optString("p")
+                val pending = unlockToken
+                val done = unlockDone
+                when {
+                    pending == null || token != pending || done == null || System.currentTimeMillis() - unlockAt > UNLOCK_MS -> {
+                        endUnlock()
+                        reply(out, 403, "application/json; charset=utf-8", """{"ok":false,"error":"expired"}""")
+                    }
+                    verifyPassword(context, password) -> {
+                        endUnlock() // one shot: the token never works twice
+                        reply(out, 200, "application/json; charset=utf-8", ok())
+                        main.post(done) // the dialog dismisses itself and the settings open, as if typed on the TV
+                    }
+                    ++unlockFails >= UNLOCK_TRIES -> {
+                        endUnlock()
+                        reply(out, 429, "application/json; charset=utf-8", """{"ok":false,"error":"too-many"}""")
+                    }
+                    else -> reply(out, 401, "application/json; charset=utf-8", """{"ok":false,"error":"wrong","tries":${UNLOCK_TRIES - unlockFails}}""")
+                }
+            }
+
             path == "/api/status" && method == "GET" -> {
                 val token = cookie(headers)
                 val authed = valid(token)
@@ -146,6 +213,7 @@ object WebAdminServer {
                         .put("interval", prefs.intervalMinutes)
                         .put("enabled", prefs.enabled)
                         .put("voice", prefs.voice)
+                        .put("bootQuiz", prefs.bootQuiz)
                         .put("categories", JSONArray(prefs.categories.toList()))
                         .put("next", prefs.nextTriggerAt)
                         .put("owner", QuizDeviceOwner.isOwner(context))
@@ -214,10 +282,12 @@ object WebAdminServer {
                 if (interval !in 1..1440) return reply(out, 400, "application/json; charset=utf-8", error("invalid interval"))
                 val prefs = QuizPrefs(context)
                 val voice = if (json.has("voice")) json.optBoolean("voice") else prefs.voice
+                val bootQuiz = if (json.has("bootQuiz")) json.optBoolean("bootQuiz") else prefs.bootQuiz
                 val categories = json.optJSONArray("categories")?.let { arr ->
                     (0 until arr.length()).map { arr.getString(it) }.filter { it.isNotBlank() }.toSet()
                 } ?: prefs.categories
                 prefs.save(age, interval, enabled, categories, voice)
+                prefs.bootQuiz = bootQuiz
                 QuizScheduler.reschedule(context)
                 QuizDeviceOwner.configure(context)
                 reply(out, 200, "application/json; charset=utf-8", ok())
@@ -524,4 +594,55 @@ object WebAdminServer {
         out.write(bytes)
         out.flush()
     }
+
+    /** The phone side of the TV's password dialog: one input, one button, nothing else. */
+    private val UNLOCK_PAGE = """
+<!doctype html>
+<html lang="zh"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>输入管理密码</title>
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+       background:#0e1933;color:#cbdaf3;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  .card{width:min(92vw,360px);background:#14233f;border:1px solid #27446c;border-radius:18px;padding:28px 24px;box-sizing:border-box}
+  h1{font-size:20px;margin:0 0 6px;color:#fff}
+  p{font-size:13px;margin:0 0 18px;color:#7d94b8}
+  input{width:100%;box-sizing:border-box;font-size:18px;padding:14px;border-radius:12px;border:1px solid #27446c;
+        background:#0c182e;color:#fff;outline:none}
+  input:focus{border-color:#ffd166}
+  button{width:100%;margin-top:14px;font-size:17px;padding:14px 0;border:0;border-radius:26px;
+         background:#ffd166;color:#1a2332;font-weight:600}
+  button:disabled{background:#27446c;color:#7d94b8}
+  .msg{margin-top:14px;font-size:14px;min-height:20px;text-align:center}
+  .err{color:#ff8a80}.ok{color:#a0ebbe}
+</style></head>
+<body><div class="card">
+  <h1>输入管理密码</h1>
+  <p>这是电视上密码框的扫码入口，输入正确后电视会自动解锁。</p>
+  <input id="p" type="password" autocomplete="off" placeholder="管理密码">
+  <button id="go">确认解锁</button>
+  <div id="m" class="msg"></div>
+</div>
+<script>
+const t = new URLSearchParams(location.search).get('t') || '';
+const el = document.getElementById('p'), go = document.getElementById('go'), m = document.getElementById('m');
+async function submit() {
+  go.disabled = true; m.className = 'msg'; m.textContent = '';
+  try {
+    const r = await fetch('/api/unlock', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({t: t, p: el.value})});
+    const j = await r.json();
+    if (j.ok) { m.className = 'msg ok'; m.textContent = '已解锁，回到电视即可'; el.value = ''; return; }
+    if (j.error === 'expired') { m.className = 'msg err'; m.textContent = '二维码已失效，请回电视重新扫码'; el.value = ''; return; }
+    if (j.error === 'too-many') { m.className = 'msg err'; m.textContent = '尝试次数过多，请回电视重新扫码'; el.value = ''; return; }
+    m.className = 'msg err'; m.textContent = '密码错误，还可尝试 ' + j.tries + ' 次'; el.value = ''; el.focus();
+  } catch (e) { m.className = 'msg err'; m.textContent = '连接失败，确认手机和电视在同一 Wi-Fi'; }
+  go.disabled = false;
+}
+go.onclick = submit;
+el.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+</script>
+</body></html>
+"""
 }

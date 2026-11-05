@@ -32,6 +32,16 @@ class QuizPrefs(context: Context) {
         get() = prefs.getStringSet(KEY_CATEGORIES, emptySet())!!.toSet()
         set(value) = prefs.edit().putStringSet(KEY_CATEGORIES, value).apply()
 
+    /** One question must be answered before the TV becomes usable after each power-on. On by default. */
+    var bootQuiz: Boolean
+        get() = prefs.getBoolean(KEY_BOOT_QUIZ, true)
+        set(value) = prefs.edit().putBoolean(KEY_BOOT_QUIZ, value).apply()
+
+    /** Set at power-on while the boot quiz is on; cleared when a question is answered correctly. */
+    var bootPending: Boolean
+        get() = prefs.getBoolean(KEY_BOOT_PENDING, false)
+        set(value) = prefs.edit().putBoolean(KEY_BOOT_PENDING, value).apply()
+
     fun save(age: Int, interval: Int, enabled: Boolean, categories: Set<String> = this.categories, voice: Boolean = this.voice) {
         prefs.edit()
             .putInt(KEY_AGE, age.coerceIn(5, 14))
@@ -50,5 +60,7 @@ class QuizPrefs(context: Context) {
         private const val KEY_NEXT = "next_trigger_at"
         private const val KEY_CATEGORIES = "categories"
         private const val KEY_VOICE = "voice_enabled"
+        private const val KEY_BOOT_QUIZ = "boot_quiz_enabled"
+        private const val KEY_BOOT_PENDING = "boot_quiz_pending"
     }
 }
