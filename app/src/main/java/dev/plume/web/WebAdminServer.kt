@@ -35,6 +35,10 @@ object WebAdminServer {
     private const val COOKIE = "session"
     private const val SESSION_MS = 24L * 60 * 60 * 1000
     private const val MIN_PASSWORD = 6
+    private const val MAX_BODY = 64L * 1024
+    private const val MAX_IMPORT_BODY = 8L * 1024 * 1024
+    private const val MAX_IMPORT_QUESTIONS = 5000
+    private const val MAX_IMPORT_ERRORS = 20
 
     private val sessions = HashMap<String, Long>()
     private val random = SecureRandom()
@@ -163,11 +167,20 @@ object WebAdminServer {
             val value = line.substringAfter(':').trim()
             headers[key] = value
         }
-        val body = if (method == "POST") readBody(input, headers["content-length"]?.toLongOrNull() ?: 0L) else ""
+        // Question bank imports carry whole files, so they get a much larger body budget.
+        val bodyLimit = if (path == "/api/questions/import") MAX_IMPORT_BODY else MAX_BODY
+        val body = if (method == "POST") readBody(input, headers["content-length"]?.toLongOrNull() ?: 0L, bodyLimit) else ""
 
         when {
             path == "/" && method == "GET" -> {
                 val page = context.assets.open("web_admin.html").use { it.readBytes() }.toString(Charsets.UTF_8)
+                reply(out, 200, "text/html; charset=utf-8", page)
+            }
+
+            // The standalone bulk-import page; like /stats it checks the session itself and sends
+            // the visitor to the console to log in when the cookie is missing.
+            path == "/import" && method == "GET" -> {
+                val page = context.assets.open("web_import.html").use { it.readBytes() }.toString(Charsets.UTF_8)
                 reply(out, 200, "text/html; charset=utf-8", page)
             }
 
@@ -475,12 +488,67 @@ object WebAdminServer {
                 reply(out, 200, "application/json; charset=utf-8", json.toString())
             }
 
-            path == "/api/question/add" && method == "POST" -> {
+            // Bulk import of an AI-generated question file. Every row is validated first; a single
+            // bad row fails the whole file with a row-by-row report, so a half-imported bank never happens.
+            path == "/api/questions/import" && method == "POST" -> {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
-                val (draft, failure) = parseDraft(body)
-                if (draft == null) return reply(out, 400, "application/json; charset=utf-8", error(failure ?: "invalid question"))
-                val id = bank(context).addCustom(draft.age, draft.category, draft.prompt, draft.options, draft.answerIndex, draft.explanation)
-                reply(out, 200, "application/json; charset=utf-8", JSONObject().put("ok", true).put("id", id).toString())
+                if (body.isEmpty()) return reply(out, 400, "application/json; charset=utf-8", error("请求体为空，或文件超过 8 MB 上限"))
+                val root = try {
+                    JSONObject(body)
+                } catch (_: Exception) {
+                    return reply(out, 400, "application/json; charset=utf-8", error("文件内容不是有效的 JSON"))
+                }
+                val array = root.optJSONArray("questions")
+                    ?: return reply(out, 400, "application/json; charset=utf-8", error("文件缺少 questions 数组"))
+                when {
+                    array.length() == 0 ->
+                        return reply(out, 400, "application/json; charset=utf-8", error("文件里没有任何题目"))
+                    array.length() > MAX_IMPORT_QUESTIONS ->
+                        return reply(out, 400, "application/json; charset=utf-8", error("一次最多导入 $MAX_IMPORT_QUESTIONS 题，本文件有 ${array.length()} 题，请拆分后再传"))
+                }
+                val replace = root.optString("mode") == "replace"
+                val drafts = ArrayList<QuestionBank.CustomDraft>(array.length())
+                val errors = JSONArray()
+                var failures = 0
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index)
+                    val failure = when {
+                        item == null -> "不是 JSON 对象"
+                        else -> validateImport(item)
+                    }
+                    if (failure != null) {
+                        failures++
+                        if (errors.length() < MAX_IMPORT_ERRORS) {
+                            errors.put(JSONObject().put("row", index + 1).put("reason", failure))
+                        }
+                    } else {
+                        val optionsJson = item!!.getJSONArray("options")
+                        drafts += QuestionBank.CustomDraft(
+                            age = item.getInt("age"),
+                            category = item.getString("category"),
+                            prompt = item.getString("question"),
+                            options = List(4) { optionsJson.getString(it) },
+                            answerIndex = item.getInt("answerIndex"),
+                            explanation = item.optString("explanation"),
+                        )
+                    }
+                }
+                if (failures > 0) {
+                    val json = JSONObject()
+                        .put("ok", false)
+                        .put("error", "$failures 道题格式不正确，整批未导入")
+                        .put("total", array.length())
+                        .put("failed", failures)
+                        .put("errors", errors)
+                    return reply(out, 400, "application/json; charset=utf-8", json.toString())
+                }
+                val result = bank(context).importCustom(drafts, replace)
+                val json = JSONObject()
+                    .put("ok", true)
+                    .put("imported", result.imported)
+                    .put("skipped", result.skipped)
+                    .put("replace", replace)
+                reply(out, 200, "application/json; charset=utf-8", json.toString())
             }
 
             path == "/api/question/update" && method == "POST" -> {
@@ -561,7 +629,7 @@ object WebAdminServer {
 
     private fun initialized(context: Context): Boolean = hasPassword(context)
 
-    /** Validated question fields shared by the add and update endpoints. */
+    /** Validated question fields used by the update endpoint. */
     private data class QuestionDraft(
         val age: Int,
         val category: String,
@@ -594,6 +662,24 @@ object WebAdminServer {
         } else {
             QuestionDraft(age, category, prompt, options, answerIndex, explanation) to null
         }
+    }
+
+    /**
+     * Field-level check of one imported question; returns a parent-readable Chinese reason on
+     * failure, null when the row is clean. Mirrors [QuestionBank]'s own validation.
+     */
+    private fun validateImport(item: JSONObject): String? {
+        if (!item.has("age") || item.optInt("age", -1) !in 5..14) return "age 必须是 5–14 的整数"
+        if (item.optString("category").trim().isEmpty()) return "category 不能为空"
+        if (item.optString("question").trim().isEmpty()) return "question 不能为空"
+        val options = item.optJSONArray("options")
+            ?: return "options 必须是 4 个互不相同的选项"
+        val texts = List(options.length()) { options.optString(it).trim() }
+        if (texts.size != 4 || texts.any { it.isEmpty() } || texts.toSet().size != 4) {
+            return "options 必须是 4 个互不相同的选项"
+        }
+        if (item.optInt("answerIndex", -1) !in 0..3) return "answerIndex 必须是 0–3（0 代表第一个选项）"
+        return null
     }
 
     private fun parseQuery(raw: String): Map<String, String> {
@@ -676,8 +762,8 @@ object WebAdminServer {
         throw IOException("header line too long")
     }
 
-    private fun readBody(input: InputStream, length: Long): String {
-        if (length <= 0L || length > 64 * 1024) return ""
+    private fun readBody(input: InputStream, length: Long, limit: Long): String {
+        if (length <= 0L || length > limit) return ""
         val buffer = ByteArray(length.toInt())
         var read = 0
         while (read < buffer.size) {

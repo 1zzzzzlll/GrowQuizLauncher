@@ -156,17 +156,57 @@ class QuestionBank(private val context: Context) {
         require(answerIndex in options.indices) { "answer index out of range" }
     }
 
-    /** Adds a parent-written question; returns its id. IDs get a "u-" prefix so they never clash with the bundled bank. */
+    /** One question from a bulk import file; field-level validation already done by the caller. */
+    data class CustomDraft(
+        val age: Int,
+        val category: String,
+        val prompt: String,
+        val options: List<String>,
+        val answerIndex: Int,
+        val explanation: String,
+    )
+
+    /** Bulk import outcome: [imported] new questions, [skipped] duplicates. */
+    data class ImportResult(val imported: Int, val skipped: Int)
+
+    /**
+     * Adds a batch of imported questions in one write. With [replace] the whole custom bank is
+     * swapped for the batch (retired questions lose their stats and disabled state); otherwise the
+     * batch appends, skipping prompts the custom bank already has. Duplicates inside the batch
+     * itself are skipped either way. IDs get a "u-" prefix so they never clash with the bundled bank.
+     */
     @Synchronized
-    fun addCustom(age: Int, category: String, prompt: String, options: List<String>, answerIndex: Int, explanation: String): String {
-        validateQuestion(age, category, prompt, options, answerIndex)
-        val custom = loadCustom().toMutableList()
-        val id = "u-" + java.lang.Long.toHexString(System.currentTimeMillis()) + "-" + java.lang.Integer.toHexString(Random.nextInt())
-        custom += Question(id, age, category.trim(), prompt.trim(), options.map { it.trim() }, answerIndex, explanation.trim(), custom = true)
+    fun importCustom(batch: List<CustomDraft>, replace: Boolean): ImportResult {
+        val old = loadCustom()
+        val custom = if (replace) ArrayList<Question>(batch.size) else old.toMutableList()
+        val seen = custom.map { dupKey(it.age, it.category, it.prompt) }.toHashSet()
+        var imported = 0
+        for (draft in batch) {
+            validateQuestion(draft.age, draft.category, draft.prompt, draft.options, draft.answerIndex)
+            if (!seen.add(dupKey(draft.age, draft.category.trim(), draft.prompt.trim()))) continue
+            val id = "u-" + java.lang.Long.toHexString(System.currentTimeMillis()) + "-" +
+                java.lang.Integer.toHexString(Random.nextInt()) + "-" + imported
+            custom += Question(id, draft.age, draft.category.trim(), draft.prompt.trim(), draft.options.map { it.trim() }, draft.answerIndex, draft.explanation.trim(), custom = true)
+            imported++
+        }
+        if (replace) {
+            val kept = custom.map { it.id }.toHashSet()
+            val removed = old.map { it.id }.filter { it !in kept }
+            if (removed.isNotEmpty()) {
+                setDisabled(removed, false)
+                val editor = stats.edit()
+                for (id in removed) editor.remove(KEY_CORRECT + id)
+                editor.apply()
+            }
+        }
         saveCustom(custom)
         reload()
-        return id
+        return ImportResult(imported, batch.size - imported)
     }
+
+    /** Two imported questions are the same when age, category and prompt all match. */
+    private fun dupKey(age: Int, category: String, prompt: String): String =
+        "$age|" + category.trim() + "|" + prompt.trim()
 
     /** Edits a parent-written question in place, keeping its id so stats and disabled state survive. */
     @Synchronized

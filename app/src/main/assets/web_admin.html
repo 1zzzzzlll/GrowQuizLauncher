@@ -161,7 +161,7 @@
       </div>
 
       <div style="margin-top:16px">
-        <button id="bankBtn" class="primary">题库管理（出题 · 编辑 · 禁用）</button>
+        <button id="bankBtn" class="primary">题库管理（导入 · 编辑 · 禁用）</button>
       </div>
 
       <div style="margin-top:12px; display:flex; gap:12px; flex-wrap:wrap">
@@ -175,8 +175,8 @@
     </div>
 
     <div id="maker" class="card hidden">
-      <h2 id="makerTitle">自定义出题</h2>
-      <p class="muted" style="margin-top:0">自己出的题会和内置题库一起随机出现；分类可以随意填写，也可以从已有分类中选。内置题也能在下方列表里点「编辑」生成修改版。</p>
+      <h2 id="makerTitle">编辑题目</h2>
+      <p class="muted" style="margin-top:0">在下方题目列表点「编辑」后，这里会载入该题内容；自定义题直接改原题，内置题保存为「修改版」，原题可随时恢复。</p>
       <div class="row">
         <div class="field">
           <label>适合年龄</label>
@@ -215,8 +215,8 @@
         </div>
       </div>
       <div style="display:flex;gap:12px">
-        <button id="cqBtn" class="primary" style="flex:1">保存题目</button>
-        <button id="cqCancelBtn" class="ghost hidden" style="flex:1">取消编辑</button>
+        <button id="cqBtn" class="primary" style="flex:1">保存修改</button>
+        <button id="cqCancelBtn" class="ghost" style="flex:1">取消编辑</button>
       </div>
       <div id="cqMsg" class="msg"></div>
     </div>
@@ -245,6 +245,9 @@
           </select>
         </div>
       </div>
+      <div class="actions" style="grid-template-columns:1fr">
+        <button id="bkImport" class="primary">批量导入题库（AI 生成 · 上传导入）</button>
+      </div>
       <div class="actions">
         <button id="bkLoad" class="ghost">刷新列表</button>
         <button id="bkPickAll" class="ghost">全选 / 全不选</button>
@@ -258,7 +261,7 @@
       <div id="bkMsg" class="msg"></div>
       <div id="bkList" class="qlist hidden"></div>
       <div id="bkPager" class="pager hidden"></div>
-      <div class="footer">每页 10 题；勾选、批量启停只作用于当前页。「自定义」分类代表全部自己出的题；同一道题答对满 5 次会自动禁用；内置题可「编辑」生成修改版（随时「恢复原题」）但不能删除，自定义题可编辑、可删除。</div>
+      <div class="footer">每页 10 题；勾选、批量启停只作用于当前页。「自定义」分类代表全部批量导入的题（点上方按钮打开导入页，附 AI 出题教程）；同一道题答对满 5 次会自动禁用；内置题可「编辑」生成修改版（随时「恢复原题」）但不能删除，导入的自定义题可编辑、可删除。</div>
     </div>
 
     <div id="passwd" class="card hidden">
@@ -286,8 +289,9 @@
     const msg = (el, text, ok) => { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); };
     const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const HOME_CARDS = ['panel', 'passwd'];
-    const BANK_CARDS = ['maker', 'bank'];
-    const ALL_CARDS = ['setup', 'login', ...HOME_CARDS, ...BANK_CARDS];
+    const BANK_CARDS = ['bank'];
+    // The edit form stays hidden until a row's 编辑 button opens it; show() never reveals it.
+    const ALL_CARDS = ['setup', 'login', ...HOME_CARDS, 'maker', ...BANK_CARDS];
     let authed = false;
     const show = id => ALL_CARDS.forEach(s =>
       $(s).classList.toggle('hidden',
@@ -441,7 +445,7 @@
       } catch (e) { msg($('ttsMsg'), e.message, false); }
     };
 
-    // ---------- 自定义出题 / 编辑题目 ----------
+    // ---------- 编辑题目（表单仅编辑用，手动录题已移至批量导入页） ----------
 
     let editingId = null;
 
@@ -454,19 +458,16 @@
       [0, 1, 2, 3].forEach(i => $('cqOpt' + i).value = (q.options && q.options[i]) || '');
       $('cqAnswer').value = q.answerIndex;
       $('cqExplanation').value = q.explanation || '';
-      $('cqBtn').textContent = '保存修改';
-      $('cqCancelBtn').classList.remove('hidden');
       msg($('cqMsg'), q.custom
         ? '正在编辑这道自定义题，保存后立即生效'
         : '内置题：保存后生成「修改版」，原题不会丢，可随时在列表里点「恢复原题」', true);
+      $('maker').classList.remove('hidden');
       $('maker').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     function resetMaker() {
       editingId = null;
-      $('makerTitle').textContent = '自定义出题';
-      $('cqBtn').textContent = '保存题目';
-      $('cqCancelBtn').classList.add('hidden');
+      $('maker').classList.add('hidden');
       $('cqCategory').value = '';
       $('cqQuestion').value = '';
       [0, 1, 2, 3].forEach(i => $('cqOpt' + i).value = '');
@@ -478,6 +479,7 @@
     $('cqCancelBtn').onclick = resetMaker;
 
     $('cqBtn').onclick = async () => {
+      if (!editingId) return;
       const options = [0, 1, 2, 3].map(i => $('cqOpt' + i).value.trim());
       const payload = {
         age: Number($('cqAge').value),
@@ -488,21 +490,15 @@
         explanation: $('cqExplanation').value.trim()
       };
       try {
-        if (editingId) {
-          await api('/api/question/update', { id: editingId, ...payload });
-          resetMaker();
-          msg($('cqMsg'), '修改已保存', true);
-        } else {
-          await api('/api/question/add', payload);
-          msg($('cqMsg'), '已保存，宝贝答题时可能会抽到它', true);
-          $('cqQuestion').value = '';
-          [0, 1, 2, 3].forEach(i => $('cqOpt' + i).value = '');
-          $('cqExplanation').value = '';
-        }
+        await api('/api/question/update', { id: editingId, ...payload });
+        resetMaker();
+        msg($('bkMsg'), '修改已保存', true);
         await loadCategories();
         await loadBank();
       } catch (e) { msg($('cqMsg'), e.message, false); }
     };
+
+    $('bkImport').onclick = () => window.open('/import', '_blank');
 
     // ---------- 题库管理 ----------
 

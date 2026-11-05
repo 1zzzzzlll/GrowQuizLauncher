@@ -14,6 +14,14 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.11.0
+
+- **新增批量导入题库。** 控制台新增独立导入页。上传 AI 生成的题库文件即可批量加题。
+- **导入页附 AI 出题教程。** 教程说明文件格式、字段要求和生成步骤。附可复制的提示词模板。
+- **导入前逐题校验。** 任一题格式错误则整批拒绝。页面列出每道错题的位置和原因。重复题自动跳过。
+- **支持追加或替换。** 追加模式保留已有自定义题。替换模式清空后重建。
+- **移除手动录题入口。** 控制台的单题录入表单已删除。编辑和删除功能保留。
+
 ## 1.10.1
 
 - 修复题库源数据的重复条目。重新生成全部 30000 题。题目内容更丰富。
