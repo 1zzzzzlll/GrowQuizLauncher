@@ -18,6 +18,11 @@ class QuizPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_ENABLED, value).apply()
 
+    /** Parents can turn the question read-aloud off from the web console (e.g. for a silent evening). */
+    var voice: Boolean
+        get() = prefs.getBoolean(KEY_VOICE, true)
+        set(value) = prefs.edit().putBoolean(KEY_VOICE, value).apply()
+
     var nextTriggerAt: Long
         get() = prefs.getLong(KEY_NEXT, 0L)
         set(value) = prefs.edit().putLong(KEY_NEXT, value).apply()
@@ -27,12 +32,13 @@ class QuizPrefs(context: Context) {
         get() = prefs.getStringSet(KEY_CATEGORIES, emptySet())!!.toSet()
         set(value) = prefs.edit().putStringSet(KEY_CATEGORIES, value).apply()
 
-    fun save(age: Int, interval: Int, enabled: Boolean, categories: Set<String> = this.categories) {
+    fun save(age: Int, interval: Int, enabled: Boolean, categories: Set<String> = this.categories, voice: Boolean = this.voice) {
         prefs.edit()
             .putInt(KEY_AGE, age.coerceIn(5, 14))
             .putInt(KEY_INTERVAL, interval.coerceIn(1, 1440))
             .putBoolean(KEY_ENABLED, enabled)
             .putStringSet(KEY_CATEGORIES, categories)
+            .putBoolean(KEY_VOICE, voice)
             .commit()
     }
 
@@ -43,5 +49,6 @@ class QuizPrefs(context: Context) {
         private const val KEY_ENABLED = "enabled"
         private const val KEY_NEXT = "next_trigger_at"
         private const val KEY_CATEGORIES = "categories"
+        private const val KEY_VOICE = "voice_enabled"
     }
 }

@@ -14,6 +14,13 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.7.0
+
+- **管理后台可关闭语音朗读。** 控制台新增「语音朗读题目」开关；关闭后答题只显示文字。
+- **QQ 群二维码修复。** 二维码改由应用直接绘制，内容与群卡片一致，扫描更稳。
+- **密码框按钮更清楚。** 确认按钮在深色背景下清晰可见，取消按钮改为中文。
+- **新增遥控器专用键说明。** 说明拦截 Netflix 等一键直达键的方法。
+
 ## 1.6.1
 
 - **启动提示自适应屏幕。** 提示框按屏幕分辨率调整大小，内容过长时可滚动，小屏电视也能看全。

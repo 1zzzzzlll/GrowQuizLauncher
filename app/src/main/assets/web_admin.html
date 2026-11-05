@@ -114,6 +114,11 @@
         <label for="enabled" style="margin:0">开启定时答题</label>
       </div>
 
+      <div class="field switch">
+        <input id="voice" type="checkbox">
+        <label for="voice" style="margin:0">语音朗读题目（关闭后答题时只显示文字，不再念题）</label>
+      </div>
+
       <div class="actions">
         <button id="saveBtn" class="primary">保存设置</button>
         <button id="startBtn" class="success">立即开始答题</button>
@@ -289,11 +294,12 @@
       $('age').value = s.age;
       $('interval').value = s.interval;
       $('enabled').checked = s.enabled;
+      $('voice').checked = s.voice !== false;
       $('stAge').textContent = s.age + ' 岁';
       $('stInterval').textContent = s.interval + ' 分钟';
       $('stNext').textContent = s.enabled ? fmtTime(s.next) : '已停用';
       const tts = { 'available': '可用', 'initializing': '检测中…' }[s.tts] || (s.tts === 'no-engine' ? '不可用（无引擎）' : s.tts === 'no-language' ? '不可用（缺中文语音）' : s.tts);
-      $('stTts').textContent = tts;
+      $('stTts').textContent = s.voice === false ? '已关闭' : tts;
       authed = true;
       route();
       await loadCategories(s.categories || []);
@@ -341,6 +347,7 @@
           age: Number($('age').value),
           interval: Number($('interval').value),
           enabled: $('enabled').checked,
+          voice: $('voice').checked,
           categories
         });
         msg($('panelMsg'), '已保存', true);

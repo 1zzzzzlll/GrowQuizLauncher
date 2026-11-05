@@ -89,6 +89,7 @@ class QuizActivity : Activity() {
     /** No TTS engine (or no usable language) on this device: say so once, instead of reading nothing in silence. */
     private fun ttsMissing() {
         if (isFinishing || ttsNoted) return
+        if (!QuizPrefs(this).voice) return // narration is off anyway: no engine toast would only confuse
         ttsNoted = true
         Toast.makeText(this, "本机没有可用的语音（TTS）引擎，无法朗读题目", Toast.LENGTH_LONG).show()
     }
@@ -175,6 +176,7 @@ class QuizActivity : Activity() {
     /** Reads the current question and its options aloud, then keeps repeating every 20 seconds. */
     private fun startReading() {
         stopReading()
+        if (!QuizPrefs(this).voice) return // the parents turned narration off in the web console
         speakLoop.run()
     }
 
