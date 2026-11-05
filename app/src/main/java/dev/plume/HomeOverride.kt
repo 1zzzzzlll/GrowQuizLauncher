@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -17,6 +18,7 @@ import android.view.accessibility.AccessibilityEvent
  * the system sees it and open our home directly; Google TV never flashes up. Holding Home still opens the
  * Google TV dashboard. Covering Google TV whenever it shows stays as the fallback for anything else that
  * opens it (e.g. Back out of the last app). On Fire TV that cover is the only way: Fire OS keeps Home to itself.
+ * On MIUI TV the cover also restores Plume after a restart, when MIUI hands the home role back to its own launcher.
  */
 class HomeOverride : AccessibilityService() {
     override fun onServiceConnected() {
@@ -93,8 +95,9 @@ class HomeOverride : AccessibilityService() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private val watch by lazy { HomeWatch(fireTv(this)) { googleHomes } }
+    private val watch by lazy { HomeWatch(fireTv(this), { googleHomes }, { stock }) }
     private var googleHomes = emptySet<String>()
+    private var stock = emptyMap<String, Set<String>>()
     private var listening = false
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) = loadHomes()
@@ -110,13 +113,30 @@ class HomeOverride : AccessibilityService() {
         after?.let { handler.postDelayed(jump, it) }
     }
 
-    /** The Google TV launcher's home screens, asked of the system when the service starts and when a package changes. */
+    /**
+     * Every launcher's home screens, asked of the system when the service starts and when a package changes.
+     * Besides the standard Home intent, the vendor query catches launchers that declare only a private home
+     * category (Coocaa's HOME.CC and the like), so the cover works on domestic TVs without a hardcoded list.
+     * Read again on every package change: a guard bound while the stock launcher was disabled would keep
+     * ignoring it after `pm enable` otherwise.
+     */
     private fun loadHomes() {
         val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        googleHomes = googleTvHomes(packageManager.queryIntentActivities(home, 0).map {
+        val found = packageManager.queryIntentActivities(home, 0).map {
             val a = it.activityInfo
             HomeEntry(a.packageName, a.name, a.targetActivity)
-        })
+        }
+        googleHomes = googleTvHomes(found)
+        val vendor = runCatching {
+            packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN), PackageManager.GET_RESOLVED_FILTER)
+                .filter { it.filter?.categoriesIterator()?.asSequence()?.any(HomeWatch::isVendorHomeCategory) == true }
+                .map {
+                    val a = it.activityInfo
+                    HomeEntry(a.packageName, a.name, a.targetActivity)
+                }
+        }.getOrDefault(emptyList())
+        val resolved = packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        stock = stockHomes(found + vendor, resolved)
     }
 
     // Marked as Home so the setup check can tell it from Plume being opened from the apps list.
