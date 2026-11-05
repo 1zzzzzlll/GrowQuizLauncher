@@ -12,7 +12,11 @@ class HomeWatchTest {
     private val gtvHome = "$gtv.home.HomeActivity"
     private val gtvKids = "$gtv.home.VanillaModeHomeActivity"
     private val oldFire = "com.amazon.firelauncher"
-    private fun watch(fire: Boolean = true, homes: Set<String> = setOf(gtvHome, gtvKids)) = HomeWatch(fire) { homes }
+    private fun watch(
+        fire: Boolean = true,
+        homes: Set<String> = setOf(gtvHome, gtvKids),
+        stock: Map<String, Set<String>> = emptyMap(),
+    ) = HomeWatch(fire, { homes }, { stock })
 
     @Test fun amazonHomeFromAnAppJumpsAtOnce() {
         val w = watch()
@@ -95,6 +99,90 @@ class HomeWatchTest {
         val w = watch(fire = false, homes = emptySet())
         assertEquals(0L, w.opened(gtv, gtvHome, 1_000))
         assertNull(w.opened(gtv, "$gtv.dashboard.DashboardActivity", 3_000))
+    }
+
+    // MIUI TV hands the home role back to com.mitv.tvhome on every boot, so its home screen gets covered.
+    @Test fun xiaomiHomeJumpsAtOnce() {
+        val w = watch(fire = false)
+        w.opened("dev.plume.growquiz", "dev.plume.MainActivity", 1_000)
+        assertEquals(0L, w.opened("com.mitv.tvhome", "com.mitv.tvhome.MainActivityUserMode", 2_000))
+    }
+
+    @Test fun theOlderXiaomiHomeCounts() {
+        assertEquals(0L, watch(fire = false).opened("com.mitv.tvhome", "com.mitv.tvhome.HomeActivity", 1_000))
+    }
+
+    // PatchWall's boot cover comes up some 20 s into a boot; covering it skips the wait after a restart.
+    @Test fun theXiaomiBootCoverCounts() {
+        assertEquals(0L, watch(fire = false).opened("com.mitv.tvhome", "com.mitv.tvhome.BootActivity", 1_000))
+    }
+
+    @Test fun otherXiaomiLauncherWindowsAreLeftAlone() {
+        val w = watch(fire = false)
+        assertNull(w.opened("com.mitv.tvhome", "com.mitv.tvhome.settings.SettingsActivity", 1_000))
+        assertNull(w.opened("com.mitv.tvhome", "android.widget.FrameLayout", 2_000))
+    }
+
+    // Domestic launchers a firmware starts by component, hidden from any Home query (see FIRMWARE_HOMES).
+    @Test fun firmwareHomesJumpAtOnce() {
+        val w = watch(fire = false)
+        for ((i, home) in listOf(
+            "com.tcl.cyberui" to "com.tcl.cyberui.MainActivity",
+            "com.jamdeo.tv.vod" to "com.ju.main.launcher.LauncherActivity",
+            "com.coocaa.aigc.home" to "com.coocaa.aigc.home.home.rootpage.HomeActivity",
+            "com.tianci.movieplatform" to "com.coocaa.homepage.vast.HomePageActivity",
+            "com.mitv.tvhome.atv" to "com.mitv.tvhome.atv.app.PatchWallActivity",
+            "com.stv.deskplatform" to "com.stv.deskplatform.ui.activity.Launcher",
+            "com.ktcp.launcher" to "com.ktcp.launcher.activity.LauncherHomeSingleTaskActivity",
+        ).withIndex()) {
+            assertEquals(home.first, 0L, w.opened(home.first, home.second, 1_000L + i * 1_000))
+        }
+    }
+
+    @Test fun aScreenNotListedAsAFirmwareHomeIsLeftAlone() {
+        assertNull(watch(fire = false).opened("com.tcl.cyberui", "com.tcl.cyberui.settings.SettingsActivity", 1_000))
+    }
+
+    // Home screens the system lists, on a TV whose vendor hid nothing: the query alone is enough.
+    @Test fun aStockHomeFromTheSystemListJumpsAtOnce() {
+        val w = watch(fire = false, stock = mapOf("com.skyworth.officehomepage" to setOf("com.skyworth.officehomepage.HomeActivity")))
+        w.opened("dev.plume.growquiz", "dev.plume.MainActivity", 1_000)
+        assertEquals(0L, w.opened("com.skyworth.officehomepage", "com.skyworth.officehomepage.HomeActivity", 2_000))
+    }
+
+    @Test fun aStockHomeWindowOfAnotherClassIsLeftAlone() {
+        val w = watch(fire = false, stock = mapOf("com.tcl.cyberui" to setOf("com.tcl.cyberui.MainActivity")))
+        assertNull(w.opened("com.tcl.cyberui", "com.tcl.cyberui.OtherActivity", 1_000))
+    }
+
+    @Test fun theStockHomesAreGroupedByPackageWithoutPlume() {
+        val found = listOf(
+            entry(gtv, gtvHome),
+            entry("dev.plume.growquiz", "dev.plume.MainActivity"),
+            entry("com.ktcp.launcher", "com.ktcp.launcher.LauncherMainActivity", target = "com.ktcp.launcher.activity.LauncherHomeSingleTaskActivity"),
+        )
+        assertEquals(
+            mapOf(
+                gtv to setOf(gtvHome),
+                "com.ktcp.launcher" to setOf("com.ktcp.launcher.LauncherMainActivity", "com.ktcp.launcher.activity.LauncherHomeSingleTaskActivity"),
+            ),
+            stockHomes(found, resolved = "dev.plume.growquiz"),
+        )
+    }
+
+    // TCL 85G60E lists com.tcl.tv as a Home next to its launcher; the cover must not take back every input switch.
+    @Test fun aTvPlayerCountsOnlyWhereItIsTheResolvedHome() {
+        val player = entry("com.tcl.tv", "com.tcl.tv.TVActivity")
+        assertEquals(emptyMap<String, Set<String>>(), stockHomes(listOf(player), resolved = "com.tcl.cyberui"))
+        assertEquals(mapOf("com.tcl.tv" to setOf("com.tcl.tv.TVActivity")), stockHomes(listOf(player), resolved = "com.tcl.tv"))
+    }
+
+    @Test fun vendorHomeCategories() {
+        assert(HomeWatch.isVendorHomeCategory("android.intent.category.HOME.CC"))
+        assert(HomeWatch.isVendorHomeCategory("smartdevice.intent.category.LITE_HOME"))
+        assert(!HomeWatch.isVendorHomeCategory("android.intent.category.SECONDARY_HOME"))
+        assert(!HomeWatch.isVendorHomeCategory("com.cvte.factory.at.CVTE_AT_HOME"))
+        assert(!HomeWatch.isVendorHomeCategory("android.intent.category.LAUNCHER"))
     }
 
     @Test fun aWindowWithoutAClassIsLeftAlone() {

@@ -656,6 +656,11 @@ class MainActivity : Activity() {
             isClickable = true
             elevation = dp(100).toFloat()
         }
+        // GrowQuiz: the covered launcher items stay focusable while the prompt is up. Block them, so a D-pad
+        // press can never wander to what the viewer cannot see; restored when the prompt closes.
+        val covered = (0 until root.childCount).map { root.getChildAt(it) }.filterIsInstance<ViewGroup>()
+            .map { it to it.descendantFocusability }
+        covered.forEach { (view, _) -> view.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS }
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(if (small) 26 else 44), dp(if (small) 22 else 34), dp(if (small) 26 else 44), dp(if (small) 20 else 30))
@@ -702,6 +707,10 @@ class MainActivity : Activity() {
         }
         card.addView(scroll, LinearLayout.LayoutParams(MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val ok = android.widget.Button(this).apply {
+            // GrowQuiz: a TV can still be in touch mode here (a mouse or a touch during setup), and then the
+            // posted requestFocus() below silently fails — the D-pad falls through to the covered launcher
+            // items under the overlay. Focusable in touch mode, the first focus always lands on this button.
+            isFocusableInTouchMode = true
             text = getString(R.string.web_admin_prompt_button)
             textSize = if (small) 18f else 22f
             isAllCaps = false
@@ -709,6 +718,7 @@ class MainActivity : Activity() {
             backgroundTintList = ColorStateList.valueOf(Color.rgb(255, 209, 102))
             minHeight = dp(if (small) 48 else 64)
             setOnClickListener {
+                covered.forEach { (view, before) -> view.descendantFocusability = before }
                 root.removeView(overlay)
                 webPromptShown = false // allows the menu's 后台管理 button to bring the prompt up again
                 if (quizAfterOk && dev.plume.quiz.QuizPrefs(this@MainActivity).bootQuiz) {
@@ -847,11 +857,25 @@ class MainActivity : Activity() {
     }
 
     private fun fireTv() = fakeDevice?.let { it == "fire" } ?: HomeOverride.fireTv(this)
+
+    /**
+     * MIUI TV (Xiaomi) hands the home role back to its own launcher (com.mitv.tvhome) on every boot, so the
+     * default-home route does not survive a restart. Like Google TV, only the Home button service works there.
+     */
+    private fun xiaomiTv() = fakeDevice?.let { it == "xiaomi" } ?: listOf(HomeWatch.MITV, HomeWatch.MITV_ATV).any { pkg ->
+        try {
+            val app = packageManager.getApplicationInfo(pkg, 0)
+            val setting = packageManager.getApplicationEnabledSetting(pkg)
+            isGoogleTvLauncher(app.enabled, setting) // same rule: present and not disabled
+        } catch (e: Exception) {
+            false
+        }
+    }
     private fun sdk() = if (fakeSdk > 0) fakeSdk else Build.VERSION.SDK_INT
 
     /**
      * Debug builds: act as another TV and start setup as on a first launch, to walk each device's popups here.
-     * adb shell am start -n dev.plume/.MainActivity --es fake_device fire|google|stock|real --ei fake_sdk 33
+     * adb shell am start -n dev.plume/.MainActivity --es fake_device fire|google|xiaomi|stock|real --ei fake_sdk 33
      * Only the setup's choices change; the TV's own screens and Home key stay what they are.
      */
     private fun fakeSetup(intent: Intent?): Boolean {
@@ -864,12 +888,13 @@ class MainActivity : Activity() {
     }
 
     /** Home opens Plume one way or the other: the service anywhere, the role only where the TV honours it. */
-    private fun homeSetUp() = homeServiceOn() || (isDefaultHome() && !googleTv() && !fireTv())
+    private fun homeSetUp() = homeServiceOn() || (isDefaultHome() && !googleTv() && !fireTv() && !xiaomiTv())
 
     private fun startHomeSetup() {
         restrictedTried = false
         // Fire OS takes the role request and ignores it; Google TV grants it and still opens its own launcher.
-        if (fireTv() || googleTv()) return tryHomeService()
+        // MIUI TV grants it too, then hands the role back to its own launcher on every boot.
+        if (fireTv() || googleTv() || xiaomiTv()) return tryHomeService()
         val roles = if (Build.VERSION.SDK_INT >= 29) getSystemService(RoleManager::class.java) else null
         if (roles != null && roles.isRoleAvailable(RoleManager.ROLE_HOME) && !roles.isRoleHeld(RoleManager.ROLE_HOME)) rolePopup()
         else afterHomeRole()
