@@ -133,6 +133,7 @@
     <string name="enter_admin_password">输入管理密码</string>
     <string name="admin_password_required">此设置已被管理密码保护</string>
     <string name="admin_password_hint">请用遥控器输入管理密码，按方向键移动，OK 键确认</string>
+    <string name="admin_password_qr_hint">或用手机扫描二维码，在手机上输入密码（同一 Wi-Fi）</string>
     <string name="confirm_button">确认</string>
     <string name="choose_pin">设置 PIN</string>
     <string name="enter_again">再次输入</string>

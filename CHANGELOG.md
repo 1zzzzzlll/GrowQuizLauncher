@@ -14,6 +14,13 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.8.0
+
+- **开机先答一题。** 每次开机，先答对一道题。答对后电视才可以使用。
+- **管理后台可关闭开机答题。** 控制台新增「开机先答一题」开关。该开关默认开启。
+- **手机扫码输入密码。** 密码框新增二维码；手机扫码后在手机上输入密码，电视自动解锁，小孩看不到。
+- **管理端地址可扫码直达。** 启动提醒弹窗新增二维码，手机扫码直接打开管理控制台。
+
 ## 1.7.1
 
 - **密码输入改为星号。** 设置页输入管理密码时显示 *，键盘预览也不再泄露内容。

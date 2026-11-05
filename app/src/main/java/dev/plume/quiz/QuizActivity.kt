@@ -219,6 +219,7 @@ class QuizActivity : Activity() {
 
     private fun finishAfterCorrect() {
         justFinished = true // MainActivity skips the admin prompt right after a quiz
+        QuizPrefs(this).bootPending = false // the boot quiz is owed until a question is answered
         if (lockActive) {
             stopLockTask()
             lockActive = false
