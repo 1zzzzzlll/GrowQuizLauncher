@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>宝贝成长桌面 · 学习报告</title>
+  <style>
+    :root{--bg:#0b1526;--card:#14233f;--card2:#0f1c33;--line:#27446c;--text:#eef4ff;--muted:#9fb3d6;--gold:#ffd166;--green:#2ea67b;--red:#d9534f;--blue:#3d7bfd}
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#08101f,#0b1526);color:var(--text);font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .wrap{max-width:760px;margin:0 auto;padding:24px 18px 40px}
+    .brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}.brand h1{font-size:22px;margin:0}.brand p{margin:2px 0 0;color:var(--muted);font-size:14px}
+    .card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h2{font-size:18px;margin:0 0 14px}.muted{color:var(--muted)}
+    .link{color:var(--gold);text-decoration:none}.link:hover{text-decoration:underline}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    .tabs button{flex:1;min-width:64px;padding:10px 6px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted);font:inherit;font-size:14px;cursor:pointer}
+    .tabs button.on{background:var(--gold);color:#1a2332;font-weight:600;border-color:var(--gold)}
+    .level{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+    .level .icon{font-size:52px;line-height:1}
+    .level .name{font-size:26px;font-weight:700}
+    .level .score{color:var(--muted);font-size:14px;margin-top:2px}
+    .bar{height:10px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:10px}
+    .bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#ffd166,#8fd0ff);transition:width .4s}
+    .barhint{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:4px}
+    .ladder{display:flex;gap:6px;flex-wrap:wrap;margin-top:16px}
+    .ladder span{padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-size:13px;background:rgba(255,255,255,.03)}
+    .ladder span.on{color:#1a2332;font-weight:700;border-color:transparent}
+    .status{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .pill{padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--line)}
+    .pill .k{color:var(--muted);font-size:13px;margin-bottom:4px}.pill .v{font-size:17px;font-weight:600}
+    .pill .v.good{color:#9de8c6}.pill .v.bad{color:#ffb3b3}
+    .cat{margin-bottom:12px}
+    .cat .row{display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px}
+    .cat .track{height:8px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden}
+    .cat .track i{display:block;height:100%;background:var(--green);border-radius:5px}
+    .cat .track i.low{background:var(--gold)}.cat .track i.weak{background:var(--red)}
+    .chart{width:100%;height:auto;display:block}
+    .legend{display:flex;gap:14px;color:var(--muted);font-size:12px;margin-top:8px;flex-wrap:wrap}
+    .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+    .wrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+    .wrow:last-child{border-bottom:0}
+    .wrow .badge{flex:none;font-size:12px;padding:2px 8px;border-radius:8px;background:rgba(217,83,79,.18);color:#ffb3b3}
+    .wrow .q{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .empty{color:var(--muted);text-align:center;padding:30px 10px;font-size:15px}
+    .hidden{display:none!important}
+    .footer{margin-top:10px;color:var(--muted);font-size:13px;text-align:center}
+    @media (max-width:640px){.status{grid-template-columns:1fr 1fr}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div>
+        <h1>📊 宝贝学习报告</h1>
+        <p>按时间维度查看答题学习与看电视情况 · <a class="link" href="/">返回控制台</a></p>
+      </div>
+    </div>
+
+    <div id="auth" class="card hidden">
+      <h2>需要先登录</h2>
+      <p class="muted">学习报告需要管理密码。请先打开控制台登录，再回到本页。</p>
+      <p><a class="link" href="/">去控制台登录 →</a></p>
+    </div>
+
+    <div id="report" class="hidden">
+      <div class="tabs" id="tabs">
+        <button data-range="all">整体</button>
+        <button data-range="year">年度</button>
+        <button data-range="half">半年</button>
+        <button data-range="quarter">季度</button>
+        <button data-range="month" class="on">月度</button>
+        <button data-range="week">周度</button>
+      </div>
+
+      <div class="card">
+        <h2>当前等级</h2>
+        <div class="level">
+          <div class="icon" id="lvIcon">🌱</div>
+          <div>
+            <div class="name" id="lvName">--</div>
+            <div class="score" id="lvScore">--</div>
+          </div>
+        </div>
+        <div class="bar"><i id="lvBar" style="width:0%"></i></div>
+        <div class="barhint"><span id="lvFrom">0</span><span id="lvTo">--</span></div>
+        <div class="ladder" id="ladder"></div>
+      </div>
+
+      <div class="card">
+        <h2 id="sumTitle">学习情况</h2>
+        <div class="status">
+          <div class="pill"><div class="k">答题总数</div><div class="v" id="stAttempts">--</div></div>
+          <div class="pill"><div class="k">答对 / 答错</div><div class="v" id="stCorrect">--</div></div>
+          <div class="pill"><div class="k">正确率</div><div class="v" id="stAccuracy">--</div></div>
+          <div class="pill"><div class="k">重复答错</div><div class="v" id="stRepeat">--</div></div>
+          <div class="pill"><div class="k">积分变化</div><div class="v" id="stDelta">--</div></div>
+          <div class="pill"><div class="k">活跃天数</div><div class="v" id="stDays">--</div></div>
+          <div class="pill" style="grid-column:1/-1"><div class="k">看电视时长</div><div class="v" id="stTv">--</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>知识点掌握分布</h2>
+        <div id="cats"><div class="empty">暂无数据</div></div>
+      </div>
+
+      <div class="card">
+        <h2>学习活跃度与正确率</h2>
+        <div id="quizChart"></div>
+        <div class="legend">
+          <span><i style="background:#3d7bfd"></i>答题数</span>
+          <span><i style="background:#ffd166"></i>正确率</span>
+          <span><i style="background:#d9534f"></i>答错数</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>看电视时长</h2>
+        <div id="tvChart"></div>
+        <div class="legend"><span><i style="background:#ff9f6b"></i>观看分钟</span></div>
+      </div>
+
+      <div class="card">
+        <h2>高频错题 TOP5</h2>
+        <div id="wrongs"><div class="empty">暂无数据</div></div>
+      </div>
+
+      <div class="footer">所有数据只保存在这台电视上 · 建议每周看一次，多鼓励宝贝 🌟</div>
+    </div>
+  </div>
+
+<script>
+const RANKS = ["塑料","铁","铜","白银","黄金","铂金","钻石"];
+const RANK_COLORS = ["#a8b3c1","#7b8ca3","#d08a4e","#d7dee8","#ffd166","#8fe8d8","#8fd0ff"];
+const RANK_ICONS = ["🌱","🪨","🥉","🥈","🥇","💠","💎"];
+let range = "month";
+
+document.getElementById("tabs").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-range]");
+  if (!btn) return;
+  range = btn.dataset.range;
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b === btn));
+  load();
+});
+
+function fmtMinutes(min) {
+  if (!min) return "0 分钟";
+  if (min < 60) return min + " 分钟";
+  return Math.floor(min / 60) + " 小时 " + (min % 60) + " 分";
+}
+function pct(v) { return Math.round(v * 100) + "%"; }
+
+async function load() {
+  let j;
+  try {
+    const r = await fetch("/api/stats?range=" + range, {credentials: "same-origin"});
+    j = await r.json();
+  } catch (e) {
+    document.getElementById("auth").classList.remove("hidden");
+    return;
+  }
+  if (!j.ok || !j.level) {
+    document.getElementById("auth").classList.remove("hidden");
+    return;
+  }
+  document.getElementById("auth").classList.add("hidden");
+  document.getElementById("report").classList.remove("hidden");
+  render(j);
+}
+
+function render(j) {
+  const lv = j.level, rankIdx = Math.floor(lv.tier / 4);
+  document.getElementById("lvIcon").textContent = lv.icon;
+  const nameEl = document.getElementById("lvName");
+  nameEl.textContent = lv.name + "（" + lv.rank + "）";
+  nameEl.style.color = lv.color;
+  document.getElementById("lvScore").textContent = "累计积分 " + lv.score + " 分" +
+    (lv.nextName ? " · 距 " + lv.nextName + " 还差 " + (lv.nextAt - lv.score) + " 分" : " · 已达最高等级");
+  const span = Math.max(1, lv.nextAt - lv.prevAt);
+  document.getElementById("lvBar").style.width = Math.min(100, Math.max(0, (lv.score - lv.prevAt) * 100 / span)) + "%";
+  document.getElementById("lvBar").style.background = "linear-gradient(90deg," + lv.color + ",#8fd0ff)";
+  document.getElementById("lvFrom").textContent = lv.prevAt + " 分";
+  document.getElementById("lvTo").textContent = (lv.nextName ? lv.nextAt + " 分 · " + lv.nextName : "40000 分封顶");
+  const ladder = document.getElementById("ladder");
+  ladder.innerHTML = "";
+  RANKS.forEach((r, i) => {
+    const s = document.createElement("span");
+    s.textContent = RANK_ICONS[i] + " " + r;
+    if (i === rankIdx) { s.className = "on"; s.style.background = RANK_COLORS[i]; }
+    else if (i < rankIdx) { s.style.color = RANK_COLORS[i]; }
+    ladder.appendChild(s);
+  });
+
+  const t = j.totals;
+  document.getElementById("sumTitle").textContent = ({all:"整体学习情况", year:"近一年", half:"近半年", quarter:"近一季", month:"近一月", week:"近一周"}[j.range] || "学习情况");
+  document.getElementById("stAttempts").textContent = t.attempts;
+  const stCorrect = document.getElementById("stCorrect");
+  stCorrect.textContent = t.correct + " / " + t.wrong;
+  stCorrect.className = "v " + (t.wrong > t.correct ? "bad" : "good");
+  const acc = document.getElementById("stAccuracy");
+  acc.textContent = t.attempts ? pct(t.accuracy) : "--";
+  acc.className = "v " + (t.accuracy >= 0.8 ? "good" : t.attempts ? "bad" : "");
+  document.getElementById("stRepeat").textContent = t.repeatWrong;
+  const delta = document.getElementById("stDelta");
+  delta.textContent = (t.scoreDelta >= 0 ? "+" : "") + t.scoreDelta;
+  delta.className = "v " + (t.scoreDelta >= 0 ? "good" : "bad");
+  document.getElementById("stDays").textContent = t.activeDays + " 天";
+  document.getElementById("stTv").textContent = fmtMinutes(t.tvMinutes);
+
+  const cats = document.getElementById("cats");
+  cats.innerHTML = "";
+  if (!j.categories.length) cats.innerHTML = '<div class="empty">这个时段还没有答题记录</div>';
+  j.categories.forEach(c => {
+    const acc2 = c.attempts ? c.accuracy : 0;
+    const div = document.createElement("div");
+    div.className = "cat";
+    div.innerHTML =
+      '<div class="row"><span>' + c.name + '</span><span class="muted">' +
+      c.correct + ' 对 / ' + c.wrong + ' 错 · 正确率 ' + pct(acc2) + '</span></div>' +
+      '<div class="track"><i class="' + (acc2 >= 0.8 ? "" : acc2 >= 0.6 ? "low" : "weak") +
+      '" style="width:' + Math.round(acc2 * 100) + '%"></i></div>';
+    cats.appendChild(div);
+  });
+
+  document.getElementById("quizChart").innerHTML = barChart(j.trend, true);
+  document.getElementById("tvChart").innerHTML = barChart(j.trend, false);
+
+  const wrongs = document.getElementById("wrongs");
+  wrongs.innerHTML = "";
+  if (!j.wrongs.length) wrongs.innerHTML = '<div class="empty">这个时段没有错题，继续保持！</div>';
+  j.wrongs.forEach(w => {
+    const row = document.createElement("div");
+    row.className = "wrow";
+    row.innerHTML = '<span class="badge">' + w.category + ' · 错 ' + w.count + ' 次</span><span class="q">' +
+      w.question + '</span>';
+    wrongs.appendChild(row);
+  });
+}
+
+/** One SVG per card: bars for counts, an accuracy line for the quiz chart. Zero libraries. */
+function barChart(trend, quiz) {
+  const W = 720, H = 220, PAD = 26, GAP = 4;
+  const n = trend.length;
+  if (!n) return '<div class="empty">暂无数据</div>';
+  const step = (W - PAD * 2) / n;
+  const bw = Math.max(3, Math.min(26, step - GAP));
+  const maxBar = Math.max(1, ...trend.map(p => quiz ? Math.max(p.attempts, p.wrong) : p.tvMinutes));
+  const y = v => H - 24 - v * (H - 50) / maxBar;
+  let svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">';
+  for (let g = 0; g <= 4; g++) {
+    const gy = 24 + (H - 50) * g / 4;
+    svg += '<line x1="' + PAD + '" y1="' + gy + '" x2="' + (W - PAD) + '" y2="' + gy + '" stroke="#1c3455" stroke-width="1"/>';
+    svg += '<text x="' + (PAD - 4) + '" y="' + (gy + 4) + '" fill="#9fb3d6" font-size="10" text-anchor="end">' + Math.round(maxBar * (1 - g / 4)) + '</text>';
+  }
+  let line = "", pen = false;
+  trend.forEach((p, i) => {
+    const x = PAD + step * i + (step - bw) / 2;
+    if (quiz) {
+      svg += '<rect x="' + x + '" y="' + y(p.attempts) + '" width="' + bw + '" height="' + (H - 24 - y(p.attempts)) + '" rx="2" fill="#3d7bfd"/>';
+      if (p.wrong) svg += '<rect x="' + x + '" y="' + y(p.wrong) + '" width="' + bw + '" height="' + (H - 24 - y(p.wrong)) + '" rx="2" fill="#d9534f" opacity="0.45"/>';
+      if (p.accuracy != null) {
+        const cx = PAD + step * i + step / 2, cy = H - 24 - p.accuracy * (H - 50);
+        line += (pen ? " L" : "M") + cx.toFixed(1) + " " + cy.toFixed(1);
+        pen = true;
+      } else pen = false;
+    } else if (p.tvMinutes) {
+      svg += '<rect x="' + x + '" y="' + y(p.tvMinutes) + '" width="' + bw + '" height="' + (H - 24 - y(p.tvMinutes)) + '" rx="2" fill="#ff9f6b"/>';
+    }
+    const every = Math.ceil(n / 8);
+    if (i % every === 0 || i === n - 1) {
+      svg += '<text x="' + (PAD + step * i + step / 2) + '" y="' + (H - 8) + '" fill="#9fb3d6" font-size="10" text-anchor="middle">' + p.label + '</text>';
+    }
+  });
+  if (quiz && line) svg += '<path d="' + line + '" fill="none" stroke="#ffd166" stroke-width="2" stroke-linejoin="round"/>';
+  svg += '</svg>';
+  return svg;
+}
+
+load();
+</script>
+</body>
+</html>

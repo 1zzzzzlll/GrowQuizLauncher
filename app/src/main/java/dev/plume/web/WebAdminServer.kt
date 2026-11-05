@@ -9,6 +9,7 @@ import dev.plume.quiz.QuizActivity
 import dev.plume.quiz.QuizDeviceOwner
 import dev.plume.quiz.QuizPrefs
 import dev.plume.quiz.QuizScheduler
+import dev.plume.quiz.QuizStats
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -168,6 +169,96 @@ object WebAdminServer {
             path == "/" && method == "GET" -> {
                 val page = context.assets.open("web_admin.html").use { it.readBytes() }.toString(Charsets.UTF_8)
                 reply(out, 200, "text/html; charset=utf-8", page)
+            }
+
+            // The standalone learning report; the page itself asks /api/stats and sends the visitor
+            // to the console to log in when the session cookie is missing.
+            path == "/stats" && method == "GET" -> {
+                val page = context.assets.open("web_stats.html").use { it.readBytes() }.toString(Charsets.UTF_8)
+                reply(out, 200, "text/html; charset=utf-8", page)
+            }
+
+            // The learning report data: one trailing time window, everything the page shows in one reply.
+            path == "/api/stats" && method == "GET" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val range = query["range"]?.takeIf { it in QuizStats.RANGE_DAYS.keys } ?: "month"
+                val ledger = dev.plume.quiz.QuizLedger(context)
+                val report = QuizStats.build(
+                    range,
+                    ledger.attempts(),
+                    dev.plume.TvWatch.minutesByDay(context),
+                    System.currentTimeMillis(),
+                )
+                val score = ledger.score()
+                val tier = dev.plume.quiz.QuizRules.tierIndex(score)
+                val rank = tier / dev.plume.quiz.QuizRules.STAGES_PER_RANK
+                val nextTier = (tier + 1).coerceAtMost(dev.plume.quiz.QuizRules.TIER_COUNT - 1)
+                val level = JSONObject()
+                    .put("score", score)
+                    .put("tier", tier)
+                    .put("name", dev.plume.quiz.QuizRules.tierName(tier))
+                    .put("rank", dev.plume.quiz.QuizRules.RANKS[rank])
+                    .put("stage", tier % dev.plume.quiz.QuizRules.STAGES_PER_RANK + 1)
+                    .put("icon", dev.plume.quiz.QuizRules.RANK_ICONS[rank])
+                    .put("color", "#%06x".format(0xFFFFFF and dev.plume.quiz.QuizRules.RANK_COLORS[rank]))
+                    .put("nextAt", dev.plume.quiz.QuizRules.tierFloor(nextTier))
+                    .put("prevAt", dev.plume.quiz.QuizRules.tierFloor(tier))
+                    .put("nextName", if (tier >= dev.plume.quiz.QuizRules.TIER_COUNT - 1) "" else dev.plume.quiz.QuizRules.tierName(tier + 1))
+                val totals = JSONObject()
+                    .put("attempts", report.attempts)
+                    .put("correct", report.correct)
+                    .put("wrong", report.wrong)
+                    .put("repeatWrong", report.repeatWrong)
+                    .put("accuracy", if (report.attempts > 0) report.correct.toDouble() / report.attempts else 0.0)
+                    .put("scoreDelta", report.scoreDelta)
+                    .put("activeDays", report.activeDays)
+                    .put("tvMinutes", report.tvMs / 60_000L)
+                val trend = JSONArray()
+                for (bucket in report.buckets) {
+                    val point = JSONObject()
+                        .put("label", bucket.label)
+                        .put("attempts", bucket.attempts)
+                        .put("correct", bucket.correct)
+                        .put("wrong", bucket.wrong)
+                        .put("tvMinutes", bucket.tvMs / 60_000L)
+                    if (bucket.attempts > 0) point.put("accuracy", bucket.correct.toDouble() / bucket.attempts)
+                    trend.put(point)
+                }
+                val cats = JSONArray()
+                for (cat in report.categories) {
+                    cats.put(
+                        JSONObject()
+                            .put("name", cat.name)
+                            .put("attempts", cat.attempts)
+                            .put("correct", cat.correct)
+                            .put("wrong", cat.wrong)
+                            .put("accuracy", if (cat.attempts > 0) cat.correct.toDouble() / cat.attempts else 0.0),
+                    )
+                }
+                // The wrong list reads better with the question text; the bank knows the ids.
+                val wrongs = JSONArray()
+                if (report.wrongs.isNotEmpty()) {
+                    val known = bank(context).list().associateBy { it.id }
+                    for (wrong in report.wrongs) {
+                        wrongs.put(
+                            JSONObject()
+                                .put("id", wrong.id)
+                                .put("category", wrong.category)
+                                .put("count", wrong.count)
+                                .put("question", known[wrong.id]?.prompt ?: wrong.id),
+                        )
+                    }
+                }
+                val json = JSONObject()
+                    .put("ok", true)
+                    .put("range", report.range)
+                    .put("since", report.sinceMs)
+                    .put("level", level)
+                    .put("totals", totals)
+                    .put("trend", trend)
+                    .put("categories", cats)
+                    .put("wrongs", wrongs)
+                reply(out, 200, "application/json; charset=utf-8", json.toString())
             }
 
             // The page the phone lands on after scanning the TV password dialog's QR. Open to anyone

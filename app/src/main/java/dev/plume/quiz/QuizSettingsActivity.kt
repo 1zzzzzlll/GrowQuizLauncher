@@ -64,7 +64,7 @@ class QuizSettingsActivity : Activity() {
             setPadding(dp(64), dp(30), dp(64), dp(36))
         }
         content.addView(label("儿童定时问答", 34f, Color.WHITE))
-        content.addView(label("5–14 岁离线题库，每个年龄 800 题。答错自动换题，答对后返回。", 18f, Color.rgb(184, 199, 217)), margins(bottom = 18))
+        content.addView(label("5–14 岁离线题库，每个年龄 3000 题。答错自动换题，答对后返回。", 18f, Color.rgb(184, 199, 217)), margins(bottom = 18))
         content.addView(label("儿童年龄", 18f, Color.rgb(255, 209, 102)))
         ageButton = actionButton("") { selectedAge = if (selectedAge == 14) 5 else selectedAge + 1; refreshChoices() }
         installStepper(ageButton, { selectedAge = (selectedAge - 1).coerceAtLeast(5); refreshChoices() }, { selectedAge = (selectedAge + 1).coerceAtMost(14); refreshChoices() })

@@ -115,7 +115,7 @@ def readme_banner(badge: Image.Image) -> Image.Image:
     d.text((x + d.textlength(NAME, font=bold) + 20, 100), "GrowQuiz", font=mono, fill=(255, 212, 121, 255))
     d.text((x + 2, 152), "给孩子一台会提问的电视 —— 到点答题，答对才回到桌面", font=light, fill=(201, 216, 239, 255))
 
-    tags = ["Android TV", "8000 道离线题", "GPL-3.0"]
+    tags = ["Android TV", "30000 道离线题", "GPL-3.0"]
     tag_font = ImageFont.truetype("C:/Windows/Fonts/msyh.ttc", 17)
     layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     ld = ImageDraw.Draw(layer)
