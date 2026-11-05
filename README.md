@@ -25,7 +25,7 @@
 
 它基于开源桌面 [Plume Launcher](https://github.com/aradhyas8/Plume_Launcher)（无广告、无账号、无统计的极简 TV 桌面，APK 约 0.4 MB），在保留原桌面全部功能的前提下加入儿童问答与家长管理模块；宝贝成长桌面自身安装包约 1.0 MB。
 
-当前版本 **v1.6.1**，自 v1.6.0 起使用正式密钥签名并发布到 GitHub Releases，之后所有新版本均可直接覆盖安装。
+
 
 ## 核心功能
 
