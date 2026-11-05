@@ -14,6 +14,11 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.7.1
+
+- **密码输入改为星号。** 设置页输入管理密码时显示 *，键盘预览也不再泄露内容。
+- **键盘“完成”直接确认。** 输完密码按输入法的完成键即可确认。
+
 ## 1.7.0
 
 - **管理后台可关闭语音朗读。** 控制台新增「语音朗读题目」开关；关闭后答题只显示文字。
