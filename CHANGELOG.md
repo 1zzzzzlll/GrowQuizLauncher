@@ -14,6 +14,14 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.12.0
+
+- **控制台改用底部分页。** 分为总览、设置、题库、报告四个分页。手机端不用长滚动找按钮。
+- **总览页聚合常用操作。** 显示运行状态和今日概览。「立即开始答题」一屏可达。强制休息警告卡仅在休息中出现。
+- **统计报告并入「报告」分页。** 内容与独立统计页一致。独立页 `/stats` 保留可用。
+- **设置页改为分组列表。** 答题参数、抽题分类、功能开关分组显示。修改密码和语音测试收进「工具与账号」。
+- **题库编辑改为底部弹层。** 「一键禁用/开启全部题目」默认折叠，防止误触。
+
 ## 1.11.0
 
 - **新增批量导入题库。** 控制台新增独立导入页。上传 AI 生成的题库文件即可批量加题。
