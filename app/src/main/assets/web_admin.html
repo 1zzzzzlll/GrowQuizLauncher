@@ -2,31 +2,65 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>宝贝成长桌面 · 控制端</title>
   <style>
     :root{--bg:#0b1526;--card:#14233f;--card2:#0f1c33;--line:#27446c;--text:#eef4ff;--muted:#9fb3d6;--gold:#ffd166;--green:#2ea67b;--red:#d9534f;--blue:#3d7bfd}
     *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#08101f,#0b1526);color:var(--text);font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    .wrap{max-width:760px;margin:0 auto;padding:24px 18px 40px}
-    .brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}.brand img{width:40px;height:40px;border-radius:10px}.brand h1{font-size:22px;margin:0}.brand p{margin:2px 0 0;color:var(--muted);font-size:14px}
+    .wrap{max-width:760px;margin:0 auto;padding:24px 18px calc(84px + env(safe-area-inset-bottom))}
+    .brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}.brand .logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#ffd166,#ff9f43);display:flex;align-items:center;justify-content:center;font-size:22px}.brand h1{font-size:22px;margin:0}.brand p{margin:2px 0 0;color:var(--muted);font-size:14px}
     .card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
-    h2{font-size:18px;margin:0 0 14px}.muted{color:var(--muted)}
+    h2{font-size:18px;margin:0 0 14px}h3{font-size:14px;margin:0 0 10px;color:var(--muted);font-weight:500;letter-spacing:.5px}
+    .muted{color:var(--muted)}
     .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.row3{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px}
     label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
     input,select,button{width:100%;padding:14px 14px;border-radius:12px;border:1px solid var(--line);background:#0b1730;color:var(--text);font:inherit;outline:none}
     input:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(255,209,102,.15)}
-    .field{margin-bottom:14px}.actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+    .field{margin-bottom:14px}
     button{cursor:pointer;border:0;font-weight:600}.primary{background:var(--gold);color:#1a2332}.primary:hover{filter:brightness(1.05)}.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}.danger{background:var(--red);color:#fff}.success{background:var(--green);color:#fff}
-    .status{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}.pill{padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--line)}.pill .k{color:var(--muted);font-size:13px;margin-bottom:4px}.pill .v{font-size:16px;font-weight:600}
+    .status{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pill{padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--line)}.pill .k{color:var(--muted);font-size:13px;margin-bottom:4px}.pill .v{font-size:16px;font-weight:600}
     .msg{margin-top:12px;font-size:14px}.msg.ok{color:#9de8c6}.msg.err{color:#ffb3b3}
-    .switch{display:flex;align-items:center;gap:10px}.switch input{width:auto;transform:scale(1.2)}
-    .hidden{display:none!important}.link{color:var(--gold);text-decoration:none}.link:hover{text-decoration:underline}
+    .hidden{display:none!important}
     .footer{margin-top:10px;color:var(--muted);font-size:13px}
     .cats{display:flex;flex-wrap:wrap;gap:8px}
     .cats .cat{display:flex;align-items:center;gap:6px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.04);font-size:14px;color:var(--text);margin:0;cursor:pointer}
     .cats .cat input{width:auto;margin:0}
-    .qlist{margin-top:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-    .qrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+    button:disabled{opacity:.4;cursor:default}
+
+    /* ---- 底部 Tab 导航 ---- */
+    .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;border-top:1px solid var(--line);background:rgba(15,28,51,.96);backdrop-filter:blur(10px);padding:6px 0 calc(8px + env(safe-area-inset-bottom))}
+    .tab{flex:1;text-align:center;font-size:11px;color:var(--muted);cursor:pointer;padding-top:2px;user-select:none}
+    .tab .ic{font-size:20px;display:block;margin-bottom:1px}
+    .tab.on{color:var(--gold)}
+
+    /* ---- 总览页 ---- */
+    .rest-card{border-color:rgba(217,83,79,.5);background:linear-gradient(180deg,rgba(217,83,79,.14),rgba(217,83,79,.05))}
+    .rest-card h3{color:#ffb3b3;margin-bottom:12px}
+    .hero-btn{font-size:17px;padding:16px;border-radius:14px}
+    .today{display:flex;justify-content:space-around;text-align:center;padding:4px 0}
+    .today .n{font-size:20px;font-weight:700;color:var(--gold)}
+    .today .d{font-size:12px;color:var(--muted)}
+
+    /* ---- 设置页：分组列表 ---- */
+    .set-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid rgba(39,68,108,.5);font-size:15px}
+    .set-row:last-child{border-bottom:0}
+    .set-row .nm{flex:1;min-width:0}
+    .set-row .hint{font-size:12px;color:var(--muted);margin-top:2px}
+    .set-row .ctl{width:130px;flex:none}
+    .set-row .ctl input,.set-row .ctl select{padding:9px 10px;font-size:14px;text-align:right}
+    .set-row.linkish{cursor:pointer;color:var(--text)}
+    .set-row.linkish .arrow{color:var(--muted);flex:none}
+    /* iOS 风格开关 */
+    .sw{position:relative;width:46px;height:26px;flex:none}
+    .sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+    .sw i{position:absolute;inset:0;border-radius:13px;background:#3a4d73;transition:background .2s;pointer-events:none}
+    .sw i::after{content:"";position:absolute;width:22px;height:22px;border-radius:50%;background:#fff;top:2px;left:2px;transition:left .2s}
+    .sw input:checked + i{background:var(--green)}
+    .sw input:checked + i::after{left:22px}
+
+    /* ---- 题库页 ---- */
+    .qlist{margin-top:4px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+    .qrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02);flex-wrap:wrap}
     .qrow:last-child{border-bottom:0}
     .qrow.off{opacity:.55}
     .qrow input.qchk{width:auto;flex:none;transform:scale(1.2)}
@@ -38,24 +72,61 @@
     .badge.auto{background:rgba(255,209,102,.16);color:var(--gold)}
     .badge.custom{background:rgba(61,123,253,.18);color:#a9c6ff}
     .qdel{flex:none;width:auto;padding:4px 10px;font-size:12px;border-radius:8px}
+    .batchbar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
+    .batchbar button{padding:10px;font-size:13px}
     .pager{display:flex;gap:10px;align-items:center;margin-top:12px}
     .pager button{flex:1;padding:10px}
     .pager .pinfo{flex:none;color:var(--muted);font-size:14px;white-space:nowrap}
-    button:disabled{opacity:.4;cursor:default}
-    .qrow{flex-wrap:wrap}
-    @media (max-width:640px){.row,.row3,.actions,.status{grid-template-columns:1fr}}
+    .danger-fold{border:1px dashed rgba(217,83,79,.5);border-radius:12px;padding:12px 14px;font-size:14px;color:#ffb3b3;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;margin-top:14px}
+    .danger-zone{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+    /* ---- 编辑题底部弹层 ---- */
+    .sheet-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+    .sheet{background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:760px;max-height:88vh;overflow-y:auto;padding:12px 20px calc(20px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+    .sheet .grab{width:40px;height:4px;border-radius:2px;background:#3a4d73;margin:0 auto 12px}
+
+    /* ---- 报告页（内嵌统计） ---- */
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    .tabs button{flex:1;min-width:56px;padding:9px 6px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted);font:inherit;font-size:14px;cursor:pointer}
+    .tabs button.on{background:var(--gold);color:#1a2332;font-weight:600;border-color:var(--gold)}
+    .level{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+    .level .icon{font-size:44px;line-height:1}
+    .level .name{font-size:22px;font-weight:700}
+    .level .score{color:var(--muted);font-size:13px;margin-top:2px}
+    .bar{height:10px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:10px}
+    .bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#ffd166,#8fd0ff);transition:width .4s}
+    .barhint{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:4px}
+    .ladder{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+    .ladder span{padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);font-size:12px;background:rgba(255,255,255,.03)}
+    .ladder span.on{color:#1a2332;font-weight:700;border-color:transparent}
+    .cat2{margin-bottom:12px}
+    .cat2 .crow{display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px}
+    .cat2 .track{height:8px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden}
+    .cat2 .track i{display:block;height:100%;background:var(--green);border-radius:5px}
+    .cat2 .track i.low{background:var(--gold)}.cat2 .track i.weak{background:var(--red)}
+    .chart{width:100%;height:auto;display:block}
+    .legend{display:flex;gap:14px;color:var(--muted);font-size:12px;margin-top:8px;flex-wrap:wrap}
+    .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+    .wrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+    .wrow:last-child{border-bottom:0}
+    .wrow .badge2{flex:none;font-size:12px;padding:2px 8px;border-radius:8px;background:rgba(217,83,79,.18);color:#ffb3b3}
+    .wrow .q{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .empty{color:var(--muted);text-align:center;padding:30px 10px;font-size:15px}
+
+    @media (max-width:640px){.row,.row3{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="brand">
-      <img src="data:image/png;base64,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" alt="宝贝成长桌面" style="width:44px;height:44px;flex:none;border-radius:50%">
+      <div class="logo">🌱</div>
       <div>
-        <h1>宝贝成长桌面 · 控制端</h1>
+        <h1 id="brandTitle">宝贝成长桌面 · 控制端</h1>
         <p>局域网内使用，所有配置都在浏览器里完成</p>
       </div>
     </div>
 
+    <!-- ============ 首次使用 ============ -->
     <div id="setup" class="card hidden">
       <h2>首次使用</h2>
       <p class="muted">为这台电视设置一个管理密码，之后进入控制端都需要它。设置后，电视上的 Wi-Fi、系统设置和桌面设置入口也会要求输入此密码。</p>
@@ -71,6 +142,7 @@
       <div id="setupMsg" class="msg"></div>
     </div>
 
+    <!-- ============ 登录 ============ -->
     <div id="login" class="card hidden">
       <h2>管理员登录</h2>
       <div class="field">
@@ -81,108 +153,232 @@
       <div id="loginMsg" class="msg"></div>
     </div>
 
-    <div id="panel" class="card hidden">
-      <h2>控制台</h2>
-      <p style="margin:-6px 0 14px"><a class="link" href="/stats">📊 查看宝贝学习统计报告 →</a></p>
-      <div class="status">
-        <div class="pill"><div class="k">宝贝年龄</div><div id="stAge" class="v">--</div></div>
-        <div class="pill"><div class="k">答题间隔</div><div id="stInterval" class="v">--</div></div>
-        <div class="pill"><div class="k">下次答题</div><div id="stNext" class="v">--</div></div>
-        <div class="pill"><div class="k">语音朗读</div><div id="stTts" class="v">--</div></div>
-        <div class="pill"><div class="k">开机答题</div><div id="stBoot" class="v">--</div></div>
-        <div class="pill"><div class="k">防蒙题休息</div><div id="stRest" class="v">--</div></div>
-        <div class="pill" style="grid-column:1/-1"><div class="k">当前地址</div><div id="stUrl" class="v">--</div></div>
+    <!-- ============ Tab 1：总览 ============ -->
+    <div id="tab-home" class="tabpage hidden">
+      <div class="card">
+        <h3>运行状态</h3>
+        <div class="status">
+          <div class="pill"><div class="k">宝贝年龄</div><div id="stAge" class="v">--</div></div>
+          <div class="pill"><div class="k">答题间隔</div><div id="stInterval" class="v">--</div></div>
+          <div class="pill"><div class="k">下次答题</div><div id="stNext" class="v">--</div></div>
+          <div class="pill"><div class="k">语音朗读</div><div id="stTts" class="v">--</div></div>
+          <div class="pill"><div class="k">开机答题</div><div id="stBoot" class="v">--</div></div>
+          <div class="pill"><div class="k">防蒙题休息</div><div id="stRest" class="v">--</div></div>
+        </div>
       </div>
 
-      <div class="field" id="restAction" style="margin-bottom:16px;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(217,83,79,.08)">
+      <div id="restCard" class="card rest-card hidden">
+        <h3>⚠️ 宝贝正处于强制休息</h3>
         <button id="restClearBtn" class="danger">立即解除强制休息</button>
-        <div class="muted" style="margin-top:8px;font-size:13px" id="restHint">当前没有在休息</div>
+        <div class="muted" style="margin-top:8px;font-size:13px" id="restHint"></div>
       </div>
 
-      <div class="row">
-        <div class="field">
-          <label>宝贝年龄</label>
-          <select id="age">
-            <option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>答题间隔（分钟）</label>
-          <input id="interval" type="number" min="1" max="1440" step="1">
-        </div>
-      </div>
-
-      <div class="row">
-        <div class="field">
-          <label>答题思考时间（秒，0–60，0 为关闭）</label>
-          <input id="thinkSeconds" type="number" min="0" max="60" step="1">
-        </div>
-        <div class="field">
-          <label>　</label>
-          <div class="muted" style="font-size:13px;padding-top:14px">出题后这段时间内选项不可点，防止秒选乱蒙</div>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>题目分类（多选，一个都不勾选即为全部；数量按所选年龄统计，灰色的分类该年龄暂无题目）</label>
-        <div id="catList" class="cats"><span class="muted">加载中…</span></div>
-      </div>
-
-      <div class="field switch">
-        <input id="enabled" type="checkbox">
-        <label for="enabled" style="margin:0">开启定时答题</label>
-      </div>
-
-      <div class="field switch">
-        <input id="voice" type="checkbox">
-        <label for="voice" style="margin:0">语音朗读题目（关闭后答题时只显示文字，不再念题）</label>
-      </div>
-
-      <div class="field switch">
-        <input id="bootQuiz" type="checkbox">
-        <label for="bootQuiz" style="margin:0">开机先答一题（开机后管理端提醒点「确定」即开始答题，默认开启）</label>
-      </div>
-
-      <div class="field switch">
-        <input id="restGuard" type="checkbox">
-        <label for="restGuard" style="margin:0">连续答错强制休息（连错 3 题休息 10 分钟，之后每多错一题加 10 分钟；答对即重新计数，默认开启）</label>
-      </div>
-
-      <div class="actions">
-        <button id="saveBtn" class="primary">保存设置</button>
-        <button id="startBtn" class="success">立即开始答题</button>
-      </div>
+      <button id="startBtn" class="success hero-btn">🎯 立即开始答题</button>
       <div id="panelMsg" class="msg"></div>
 
-      <div class="field" style="margin-top:16px">
-        <label>语音朗读检查</label>
-        <button id="ttsBtn" class="ghost">在电视上播放一句测试语音</button>
-        <div id="ttsMsg" class="msg"></div>
+      <div class="card" style="margin-top:16px">
+        <h3>今日概览</h3>
+        <div class="today">
+          <div><div class="n" id="tdAttempts">--</div><div class="d">今日答题</div></div>
+          <div><div class="n" id="tdAccuracy">--</div><div class="d">正确率</div></div>
+          <div><div class="n" id="tdTv">--</div><div class="d">看电视</div></div>
+        </div>
       </div>
 
-      <div style="margin-top:16px">
-        <button id="bankBtn" class="primary">题库管理（导入 · 编辑 · 禁用）</button>
-      </div>
-
-      <div style="margin-top:12px; display:flex; gap:12px; flex-wrap:wrap">
-        <button id="refreshBtn" class="ghost" style="flex:1">刷新状态</button>
-        <button id="logoutBtn" class="ghost" style="flex:1">退出登录</button>
-      </div>
-
-      <div class="footer">
+      <button id="refreshBtn" class="ghost">刷新状态</button>
+      <div class="footer" style="margin-top:14px">
+        当前地址：<span id="stUrl">--</span><br>
         提示：如果是在手机上测试，确认手机和电视在同一 Wi-Fi 下；电视上显示的本机地址也可在设置里查看。
       </div>
     </div>
 
-    <div id="maker" class="card hidden">
+    <!-- ============ Tab 2：设置 ============ -->
+    <div id="tab-settings" class="tabpage hidden">
+      <div class="card">
+        <h3>答题设置</h3>
+        <div class="set-row">
+          <div class="nm">宝贝年龄</div>
+          <div class="ctl"><select id="age"><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option></select></div>
+        </div>
+        <div class="set-row">
+          <div class="nm">答题间隔（分钟）</div>
+          <div class="ctl"><input id="interval" type="number" min="1" max="1440" step="1"></div>
+        </div>
+        <div class="set-row">
+          <div class="nm">思考时间（秒）<div class="hint">0–60，0 为关闭；出题后选项锁定，防秒选乱蒙</div></div>
+          <div class="ctl"><input id="thinkSeconds" type="number" min="0" max="60" step="1"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>题目分类</h3>
+        <div class="muted" style="font-size:13px;margin-bottom:10px">一个都不勾选即为全部；数量按所选年龄统计，灰色的分类该年龄暂无题目</div>
+        <div id="catList" class="cats"><span class="muted">加载中…</span></div>
+      </div>
+
+      <div class="card">
+        <h3>功能开关</h3>
+        <div class="set-row">
+          <div class="nm">定时答题</div>
+          <div class="sw"><input id="enabled" type="checkbox"><i></i></div>
+        </div>
+        <div class="set-row">
+          <div class="nm">语音朗读题目<div class="hint">关闭后答题时只显示文字，不再念题</div></div>
+          <div class="sw"><input id="voice" type="checkbox"><i></i></div>
+        </div>
+        <div class="set-row">
+          <div class="nm">开机先答一题<div class="hint">开机后管理端提醒点「确定」即开始答题，默认开启</div></div>
+          <div class="sw"><input id="bootQuiz" type="checkbox"><i></i></div>
+        </div>
+        <div class="set-row">
+          <div class="nm">连错强制休息<div class="hint">连错 3 题休 10 分钟，每多错一题加 10 分钟，默认开启</div></div>
+          <div class="sw"><input id="restGuard" type="checkbox"><i></i></div>
+        </div>
+      </div>
+
+      <button id="saveBtn" class="primary hero-btn">保存设置</button>
+      <div id="settingsMsg" class="msg"></div>
+
+      <div class="card" style="margin-top:16px">
+        <h3>工具与账号</h3>
+        <div class="set-row linkish" id="ttsRow">
+          <div class="nm">🔊 语音朗读测试<div class="hint">在电视上播放一句测试语音</div></div>
+          <span class="arrow">›</span>
+        </div>
+        <div id="ttsMsg" class="msg"></div>
+        <div class="set-row linkish" id="pwRow">
+          <div class="nm">🔑 修改管理密码<div class="hint">控制端登录和电视上的设置解锁都需要它</div></div>
+          <span class="arrow" id="pwArrow">›</span>
+        </div>
+        <div id="pwForm" class="hidden" style="padding:10px 0">
+          <div class="field"><label>原密码</label><input id="pwOld" type="password" placeholder="输入当前管理密码"></div>
+          <div class="field"><label>新密码</label><input id="pwNew" type="password" placeholder="至少 6 位"></div>
+          <div class="field"><label>确认新密码</label><input id="pwNew2" type="password" placeholder="再输入一次"></div>
+          <button id="pwBtn" class="primary">确认修改</button>
+          <div id="pwMsg" class="msg"></div>
+        </div>
+        <div class="set-row linkish" id="logoutBtn">
+          <div class="nm" style="color:#ffb3b3">退出登录</div>
+          <span class="arrow">›</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ Tab 3：题库 ============ -->
+    <div id="tab-bank" class="tabpage hidden">
+      <div class="card">
+        <div class="row3">
+          <div class="field" style="margin-bottom:10px">
+            <label>年龄</label>
+            <select id="bkAge"><option value="">全部</option><option>5</option><option>6</option><option selected>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option></select>
+          </div>
+          <div class="field" style="margin-bottom:10px">
+            <label>分类</label>
+            <select id="bkCategory"><option value="">全部</option></select>
+          </div>
+          <div class="field" style="margin-bottom:10px">
+            <label>状态</label>
+            <select id="bkState"><option value="all">全部</option><option value="enabled">启用中</option><option value="disabled">已禁用</option></select>
+          </div>
+        </div>
+        <button id="bkImport" class="primary">⬆️ 批量导入题库（AI 生成 · 上传导入）</button>
+        <div id="bkMsg" class="msg"></div>
+        <div id="bkList" class="qlist hidden"></div>
+        <div id="bkPager" class="pager hidden"></div>
+        <div class="batchbar">
+          <button id="bkPickAll" class="ghost">全选 / 全不选</button>
+          <button id="bkEnable" class="success">启用选中</button>
+          <button id="bkDisable" class="danger">禁用选中</button>
+        </div>
+        <div class="danger-fold" id="dangerFold">
+          <span>⚠️ 批量操作全部题目（慎用）</span><span id="dangerArrow">展开 ▾</span>
+        </div>
+        <div id="dangerZone" class="danger-zone hidden">
+          <button id="bkDisableAll" class="danger">一键禁用全部题目</button>
+          <button id="bkEnableAll" class="success">一键开启全部题目</button>
+        </div>
+        <div class="footer">每页 10 题；勾选、批量启停只作用于当前页。「自定义」分类代表全部批量导入的题（点上方按钮打开导入页，附 AI 出题教程）；同一道题答对满 5 次会自动禁用；内置题可「编辑」生成修改版（随时「恢复原题」）但不能删除，导入的自定义题可编辑、可删除。</div>
+      </div>
+    </div>
+
+    <!-- ============ Tab 4：报告 ============ -->
+    <div id="tab-stats" class="tabpage hidden">
+      <div class="tabs" id="rpTabs">
+        <button data-range="all">整体</button>
+        <button data-range="year">年度</button>
+        <button data-range="half">半年</button>
+        <button data-range="quarter">季度</button>
+        <button data-range="month" class="on">月度</button>
+        <button data-range="week">周度</button>
+      </div>
+
+      <div class="card">
+        <h3>当前等级</h3>
+        <div class="level">
+          <div class="icon" id="lvIcon">🌱</div>
+          <div>
+            <div class="name" id="lvName">--</div>
+            <div class="score" id="lvScore">--</div>
+          </div>
+        </div>
+        <div class="bar"><i id="lvBar" style="width:0%"></i></div>
+        <div class="barhint"><span id="lvFrom">0</span><span id="lvTo">--</span></div>
+        <div class="ladder" id="ladder"></div>
+      </div>
+
+      <div class="card">
+        <h3 id="sumTitle">学习情况</h3>
+        <div class="status">
+          <div class="pill"><div class="k">答题总数</div><div class="v" id="stAttempts">--</div></div>
+          <div class="pill"><div class="k">答对 / 答错</div><div class="v" id="stCorrect">--</div></div>
+          <div class="pill"><div class="k">正确率</div><div class="v" id="stAccuracy">--</div></div>
+          <div class="pill"><div class="k">重复答错</div><div class="v" id="stRepeat">--</div></div>
+          <div class="pill"><div class="k">积分变化</div><div class="v" id="stDelta">--</div></div>
+          <div class="pill"><div class="k">活跃天数</div><div class="v" id="stDays">--</div></div>
+          <div class="pill" style="grid-column:1/-1"><div class="k">看电视时长</div><div class="v" id="stTv">--</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>知识点掌握分布</h3>
+        <div id="cats"><div class="empty">暂无数据</div></div>
+      </div>
+
+      <div class="card">
+        <h3>学习活跃度与正确率</h3>
+        <div id="quizChart"></div>
+        <div class="legend">
+          <span><i style="background:#3d7bfd"></i>答题数</span>
+          <span><i style="background:#ffd166"></i>正确率</span>
+          <span><i style="background:#d9534f"></i>答错数</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>看电视时长</h3>
+        <div id="tvChart"></div>
+        <div class="legend"><span><i style="background:#ff9f6b"></i>观看分钟</span></div>
+      </div>
+
+      <div class="card">
+        <h3>高频错题 TOP5</h3>
+        <div id="wrongs"><div class="empty">暂无数据</div></div>
+      </div>
+
+      <div class="footer" style="text-align:center">所有数据只保存在这台电视上 · 建议每周看一次，多鼓励宝贝 🌟</div>
+    </div>
+  </div>
+
+  <!-- ============ 编辑题底部弹层 ============ -->
+  <div id="maker" class="sheet-mask hidden">
+    <div class="sheet">
+      <div class="grab"></div>
       <h2 id="makerTitle">编辑题目</h2>
-      <p class="muted" style="margin-top:0">在下方题目列表点「编辑」后，这里会载入该题内容；自定义题直接改原题，内置题保存为「修改版」，原题可随时恢复。</p>
+      <p class="muted" style="margin-top:0;font-size:13px">自定义题直接改原题；内置题保存为「修改版」，原题可随时恢复。</p>
       <div class="row">
         <div class="field">
           <label>适合年龄</label>
-          <select id="cqAge">
-            <option>5</option><option>6</option><option selected>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option>
-          </select>
+          <select id="cqAge"><option>5</option><option>6</option><option selected>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option></select>
         </div>
         <div class="field">
           <label>题目分类</label>
@@ -205,9 +401,7 @@
       <div class="row">
         <div class="field">
           <label>正确答案</label>
-          <select id="cqAnswer">
-            <option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option>
-          </select>
+          <select id="cqAnswer"><option value="0">A</option><option value="1">B</option><option value="2">C</option><option value="3">D</option></select>
         </div>
         <div class="field">
           <label>解析（可选）</label>
@@ -220,86 +414,48 @@
       </div>
       <div id="cqMsg" class="msg"></div>
     </div>
+  </div>
 
-    <div id="bank" class="card hidden">
-      <button id="bankBack" class="ghost" style="width:auto;padding:8px 16px;margin-bottom:14px">← 返回控制台</button>
-      <h2>题库管理</h2>
-      <div class="row3">
-        <div class="field">
-          <label>年龄</label>
-          <select id="bkAge">
-            <option value="">全部</option>
-            <option>5</option><option>6</option><option selected>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>分类</label>
-          <select id="bkCategory"><option value="">全部</option></select>
-        </div>
-        <div class="field">
-          <label>状态</label>
-          <select id="bkState">
-            <option value="all">全部</option>
-            <option value="enabled">启用中</option>
-            <option value="disabled">已禁用</option>
-          </select>
-        </div>
-      </div>
-      <div class="actions" style="grid-template-columns:1fr">
-        <button id="bkImport" class="primary">批量导入题库（AI 生成 · 上传导入）</button>
-      </div>
-      <div class="actions">
-        <button id="bkLoad" class="ghost">刷新列表</button>
-        <button id="bkPickAll" class="ghost">全选 / 全不选</button>
-        <button id="bkDisable" class="danger">禁用选中</button>
-        <button id="bkEnable" class="success">启用选中</button>
-      </div>
-      <div class="actions">
-        <button id="bkDisableAll" class="danger">一键禁用全部题目</button>
-        <button id="bkEnableAll" class="success">一键开启全部题目</button>
-      </div>
-      <div id="bkMsg" class="msg"></div>
-      <div id="bkList" class="qlist hidden"></div>
-      <div id="bkPager" class="pager hidden"></div>
-      <div class="footer">每页 10 题；勾选、批量启停只作用于当前页。「自定义」分类代表全部批量导入的题（点上方按钮打开导入页，附 AI 出题教程）；同一道题答对满 5 次会自动禁用；内置题可「编辑」生成修改版（随时「恢复原题」）但不能删除，导入的自定义题可编辑、可删除。</div>
-    </div>
-
-    <div id="passwd" class="card hidden">
-      <h2>修改管理密码</h2>
-      <p class="muted" style="margin-top:0">修改后请牢记新密码：控制端登录和电视上的设置解锁都需要它。</p>
-      <div class="field">
-        <label>原密码</label>
-        <input id="pwOld" type="password" placeholder="输入当前管理密码">
-      </div>
-      <div class="field">
-        <label>新密码</label>
-        <input id="pwNew" type="password" placeholder="至少 6 位">
-      </div>
-      <div class="field">
-        <label>确认新密码</label>
-        <input id="pwNew2" type="password" placeholder="再输入一次">
-      </div>
-      <button id="pwBtn" class="primary">确认修改</button>
-      <div id="pwMsg" class="msg"></div>
-    </div>
+  <!-- ============ 底部 Tab 栏 ============ -->
+  <div id="tabbar" class="tabbar hidden">
+    <div class="tab on" data-tab="home"><span class="ic">🏠</span>总览</div>
+    <div class="tab" data-tab="settings"><span class="ic">⚙️</span>设置</div>
+    <div class="tab" data-tab="bank"><span class="ic">📚</span>题库</div>
+    <div class="tab" data-tab="stats"><span class="ic">📊</span>报告</div>
   </div>
 
   <script>
     const $ = id => document.getElementById(id);
     const msg = (el, text, ok) => { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); };
     const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const HOME_CARDS = ['panel', 'passwd'];
-    const BANK_CARDS = ['bank'];
-    // The edit form stays hidden until a row's 编辑 button opens it; show() never reveals it.
-    const ALL_CARDS = ['setup', 'login', ...HOME_CARDS, 'maker', ...BANK_CARDS];
+    const AUTH_CARDS = ['setup', 'login'];
+    const TABS = ['home', 'settings', 'bank', 'stats'];
     let authed = false;
-    const show = id => ALL_CARDS.forEach(s =>
-      $(s).classList.toggle('hidden',
-        id === 'home' ? !HOME_CARDS.includes(s) :
-        id === 'bank' ? !BANK_CARDS.includes(s) :
-        s !== id));
-    const route = () => { if (authed) show(location.hash === '#/bank' ? 'bank' : 'home'); };
+    let currentTab = 'home';
+    const loaded = { bank: false, stats: false }; // 懒加载：切到该 Tab 才拉数据
+
+    // ---------- 路由与视图切换 ----------
+    const show = name => {
+      const isAuthView = AUTH_CARDS.includes(name);
+      AUTH_CARDS.forEach(s => $(s).classList.toggle('hidden', s !== name));
+      TABS.forEach(t => $('tab-' + t).classList.toggle('hidden', isAuthView || t !== name));
+      $('tabbar').classList.toggle('hidden', isAuthView);
+      if (!isAuthView) {
+        currentTab = name;
+        document.querySelectorAll('.tab').forEach(el => el.classList.toggle('on', el.dataset.tab === name));
+        if (name === 'bank' && !loaded.bank) { loaded.bank = true; loadBank(); }
+        if (name === 'stats' && !loaded.stats) { loaded.stats = true; loadStats(); }
+      }
+    };
+    const hashTab = () => {
+      const h = location.hash.replace(/^#\/?/, '');
+      return TABS.includes(h) ? h : 'home';
+    };
+    const route = () => { if (authed) show(hashTab()); };
     window.addEventListener('hashchange', route);
+    document.querySelectorAll('.tab').forEach(el => el.onclick = () => { location.hash = '#/' + el.dataset.tab; });
+
+    // ---------- API 封装（接口与旧版完全一致） ----------
     const api = async (path, body) => {
       const r = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: body ? {'Content-Type':'application/json'} : {}, body: body ? JSON.stringify(body) : undefined });
       const j = await r.json().catch(() => ({}));
@@ -314,6 +470,8 @@
     };
     const status = () => get('/api/status');
     const fmtTime = ts => ts > 0 ? new Date(ts).toLocaleString() : '--';
+    const fmtMinutes = min => !min ? '0 分钟' : min < 60 ? min + ' 分钟' : Math.floor(min / 60) + ' 小时 ' + (min % 60) + ' 分';
+    const pct = v => Math.round(v * 100) + '%';
     const AUTO_DISABLE_AFTER = 5; // 与电视端 QuestionBank.AUTO_DISABLE_AFTER 一致
 
     async function refresh() {
@@ -324,32 +482,49 @@
         show(s.initialized ? 'login' : 'setup');
         return;
       }
+      // 设置页表单
       $('age').value = s.age;
       $('interval').value = s.interval;
       $('thinkSeconds').value = s.thinkSeconds ?? 5;
       $('enabled').checked = s.enabled;
       $('voice').checked = s.voice !== false;
       $('bootQuiz').checked = s.bootQuiz !== false;
+      $('restGuard').checked = s.restGuard !== false;
+      // 总览页状态
       $('stAge').textContent = s.age + ' 岁';
       $('stInterval').textContent = s.interval + ' 分钟';
       $('stNext').textContent = s.enabled ? fmtTime(s.next) : '已停用';
       const tts = { 'available': '可用', 'initializing': '检测中…' }[s.tts] || (s.tts === 'no-engine' ? '不可用（无引擎）' : s.tts === 'no-language' ? '不可用（缺中文语音）' : s.tts);
       $('stTts').textContent = s.voice === false ? '已关闭' : tts;
       $('stBoot').textContent = s.bootQuiz === false ? '已关闭' : '开启';
-      $('restGuard').checked = s.restGuard !== false;
       const restMs = s.restRemainingMs || 0;
       const resting = s.restGuard !== false && restMs > 0;
       $('stRest').textContent = s.restGuard === false ? '功能已关闭'
         : resting ? '休息中（剩 ' + Math.ceil(restMs / 60000) + ' 分钟）'
         : '未休息' + ((s.wrongStreak || 0) > 0 ? '（已连错 ' + s.wrongStreak + ' 题）' : '');
-      $('restClearBtn').disabled = !resting;
+      // 休息警告卡：只有真的在休息才出现
+      $('restCard').classList.toggle('hidden', !resting);
       $('restHint').textContent = resting
-        ? '宝贝正处于强制休息，点击上方按钮立即解除（连错计数同时清零）'
-        : '当前没有在休息';
+        ? '已连续答错触发休息，点击上方按钮立即解除（连错计数同时清零）'
+        : '';
       authed = true;
       route();
       await loadCategories(s.categories || []);
-      await loadBank();
+      if (loaded.bank) await loadBank();
+      loadToday();
+    }
+
+    // 今日概览：周度统计的桶按时间升序、最新一天在最后，最后一个桶即今天
+    async function loadToday() {
+      try {
+        const j = await get('/api/stats?range=week');
+        const t = (j.trend || [])[(j.trend || []).length - 1] || {};
+        $('tdAttempts').textContent = t.attempts ? t.attempts + ' 题' : '0 题';
+        $('tdAccuracy').textContent = t.accuracy != null ? pct(t.accuracy) : '--';
+        $('tdTv').textContent = t.tvMinutes ? fmtMinutes(t.tvMinutes) : '0 分钟';
+      } catch (e) {
+        $('tdAttempts').textContent = '--'; $('tdAccuracy').textContent = '--'; $('tdTv').textContent = '--';
+      }
     }
 
     async function loadCategories(selectedNames) {
@@ -386,6 +561,7 @@
       loadCategories(sel);
     };
 
+    // ---------- 首次设置 / 登录 ----------
     $('setupBtn').onclick = async () => {
       const p1 = $('setupPassword').value, p2 = $('setupPassword2').value;
       if (p1 !== p2) return msg($('setupMsg'), '两次输入的密码不一致', false);
@@ -405,6 +581,7 @@
       } catch (e) { msg($('loginMsg'), e.message, false); }
     };
 
+    // ---------- 总览页操作 ----------
     $('saveBtn').onclick = async () => {
       try {
         const categories = [...document.querySelectorAll('#catList input:checked')].map(i => i.value);
@@ -418,9 +595,9 @@
           restGuard: $('restGuard').checked,
           categories
         });
-        msg($('panelMsg'), '已保存', true);
+        msg($('settingsMsg'), '已保存', true);
         await refresh();
-      } catch (e) { msg($('panelMsg'), e.message, false); }
+      } catch (e) { msg($('settingsMsg'), e.message, false); }
     };
 
     $('restClearBtn').onclick = async () => {
@@ -438,15 +615,40 @@
       } catch (e) { msg($('panelMsg'), e.message, false); }
     };
 
-    $('ttsBtn').onclick = async () => {
+    $('refreshBtn').onclick = refresh;
+
+    // ---------- 设置页工具与账号 ----------
+    $('ttsRow').onclick = async () => {
       try {
         const r = await api('/api/tts_test', {});
         msg($('ttsMsg'), r.spoke ? '已播放，请听电视是否出声' : '播放失败：电视上没有可用的语音引擎', r.spoke);
       } catch (e) { msg($('ttsMsg'), e.message, false); }
     };
 
-    // ---------- 编辑题目（表单仅编辑用，手动录题已移至批量导入页） ----------
+    $('pwRow').onclick = () => {
+      const open = $('pwForm').classList.toggle('hidden');
+      $('pwArrow').textContent = open ? '›' : '⌄';
+    };
 
+    $('pwBtn').onclick = async () => {
+      const old = $('pwOld').value, fresh = $('pwNew').value, again = $('pwNew2').value;
+      if (!old) return msg($('pwMsg'), '请输入原密码', false);
+      if (fresh.length < 6) return msg($('pwMsg'), '新密码至少 6 位', false);
+      if (fresh !== again) return msg($('pwMsg'), '两次输入的新密码不一致', false);
+      try {
+        await api('/api/password_change', { old, new: fresh });
+        msg($('pwMsg'), '密码已修改，下次登录请使用新密码', true);
+        $('pwOld').value = ''; $('pwNew').value = ''; $('pwNew2').value = '';
+      } catch (e) { msg($('pwMsg'), e.message, false); }
+    };
+
+    $('logoutBtn').onclick = async () => {
+      try { await api('/api/logout', {}); } catch (e) {}
+      authed = false;
+      show('login');
+    };
+
+    // ---------- 编辑题底部弹层 ----------
     let editingId = null;
 
     function startEdit(q) {
@@ -462,7 +664,6 @@
         ? '正在编辑这道自定义题，保存后立即生效'
         : '内置题：保存后生成「修改版」，原题不会丢，可随时在列表里点「恢复原题」', true);
       $('maker').classList.remove('hidden');
-      $('maker').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     function resetMaker() {
@@ -477,6 +678,8 @@
     }
 
     $('cqCancelBtn').onclick = resetMaker;
+    // 点遮罩空白处收起弹层
+    $('maker').addEventListener('click', e => { if (e.target === $('maker')) resetMaker(); });
 
     $('cqBtn').onclick = async () => {
       if (!editingId) return;
@@ -498,9 +701,8 @@
       } catch (e) { msg($('cqMsg'), e.message, false); }
     };
 
-    $('bkImport').onclick = () => window.open('/import', '_blank');
-
     // ---------- 题库管理 ----------
+    $('bkImport').onclick = () => window.open('/import', '_blank');
 
     let bkPage = 1;
     const BK_PAGE_SIZE = 10;
@@ -579,7 +781,6 @@
       $('bkNext').onclick = () => { if (bkPage < pages) { bkPage++; loadBank(); } };
     }
 
-    $('bkLoad').onclick = () => { bkPage = 1; loadBank(); };
     ['bkAge', 'bkCategory', 'bkState'].forEach(id => $(id).onchange = () => { bkPage = 1; loadBank(); });
 
     $('bkPickAll').onclick = () => {
@@ -601,6 +802,12 @@
     $('bkDisable').onclick = () => setState(false);
     $('bkEnable').onclick = () => setState(true);
 
+    // 危险操作区：默认折叠，防误触
+    $('dangerFold').onclick = () => {
+      const opening = $('dangerZone').classList.toggle('hidden');
+      $('dangerArrow').textContent = opening ? '展开 ▾' : '收起 ▴';
+    };
+
     $('bkDisableAll').onclick = async () => {
       if (!confirm('确定禁用全部题目？禁用后宝贝将无题可答（可随时一键开启恢复）。')) return;
       try {
@@ -620,28 +827,134 @@
       } catch (e) { msg($('bkMsg'), e.message, false); }
     };
 
-    // ---------- 修改管理密码 ----------
+    // ---------- 报告 Tab（内嵌统计，逻辑与 web_stats.html 一致） ----------
+    const RANKS = ['塑料','铁','铜','白银','黄金','铂金','钻石'];
+    const RANK_COLORS = ['#a8b3c1','#7b8ca3','#d08a4e','#d7dee8','#ffd166','#8fe8d8','#8fd0ff'];
+    const RANK_ICONS = ['🌱','🪨','🥉','🥈','🥇','💠','💎'];
+    let statsRange = 'month';
 
-    $('pwBtn').onclick = async () => {
-      const old = $('pwOld').value, fresh = $('pwNew').value, again = $('pwNew2').value;
-      if (!old) return msg($('pwMsg'), '请输入原密码', false);
-      if (fresh.length < 6) return msg($('pwMsg'), '新密码至少 6 位', false);
-      if (fresh !== again) return msg($('pwMsg'), '两次输入的新密码不一致', false);
-      try {
-        await api('/api/password_change', { old, new: fresh });
-        msg($('pwMsg'), '密码已修改，下次登录请使用新密码', true);
-        $('pwOld').value = ''; $('pwNew').value = ''; $('pwNew2').value = '';
-      } catch (e) { msg($('pwMsg'), e.message, false); }
-    };
+    $('rpTabs').addEventListener('click', e => {
+      const btn = e.target.closest('button[data-range]');
+      if (!btn) return;
+      statsRange = btn.dataset.range;
+      document.querySelectorAll('#rpTabs button').forEach(b => b.classList.toggle('on', b === btn));
+      loadStats();
+    });
 
-    $('bankBtn').onclick = () => { location.hash = '#/bank'; };
-    $('bankBack').onclick = () => { location.hash = '#/'; };
-    $('refreshBtn').onclick = refresh;
-    $('logoutBtn').onclick = async () => {
-      try { await api('/api/logout', {}); } catch (e) {}
-      authed = false;
-      show('login');
-    };
+    async function loadStats() {
+      let j;
+      try { j = await get('/api/stats?range=' + statsRange); } catch (e) { return; }
+      if (!j.ok || !j.level) return;
+      renderStats(j);
+    }
+
+    function renderStats(j) {
+      const lv = j.level, rankIdx = Math.floor(lv.tier / 4);
+      $('lvIcon').textContent = lv.icon;
+      const nameEl = $('lvName');
+      nameEl.textContent = lv.name + '（' + lv.rank + '）';
+      nameEl.style.color = lv.color;
+      $('lvScore').textContent = '累计积分 ' + lv.score + ' 分' +
+        (lv.nextName ? ' · 距 ' + lv.nextName + ' 还差 ' + (lv.nextAt - lv.score) + ' 分' : ' · 已达最高等级');
+      const span = Math.max(1, lv.nextAt - lv.prevAt);
+      $('lvBar').style.width = Math.min(100, Math.max(0, (lv.score - lv.prevAt) * 100 / span)) + '%';
+      $('lvBar').style.background = 'linear-gradient(90deg,' + lv.color + ',#8fd0ff)';
+      $('lvFrom').textContent = lv.prevAt + ' 分';
+      $('lvTo').textContent = (lv.nextName ? lv.nextAt + ' 分 · ' + lv.nextName : '40000 分封顶');
+      const ladder = $('ladder');
+      ladder.innerHTML = '';
+      RANKS.forEach((r, i) => {
+        const s = document.createElement('span');
+        s.textContent = RANK_ICONS[i] + ' ' + r;
+        if (i === rankIdx) { s.className = 'on'; s.style.background = RANK_COLORS[i]; }
+        else if (i < rankIdx) { s.style.color = RANK_COLORS[i]; }
+        ladder.appendChild(s);
+      });
+
+      const t = j.totals;
+      $('sumTitle').textContent = ({all:'整体学习情况', year:'近一年', half:'近半年', quarter:'近一季', month:'近一月', week:'近一周'}[j.range] || '学习情况');
+      $('stAttempts').textContent = t.attempts;
+      const stCorrect = $('stCorrect');
+      stCorrect.textContent = t.correct + ' / ' + t.wrong;
+      stCorrect.className = 'v ' + (t.wrong > t.correct ? 'bad' : 'good');
+      const acc = $('stAccuracy');
+      acc.textContent = t.attempts ? pct(t.accuracy) : '--';
+      acc.className = 'v ' + (t.accuracy >= 0.8 ? 'good' : t.attempts ? 'bad' : '');
+      $('stRepeat').textContent = t.repeatWrong;
+      const delta = $('stDelta');
+      delta.textContent = (t.scoreDelta >= 0 ? '+' : '') + t.scoreDelta;
+      delta.className = 'v ' + (t.scoreDelta >= 0 ? 'good' : 'bad');
+      $('stDays').textContent = t.activeDays + ' 天';
+      $('stTv').textContent = fmtMinutes(t.tvMinutes);
+
+      const cats = $('cats');
+      cats.innerHTML = '';
+      if (!j.categories.length) cats.innerHTML = '<div class="empty">这个时段还没有答题记录</div>';
+      j.categories.forEach(c => {
+        const acc2 = c.attempts ? c.accuracy : 0;
+        const div = document.createElement('div');
+        div.className = 'cat2';
+        div.innerHTML =
+          '<div class="crow"><span>' + esc(c.name) + '</span><span class="muted">' +
+          c.correct + ' 对 / ' + c.wrong + ' 错 · 正确率 ' + pct(acc2) + '</span></div>' +
+          '<div class="track"><i class="' + (acc2 >= 0.8 ? '' : acc2 >= 0.6 ? 'low' : 'weak') +
+          '" style="width:' + Math.round(acc2 * 100) + '%"></i></div>';
+        cats.appendChild(div);
+      });
+
+      $('quizChart').innerHTML = barChart(j.trend, true);
+      $('tvChart').innerHTML = barChart(j.trend, false);
+
+      const wrongs = $('wrongs');
+      wrongs.innerHTML = '';
+      if (!j.wrongs.length) wrongs.innerHTML = '<div class="empty">这个时段没有错题，继续保持！</div>';
+      j.wrongs.forEach(w => {
+        const row = document.createElement('div');
+        row.className = 'wrow';
+        row.innerHTML = '<span class="badge2">' + esc(w.category) + ' · 错 ' + w.count + ' 次</span><span class="q">' +
+          esc(w.question) + '</span>';
+        wrongs.appendChild(row);
+      });
+    }
+
+    /** One SVG per card: bars for counts, an accuracy line for the quiz chart. Zero libraries. */
+    function barChart(trend, quiz) {
+      const W = 720, H = 220, PAD = 26, GAP = 4;
+      const n = trend.length;
+      if (!n) return '<div class="empty">暂无数据</div>';
+      const step = (W - PAD * 2) / n;
+      const bw = Math.max(3, Math.min(26, step - GAP));
+      const maxBar = Math.max(1, ...trend.map(p => quiz ? Math.max(p.attempts, p.wrong) : p.tvMinutes));
+      const y = v => H - 24 - v * (H - 50) / maxBar;
+      let svg = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">';
+      for (let g = 0; g <= 4; g++) {
+        const gy = 24 + (H - 50) * g / 4;
+        svg += '<line x1="' + PAD + '" y1="' + gy + '" x2="' + (W - PAD) + '" y2="' + gy + '" stroke="#1c3455" stroke-width="1"/>';
+        svg += '<text x="' + (PAD - 4) + '" y="' + (gy + 4) + '" fill="#9fb3d6" font-size="10" text-anchor="end">' + Math.round(maxBar * (1 - g / 4)) + '</text>';
+      }
+      let line = '', pen = false;
+      trend.forEach((p, i) => {
+        const x = PAD + step * i + (step - bw) / 2;
+        if (quiz) {
+          svg += '<rect x="' + x + '" y="' + y(p.attempts) + '" width="' + bw + '" height="' + (H - 24 - y(p.attempts)) + '" rx="2" fill="#3d7bfd"/>';
+          if (p.wrong) svg += '<rect x="' + x + '" y="' + y(p.wrong) + '" width="' + bw + '" height="' + (H - 24 - y(p.wrong)) + '" rx="2" fill="#d9534f" opacity="0.45"/>';
+          if (p.accuracy != null) {
+            const cx = PAD + step * i + step / 2, cy = H - 24 - p.accuracy * (H - 50);
+            line += (pen ? ' L' : 'M') + cx.toFixed(1) + ' ' + cy.toFixed(1);
+            pen = true;
+          } else pen = false;
+        } else if (p.tvMinutes) {
+          svg += '<rect x="' + x + '" y="' + y(p.tvMinutes) + '" width="' + bw + '" height="' + (H - 24 - y(p.tvMinutes)) + '" rx="2" fill="#ff9f6b"/>';
+        }
+        const every = Math.ceil(n / 8);
+        if (i % every === 0 || i === n - 1) {
+          svg += '<text x="' + (PAD + step * i + step / 2) + '" y="' + (H - 8) + '" fill="#9fb3d6" font-size="10" text-anchor="middle">' + p.label + '</text>';
+        }
+      });
+      if (quiz && line) svg += '<path d="' + line + '" fill="none" stroke="#ffd166" stroke-width="2" stroke-linejoin="round"/>';
+      svg += '</svg>';
+      return svg;
+    }
 
     refresh().catch(() => show('login'));
   </script>
