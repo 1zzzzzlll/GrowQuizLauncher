@@ -14,6 +14,10 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.10.1
+
+- 修复题库源数据的重复条目。重新生成全部 30000 题。题目内容更丰富。
+
 ## 1.10.0
 
 - **新增宝贝成长等级。** 答题积分分为 7 个等级，共 28 个阶位。从塑料到钻石，积分满 4 万达到钻石 4 阶。
