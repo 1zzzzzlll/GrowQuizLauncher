@@ -2986,7 +2986,7 @@ class MainActivity : Activity() {
         val dialog = AlertDialog.Builder(this)
             .setView(body)
             .setPositiveButton(R.string.confirm_button, null)
-            .setNegativeButton(android.R.string.cancel, null)
+            .setNegativeButton(R.string.cancel, null) // the app's own 取消: not the locale-dependent android.R.string
             .show()
         // The card the platform draws around the body gets the app's own rounded dark blue.
         dialog.window?.setBackgroundDrawable(GradientDrawable().apply {
@@ -2994,17 +2994,31 @@ class MainActivity : Activity() {
             setColor(Color.rgb(20, 35, 63))
             setStroke(dp(2), Color.rgb(39, 68, 108))
         })
+        // GrowQuiz: the stock dialog buttons are borderless text buttons, so a tint does nothing and the label
+        // would end up dark-on-dark on this card. Draw the fill ourselves, with a bright outline for D-pad focus.
+        fun fill(normal: Int, focused: Int, stroke: Int) = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), GradientDrawable().apply {
+                cornerRadius = dp(26).toFloat()
+                setColor(focused)
+                setStroke(dp(2), stroke)
+            })
+            addState(intArrayOf(), GradientDrawable().apply {
+                cornerRadius = dp(26).toFloat()
+                setColor(normal)
+            })
+        }
         fun style(button: android.widget.Button, filled: Boolean) = button.apply {
             isAllCaps = false
             textSize = 16f
             minHeight = dp(52)
             minWidth = dp(128)
+            stateListAnimator = null
             if (filled) {
                 setTextColor(Color.rgb(26, 35, 50))
-                backgroundTintList = ColorStateList.valueOf(Color.rgb(255, 209, 102))
+                background = fill(Color.rgb(255, 209, 102), Color.rgb(255, 224, 138), Color.WHITE)
             } else {
                 setTextColor(Color.rgb(203, 218, 243))
-                backgroundTintList = ColorStateList.valueOf(Color.rgb(39, 68, 108))
+                background = fill(Color.rgb(39, 68, 108), Color.rgb(52, 88, 136), Color.rgb(178, 205, 245))
             }
         }
         style(dialog.getButton(AlertDialog.BUTTON_POSITIVE), true)
@@ -4890,9 +4904,10 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(4), dp(14), dp(8))
         })
         // Both links as QRs side by side: a phone scans the screen, which is the only way into the QQ group from a
-        // TV (the TV has neither QQ nor a browser). The QQ one is the group card's own image: its invite link is far
-        // too long to draw as a QR that still scans from the couch.
-        fun qrColumn(caption: String, qr: ImageView) = LinearLayout(this).apply {
+        // TV (the TV has neither QQ nor a browser). Both codes are drawn by the app's own QR encoder; a cropped
+        // screenshot of the group card blurred and lost its quiet zone, and phones refused to scan it.
+        val qrSide = dp(170)
+        fun qrColumn(caption: String, url: String) = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             addView(label(caption, 12f).apply {
@@ -4901,22 +4916,17 @@ class MainActivity : Activity() {
                 maxLines = 2
                 ellipsize = null
             })
-            qr.setPadding(0, dp(8), 0, 0)
-            addView(qr)
+            addView(ImageView(this@MainActivity).apply {
+                setImageBitmap(qrBitmap(url, qrSide))
+                setPadding(0, dp(8), 0, 0)
+            })
         }
-        val qrSide = dp(170)
         settingsList.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(14), dp(6), dp(14), dp(20))
-            addView(qrColumn(getString(R.string.scan_qr_github), ImageView(this@MainActivity).apply {
-                setImageBitmap(qrBitmap(GITHUB_URL, qrSide))
-            }))
-            addView(qrColumn(getString(R.string.scan_qr_qq), ImageView(this@MainActivity).apply {
-                setImageResource(R.drawable.qq_group_qr)
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                layoutParams = LinearLayout.LayoutParams(qrSide, qrSide)
-            }), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            addView(qrColumn(getString(R.string.scan_qr_github), GITHUB_URL))
+            addView(qrColumn(getString(R.string.scan_qr_qq), QQ_GROUP_QR), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 marginStart = dp(44)
             })
         })
@@ -5971,6 +5981,8 @@ class MainActivity : Activity() {
         const val GITHUB_URL = "https://github.com/1zzzzzlll/GrowQuizLauncher"
         /** The users' QQ group invite, on the About page; a TV can only copy or QR it, phones join from there. */
         const val QQ_GROUP_URL = "https://qun.qq.com/universal-share/share?ac=1&authKey=mnDL7L31MX%2BHWlUc902M0kntN21TzkV%2FeCZc6v0TYm1QXUL7%2FLfHkmL%2BCTqPgEzL&busi_data=eyJncm91cENvZGUiOiIxMTMxMjMwNjY5IiwidG9rZW4iOiJGUS85NlgwdDQwOWF2REI5VDhUN3RWUVQrdWs2SHc5U0k1QkY1STl1dzNZUklUbHdRcUZqU2ZPVEpodWY2OFBUIiwidWluIjoiMjkyODY2ODk5In0%3D&data=ILNK8S71lcbC9vvUuE2FO9MC6CnUPsx0RIA1oIhefp6jRZ0v-5SbFxwpqnJD3ubqqZlquj55FvMU3fNYMHkxWQ&svctype=4&tempid=h5_group_info"
+        /** The short invite decoded from the group card's own QR code; short enough for a crisp, scannable code. */
+        const val QQ_GROUP_QR = "https://qm.qq.com/q/IOn0Uo5rEc"
         const val UPDATE_STATUS = "dev.plume.UPDATE_STATUS"
         const val WRITE_EPG ="com.android.providers.tv.permission.WRITE_EPG_DATA"
         const val TV_SETTINGS = "com.android.tv.settings"

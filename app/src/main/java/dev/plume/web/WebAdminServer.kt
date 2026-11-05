@@ -145,6 +145,7 @@ object WebAdminServer {
                         .put("age", prefs.age)
                         .put("interval", prefs.intervalMinutes)
                         .put("enabled", prefs.enabled)
+                        .put("voice", prefs.voice)
                         .put("categories", JSONArray(prefs.categories.toList()))
                         .put("next", prefs.nextTriggerAt)
                         .put("owner", QuizDeviceOwner.isOwner(context))
@@ -212,10 +213,11 @@ object WebAdminServer {
                 if (age !in 5..14) return reply(out, 400, "application/json; charset=utf-8", error("invalid age"))
                 if (interval !in 1..1440) return reply(out, 400, "application/json; charset=utf-8", error("invalid interval"))
                 val prefs = QuizPrefs(context)
+                val voice = if (json.has("voice")) json.optBoolean("voice") else prefs.voice
                 val categories = json.optJSONArray("categories")?.let { arr ->
                     (0 until arr.length()).map { arr.getString(it) }.filter { it.isNotBlank() }.toSet()
                 } ?: prefs.categories
-                prefs.save(age, interval, enabled, categories)
+                prefs.save(age, interval, enabled, categories, voice)
                 QuizScheduler.reschedule(context)
                 QuizDeviceOwner.configure(context)
                 reply(out, 200, "application/json; charset=utf-8", ok())
