@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>批量导入题库 · 宝贝成长桌面</title>
+  <style>
+    :root{--bg:#0b1526;--card:#14233f;--card2:#0f1c33;--line:#27446c;--text:#eef4ff;--muted:#9fb3d6;--gold:#ffd166;--green:#2ea67b;--red:#d9534f;--blue:#3d7bfd}
+    *{box-sizing:border-box} body{margin:0;background:linear-gradient(180deg,#08101f,#0b1526);color:var(--text);font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .wrap{max-width:760px;margin:0 auto;padding:24px 18px 40px}
+    .brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}.brand h1{font-size:22px;margin:0}.brand p{margin:2px 0 0;color:var(--muted);font-size:14px}
+    .card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    h2{font-size:18px;margin:0 0 14px}h3{font-size:15px;margin:18px 0 8px}.muted{color:var(--muted)}
+    label{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+    input,select,button{width:100%;padding:14px 14px;border-radius:12px;border:1px solid var(--line);background:#0b1730;color:var(--text);font:inherit;outline:none}
+    input:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(255,209,102,.15)}
+    input[type=file]{padding:12px 14px}
+    .field{margin-bottom:14px}
+    button{cursor:pointer;border:0;font-weight:600}.primary{background:var(--gold);color:#1a2332}.primary:hover{filter:brightness(1.05)}.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+    button:disabled{opacity:.4;cursor:default}
+    .msg{margin-top:12px;font-size:14px}.msg.ok{color:#9de8c6}.msg.err{color:#ffb3b3}
+    .hidden{display:none!important}.link{color:var(--gold);text-decoration:none}.link:hover{text-decoration:underline}
+    .footer{margin-top:10px;color:var(--muted);font-size:13px}
+    .step{display:flex;gap:12px;margin-bottom:14px}
+    .step .no{flex:none;width:28px;height:28px;border-radius:50%;background:var(--gold);color:#1a2332;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:15px}
+    .step .body{flex:1;min-width:0}
+    .step .body b{display:block;margin-bottom:4px}
+    pre{background:#0b1730;border:1px solid var(--line);border-radius:12px;padding:14px;font-size:13px;line-height:1.6;overflow-x:auto;white-space:pre-wrap;word-break:break-word;color:#cfe0ff;margin:8px 0 0}
+    table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
+    th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+    th{background:rgba(255,255,255,.05);font-weight:600}
+    td code{color:var(--gold)}
+    ul.rules{margin:8px 0 0;padding-left:20px;font-size:14px;color:var(--muted)}
+    ul.rules li{margin-bottom:4px}
+    .errlist{margin-top:10px;border:1px solid rgba(217,83,79,.5);border-radius:12px;overflow:hidden;font-size:14px}
+    .errlist .erow{padding:8px 12px;border-bottom:1px solid rgba(217,83,79,.25);background:rgba(217,83,79,.08)}
+    .errlist .erow:last-child{border-bottom:0}
+    .errlist .erow b{color:#ffb3b3}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div>
+        <h1>批量导入题库</h1>
+        <p>用 AI 批量生成题目文件，上传即可入库 · <a class="link" href="/">← 返回控制台</a></p>
+      </div>
+    </div>
+
+    <div id="gate" class="card hidden">
+      <h2>需要先登录</h2>
+      <p class="muted">批量导入需要管理密码。请先打开控制台登录，再回到本页。</p>
+      <p><a class="link" href="/">去控制台登录 →</a></p>
+    </div>
+
+    <div id="main" class="hidden">
+
+      <div class="card">
+        <h2>📖 AI 批量生成题库教程</h2>
+        <div class="step">
+          <div class="no">1</div>
+          <div class="body">
+            <b>把提示词发给 AI</b>
+            <span class="muted">复制下方模板，把「7 岁」「20 道」「数学口算」换成你需要的年龄、数量和主题，发给任意 AI 助手（如腾讯元宝、豆包、DeepSeek、ChatGPT 等）。</span>
+            <pre id="promptTpl">你是一位小学教育专家。请为 7 岁儿童编写 20 道四选一选择题，主题是「数学口算」。
+
+要求：
+1. 题目难度符合该年龄的认知水平，表述口语化、无歧义；
+2. 每题恰好 4 个选项，选项互不相同，只有 1 个正确答案；
+3. 干扰项要有迷惑性，但能明确区分对错；
+4. 答案在 4 个选项中的位置尽量随机分布，不要固定在某一项；
+5. explanation 用一句话向孩子讲清为什么；
+6. 只输出 JSON 数组，不要输出任何其他文字。每道题的格式如下：
+
+[
+  {
+    "age": 7,
+    "category": "数学",
+    "question": "小明有 3 个苹果，吃了 1 个，还剩几个？",
+    "options": ["1 个", "2 个", "3 个", "4 个"],
+    "answerIndex": 1,
+    "explanation": "3 - 1 = 2，所以还剩 2 个。"
+  }
+]
+
+其中 answerIndex 是正确选项在 options 中的下标（0 表示第一个选项）。</pre>
+            <button id="copyBtn" class="ghost" style="margin-top:10px;width:auto;padding:10px 20px">复制提示词模板</button>
+            <span id="copyMsg" class="muted" style="margin-left:10px;font-size:13px"></span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="no">2</div>
+          <div class="body">
+            <b>把 AI 的输出保存为 .json 文件</b>
+            <span class="muted">AI 回复的 JSON 数组原样复制，用记事本等工具保存为 UTF-8 编码的 <b>.json</b> 文件（例如「一年级数学.json」）。如果 AI 一次给的题不够，可以让它「按同样格式再出 20 道」，把几段数组合并成一个。</span>
+          </div>
+        </div>
+        <div class="step">
+          <div class="no">3</div>
+          <div class="body">
+            <b>在本页底部上传文件</b>
+            <span class="muted">选择导入方式后上传。系统会逐题校验，全部合格才会入库；不合格的题会按行号列出原因，改好后重新上传即可。</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📐 文件格式要求</h2>
+        <p class="muted" style="margin-top:0">文件内容是一个 JSON 数组，数组里每个对象是一道题。字段如下：</p>
+        <table>
+          <tr><th>字段</th><th>类型</th><th>要求</th></tr>
+          <tr><td><code>age</code></td><td>整数</td><td>适合年龄，5–14</td></tr>
+          <tr><td><code>category</code></td><td>文本</td><td>题目分类，如「数学」「识字」「安全常识」，导入后按分类筛选</td></tr>
+          <tr><td><code>question</code></td><td>文本</td><td>题干，不能为空</td></tr>
+          <tr><td><code>options</code></td><td>数组</td><td>恰好 4 个互不相同的选项</td></tr>
+          <tr><td><code>answerIndex</code></td><td>整数</td><td>正确选项的下标，0–3（0 代表第一个选项）</td></tr>
+          <tr><td><code>explanation</code></td><td>文本</td><td>可选，答对后显示给宝贝的解析</td></tr>
+        </table>
+        <h3>完整示例（两道题）</h3>
+        <pre>[
+  {
+    "age": 7,
+    "category": "数学",
+    "question": "小明有 3 个苹果，吃了 1 个，还剩几个？",
+    "options": ["1 个", "2 个", "3 个", "4 个"],
+    "answerIndex": 1,
+    "explanation": "3 - 1 = 2，所以还剩 2 个。"
+  },
+  {
+    "age": 8,
+    "category": "安全常识",
+    "question": "陌生人敲门时，小朋友应该怎么做？",
+    "options": ["马上开门", "先问清楚再告诉大人", "大声哭", "从窗户爬出去"],
+    "answerIndex": 1,
+    "explanation": "不能给陌生人开门，要先告诉家里的大人。"
+  }
+]</pre>
+        <ul class="rules">
+          <li>单文件不超过 8 MB，一次最多导入 5000 题，超出请拆分文件。</li>
+          <li>同年龄、同分类、同题干的题视为重复，导入时自动跳过。</li>
+          <li>任何一道题不合格，整批都不会导入，并会列出每道错题的行号和原因。</li>
+          <li>导入的题属于「自定义」分类，可在题库管理页编辑、禁用或删除。</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>⬆️ 上传题库文件</h2>
+        <div class="field">
+          <label>题库文件（.json，UTF-8 编码）</label>
+          <input id="file" type="file" accept=".json,application/json">
+        </div>
+        <div class="field">
+          <label>导入方式</label>
+          <select id="mode">
+            <option value="append">追加：保留已有自定义题，跳过重复题</option>
+            <option value="replace">替换：清空全部已有自定义题，换成文件里的题</option>
+          </select>
+        </div>
+        <button id="uploadBtn" class="primary" disabled>开始导入</button>
+        <div id="upMsg" class="msg"></div>
+        <div id="errList" class="errlist hidden"></div>
+        <div class="footer">导入成功后回到「题库管理」点「刷新列表」即可看到新题。</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const msg = (el, text, ok) => { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); };
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    async function boot() {
+      try {
+        const r = await fetch('/api/status', { credentials: 'same-origin' });
+        const s = await r.json();
+        if (!s.authenticated) { $('gate').classList.remove('hidden'); return; }
+        $('main').classList.remove('hidden');
+      } catch (e) {
+        $('gate').classList.remove('hidden');
+      }
+    }
+
+    $('copyBtn').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText($('promptTpl').textContent);
+        $('copyMsg').textContent = '已复制，去发给 AI 吧';
+      } catch (e) {
+        // 剪贴板接口在部分浏览器需要 HTTPS，退回传统方式
+        const ta = document.createElement('textarea');
+        ta.value = $('promptTpl').textContent;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        $('copyMsg').textContent = '已复制，去发给 AI 吧';
+      }
+    };
+
+    $('file').onchange = () => {
+      $('uploadBtn').disabled = !$('file').files.length;
+      $('upMsg').textContent = '';
+      $('upMsg').className = 'msg';
+      $('errList').classList.add('hidden');
+    };
+
+    $('uploadBtn').onclick = async () => {
+      const f = $('file').files[0];
+      if (!f) return;
+      if (f.size > 8 * 1024 * 1024) return msg($('upMsg'), '文件超过 8 MB 上限，请拆分后再传', false);
+      const replace = $('mode').value === 'replace';
+      if (replace && !confirm('「替换」会清空电视上已有的全部自定义题（内置题不受影响），确定继续？')) return;
+
+      let text;
+      try {
+        text = await f.text();
+      } catch (e) {
+        return msg($('upMsg'), '文件读取失败，请确认是 UTF-8 编码的文本文件', false);
+      }
+
+      let questions;
+      try {
+        const parsed = JSON.parse(text);
+        // 兼容两种写法：直接是数组，或包在 {"questions": [...]} 里
+        questions = Array.isArray(parsed) ? parsed : parsed.questions;
+        if (!Array.isArray(questions)) throw new Error('no array');
+      } catch (e) {
+        return msg($('upMsg'), '文件不是有效的 JSON：请确认把 AI 输出的数组完整复制保存（以 [ 开头、] 结尾），没有多余文字', false);
+      }
+
+      $('uploadBtn').disabled = true;
+      msg($('upMsg'), '正在上传并校验 ' + questions.length + ' 道题…', true);
+      try {
+        const r = await fetch('/api/questions/import', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: replace ? 'replace' : 'append', questions })
+        });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j.ok) {
+          msg($('upMsg'), '导入成功：新增 ' + j.imported + ' 题' +
+            (j.skipped > 0 ? '，跳过 ' + j.skipped + ' 道重复题' : '') +
+            (j.replace ? '（已替换原自定义题）' : '') + '。回题库管理刷新即可看到。', true);
+          $('errList').classList.add('hidden');
+          $('file').value = '';
+        } else {
+          msg($('upMsg'), (j.error || ('导入失败（HTTP ' + r.status + '）')) +
+            (j.failed ? '，以下只列出前 ' + (j.errors || []).length + ' 处：' : ''), false);
+          if (j.errors && j.errors.length) {
+            $('errList').innerHTML = j.errors.map(e =>
+              '<div class="erow"><b>第 ' + e.row + ' 题</b>：' + esc(e.reason) + '</div>').join('');
+            $('errList').classList.remove('hidden');
+          }
+        }
+      } catch (e) {
+        msg($('upMsg'), '上传失败：确认手机和电视在同一 Wi-Fi，且控制台已登录', false);
+      }
+      $('uploadBtn').disabled = false;
+    };
+
+    boot();
+  </script>
+</body>
+</html>
