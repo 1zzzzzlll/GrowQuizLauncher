@@ -20,10 +20,18 @@
         android:importantForAccessibility="no"
         android:scaleType="centerCrop" />
 
+    <!-- Wraps the home column: on a screen shorter than the content, the column scrolls instead of
+         losing the bottom row. fillViewport keeps the spacer weight working on big screens. -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
     <LinearLayout
         android:id="@+id/content"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="wrap_content"
         android:clipChildren="false"
         android:clipToPadding="false"
         android:orientation="vertical"
@@ -281,6 +289,7 @@
                 android:orientation="horizontal" />
         </dev.plume.SnapScrollView>
     </LinearLayout>
+    </ScrollView>
 
     <!-- All apps: hidden until the Apps tile is pressed; Back closes it. -->
     <ScrollView

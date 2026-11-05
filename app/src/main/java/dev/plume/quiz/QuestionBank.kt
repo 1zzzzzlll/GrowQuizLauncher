@@ -63,7 +63,7 @@ class QuestionBank(private val context: Context) {
     /** One age's bundled questions with overrides applied; parsed on first use and cached. */
     private fun shard(age: Int): List<Question> {
         ensureLoaded()
-        val key = age.coerceIn(5, 14)
+        val key = age.coerceIn(5, 15)
         synchronized(this) {
             builtinShards[key]?.let { return it }
             val loadedShard = loadShard(key, overrides())
@@ -73,7 +73,7 @@ class QuestionBank(private val context: Context) {
     }
 
     private fun builtin(age: Int?): List<Question> =
-        age?.let { shard(it) } ?: (5..14).flatMap { shard(it) }
+        age?.let { shard(it) } ?: (5..15).flatMap { shard(it) }
 
     private fun custom(age: Int?): List<Question> =
         age?.let { a -> custom().filter { it.age == a } } ?: custom()
@@ -149,7 +149,7 @@ class QuestionBank(private val context: Context) {
     }
 
     private fun validateQuestion(age: Int, category: String, prompt: String, options: List<String>, answerIndex: Int) {
-        require(age in 5..14) { "age out of range" }
+        require(age in 5..15) { "age out of range" }
         require(category.isNotBlank()) { "category required" }
         require(prompt.isNotBlank()) { "prompt required" }
         require(options.size == 4 && options.all { it.isNotBlank() } && options.toSet().size == 4) { "four distinct options required" }
@@ -306,7 +306,7 @@ class QuestionBank(private val context: Context) {
     private fun pick(age: Int, categories: Set<String>, includeDisabled: Boolean): List<Question> {
         val disabled = if (includeDisabled) emptySet() else disabledIds()
         return (builtin(age) + custom(age)).filter { q ->
-            q.age == age.coerceIn(5, 14) &&
+            q.age == age.coerceIn(5, 15) &&
                 (categories.isEmpty() || q.category in categories || (q.custom && CUSTOM_CATEGORY in categories)) &&
                 q.id !in disabled
         }
@@ -351,7 +351,7 @@ class QuestionBank(private val context: Context) {
         if (options.toSet().size != 4) return question
         val answerIndex = override.optInt("answerIndex", question.answerIndex)
         return question.copy(
-            age = override.optInt("age", question.age).coerceIn(5, 14),
+            age = override.optInt("age", question.age).coerceIn(5, 15),
             category = override.optString("category", question.category).trim().ifEmpty { question.category },
             prompt = override.optString("question", question.prompt).trim().ifEmpty { question.prompt },
             options = options,

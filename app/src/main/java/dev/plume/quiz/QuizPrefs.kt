@@ -7,8 +7,8 @@ class QuizPrefs(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
 
     var age: Int
-        get() = prefs.getInt(KEY_AGE, 7).coerceIn(5, 14)
-        set(value) = prefs.edit().putInt(KEY_AGE, value.coerceIn(5, 14)).apply()
+        get() = prefs.getInt(KEY_AGE, 7).coerceIn(5, 15)
+        set(value) = prefs.edit().putInt(KEY_AGE, value.coerceIn(5, 15)).apply()
 
     var intervalMinutes: Int
         get() = prefs.getInt(KEY_INTERVAL, 30).coerceIn(1, 1440)
@@ -79,7 +79,7 @@ class QuizPrefs(context: Context) {
 
     fun save(age: Int, interval: Int, enabled: Boolean, categories: Set<String> = this.categories, voice: Boolean = this.voice) {
         prefs.edit()
-            .putInt(KEY_AGE, age.coerceIn(5, 14))
+            .putInt(KEY_AGE, age.coerceIn(5, 15))
             .putInt(KEY_INTERVAL, interval.coerceIn(1, 1440))
             .putBoolean(KEY_ENABLED, enabled)
             .putStringSet(KEY_CATEGORIES, categories)

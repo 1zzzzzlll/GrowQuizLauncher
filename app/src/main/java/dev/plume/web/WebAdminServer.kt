@@ -388,7 +388,7 @@ object WebAdminServer {
                 val age = json.optInt("age", -1)
                 val interval = json.optInt("interval", -1)
                 val enabled = json.optBoolean("enabled", true)
-                if (age !in 5..14) return reply(out, 400, "application/json; charset=utf-8", error("invalid age"))
+                if (age !in 5..15) return reply(out, 400, "application/json; charset=utf-8", error("invalid age"))
                 if (interval !in 1..1440) return reply(out, 400, "application/json; charset=utf-8", error("invalid interval"))
                 val prefs = QuizPrefs(context)
                 val voice = if (json.has("voice")) json.optBoolean("voice") else prefs.voice
@@ -650,7 +650,7 @@ object WebAdminServer {
         val explanation = json.optString("explanation").trim()
         val options = optionsJson?.let { arr -> List(arr.length()) { arr.optString(it).trim() } }.orEmpty()
         val failure = when {
-            age !in 5..14 -> "invalid age"
+            age !in 5..15 -> "invalid age"
             category.isEmpty() -> "category required"
             prompt.isEmpty() -> "question required"
             options.size != 4 || options.any { it.isEmpty() } || options.toSet().size != 4 -> "four distinct options required"
@@ -669,7 +669,7 @@ object WebAdminServer {
      * failure, null when the row is clean. Mirrors [QuestionBank]'s own validation.
      */
     private fun validateImport(item: JSONObject): String? {
-        if (!item.has("age") || item.optInt("age", -1) !in 5..14) return "age 必须是 5–14 的整数"
+        if (!item.has("age") || item.optInt("age", -1) !in 5..15) return "age 必须是 5–15 的整数"
         if (item.optString("category").trim().isEmpty()) return "category 不能为空"
         if (item.optString("question").trim().isEmpty()) return "question 不能为空"
         val options = item.optJSONArray("options")
