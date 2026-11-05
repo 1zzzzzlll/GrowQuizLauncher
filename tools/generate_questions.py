@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministically build and validate the offline 5-14 year-old question bank (v3, 30k).
+"""Deterministically build and validate the offline 5-15 year-old question bank (v3, 33k).
 
 Composition per age (3000 questions):
   - legacy 800 (ids a{age}-0001..0800, bit-identical to v2):
@@ -33,7 +33,7 @@ EXTRA_KNOW = 200
 PER_AGE = LEGACY_MATH + LEGACY_LANG + LEGACY_KNOW + EXTRA_MATH + EXTRA_LANG + EXTRA_KNOW
 
 BANDS = {5: "5_6", 6: "5_6", 7: "7_8", 8: "7_8", 9: "9_10", 10: "9_10",
-         11: "11_12", 12: "11_12", 13: "13_14", 14: "13_14"}
+         11: "11_12", 12: "11_12", 13: "13_14", 14: "13_14", 15: "15"}
 
 
 def numeric_distractors(answer, rng, count=3):
@@ -461,6 +461,155 @@ def build_math_legacy(age, rng):
             else:
                 neg1, neg2 = rng.randint(-9, -1), rng.randint(-9, -1)
                 add("数学", f"({neg1}) × ({neg2}) = ?", neg1 * neg2, explanation="负数乘负数得正数。")
+
+        elif age == 15:
+            # 初三（中考）水平：一元二次方程、二次函数、三角函数、圆、概率统计
+            kind = rng.randrange(22)
+            if kind == 0:
+                r1, r2 = sorted(rng.sample(range(-9, 12), 2))
+                add("数学", f"方程 x² - ({r1 + r2})x + ({r1 * r2}) = 0 的较小根是？", r1, [r2, -r1, -r2],
+                    explanation=f"方程可分解为 (x - ({r1}))(x - ({r2})) = 0。")
+            elif kind == 1:
+                aa, bb, cc = rng.randint(1, 5), rng.randint(-8, 8), rng.randint(-5, 6)
+                add("数学", f"方程 {aa}x² + ({bb})x + ({cc}) = 0 的判别式 Δ = b² - 4ac 的值是？",
+                    bb * bb - 4 * aa * cc)
+            elif kind == 2:
+                h, k = rng.randint(-6, 6), rng.randint(-9, 9)
+                if h != 0 and k != 0:
+                    add("数学", f"抛物线 y = (x - ({h}))² + ({k}) 的顶点坐标是？", f"({h}, {k})",
+                        [f"({-h}, {k})", f"({h}, {-k})", f"({-h}, {-k})"],
+                        explanation="顶点式 y = (x - h)² + k 的顶点是 (h, k)。")
+            elif kind == 3:
+                bb = rng.randint(-8, 8) * 2
+                add("数学", f"抛物线 y = x² + ({bb})x + {rng.randint(-9, 9)} 的对称轴是直线 x = ？", -bb // 2,
+                    explanation="对称轴为 x = -b/2a。")
+            elif kind == 4:
+                n, m = rng.randint(2, 9), rng.choice([2, 3, 5, 6, 7])
+                add("数学", f"化简：√{n * n * m} = ？", f"{n}√{m}", [f"{m}√{n}", f"{n * m}", f"{n}√{n * m}"],
+                    explanation=f"√{n * n * m} = √{n * n} × √{m} = {n}√{m}。")
+            elif kind == 5:
+                b = rng.choice([2, 3, 5])
+                m, n = rng.randint(2, 6), rng.randint(2, 6)
+                sub = rng.randrange(3)
+                if sub == 0:
+                    add("数学", f"{b}^{m} × {b}^{n} = {b}的几次方？", m + n, [m * n, abs(m - n), m + n + 1],
+                        explanation="同底数幂相乘，底数不变，指数相加。")
+                elif sub == 1:
+                    add("数学", f"({b}^{m})^{n} = {b}的几次方？", m * n, [m + n, m * n + 1, m * n + 2],
+                        explanation="幂的乘方，底数不变，指数相乘。")
+                else:
+                    add("数学", f"{b}^{m + n} ÷ {b}^{m} = {b}的几次方？", n, [n + 1, max(1, n - 1), m + n],
+                        explanation="同底数幂相除，底数不变，指数相减。")
+            elif kind == 6:
+                table = [("sin30°", "1/2"), ("cos60°", "1/2"), ("tan45°", "1"), ("sin45°", "√2/2"),
+                         ("cos45°", "√2/2"), ("tan30°", "√3/3"), ("tan60°", "√3"), ("sin60°", "√3/2"),
+                         ("cos30°", "√3/2")]
+                name, value = rng.choice(table)
+                others = rng.sample([v for v in dict.fromkeys(v for _, v in table) if v != value], 3)
+                add("数学", f"{name} 的值是？", value, others)
+            elif kind == 7:
+                x_, y_ = rng.randint(1, 12), rng.randint(1, 12)
+                add("数学", f"反比例函数 y = k/x 的图象经过点 ({x_}, {y_})，k = ？", x_ * y_,
+                    explanation=f"k = x × y = {x_} × {y_} = {x_ * y_}。")
+            elif kind == 8:
+                ratio, small = rng.randint(2, 5), rng.randint(2, 9)
+                add("图形", f"两个相似三角形的相似比为 1:{ratio}，小三角形一边长 {small}，大三角形对应边长是？",
+                    small * ratio, [small + ratio, small * ratio + 1, max(1, small * ratio - 1)],
+                    explanation="相似三角形对应边的比等于相似比。")
+            elif kind == 9:
+                central = rng.randint(20, 100) * 2
+                if central != 180:
+                    add("图形", f"同弧所对的圆心角是 {central}°，则该弧所对的圆周角是？", central // 2,
+                        [central, central // 4, 180 - central // 2],
+                        explanation="同弧所对的圆周角等于圆心角的一半。")
+            elif kind == 10:
+                n = rng.choice([30, 45, 60, 90, 120, 180])
+                r = rng.choice([2, 3, 6, 9])
+                arc = round(n * 3.14 * r / 180, 2)
+                add("图形", f"半径为 {r} 厘米的圆中，{n}° 的圆心角所对的弧长是多少厘米？（π取3.14）", arc,
+                    [round(n * 3.14 * r / 90, 2), round(n * 3.14 * r / 360, 2), round(n * 3.14 * r * r / 360, 2)],
+                    explanation="弧长 l = nπr ÷ 180。")
+            elif kind == 11:
+                n = rng.choice([30, 45, 60, 90, 120, 180])
+                r = rng.choice([2, 4, 6, 10])
+                area = round(n * 3.14 * r * r / 360, 2)
+                add("图形", f"半径为 {r} 厘米的圆中，圆心角 {n}° 的扇形面积是多少平方厘米？（π取3.14）", area,
+                    [round(n * 3.14 * r / 180, 2), round(n * 3.14 * r * r / 180, 2), round(n * 3.14 * r * r / 720, 2)],
+                    explanation="扇形面积 S = nπr² ÷ 360。")
+            elif kind == 12:
+                if rng.random() < 0.4:
+                    add("数学", "同时掷两枚硬币，两枚都正面朝上的概率是？", "1/4", ["1/2", "1/3", "3/4"],
+                        explanation="共有正正、正反、反正、反反4种等可能结果。")
+                else:
+                    red, white = rng.randint(1, 5), rng.randint(1, 5)
+                    if red != white:
+                        add("数学", f"袋中有{red}个红球和{white}个白球，随机摸出一个，摸到白球的概率是？（结果要约分）",
+                            frac(white, red + white), [frac(red, red + white), frac(1, red + white), f"{white}/{red + white}"])
+            elif kind == 13:
+                p, q = rng.randint(1, 9), rng.randint(1, 9)
+                if p != q:
+                    add("数学", f"把 x² + {p + q}x + {p * q} 因式分解，结果是？", f"(x + {p})(x + {q})",
+                        [f"(x + {p})(x - {q})", f"(x - {p})(x - {q})", f"(x + {p * q})(x + 1)"],
+                        explanation=f"{p} + {q} = {p + q}，{p} × {q} = {p * q}。")
+            elif kind == 14:
+                lo, hi = sorted(rng.sample(range(-5, 10), 2))
+                add("数学", f"不等式组 x > {lo} 且 x < {hi} 的解集是？", f"{lo} < x < {hi}",
+                    [f"x > {hi}", f"x < {lo}", "无解"])
+            elif kind == 15:
+                mant = rng.choice([1.2, 2.5, 3.4, 4.7, 5.6, 6.3, 7.8, 8.9, 9.1])
+                exp = rng.randint(3, 6)
+                num = "0." + "0" * (exp - 1) + str(int(mant * 10))
+                add("数学", f"用科学记数法表示 {num}，应为{mant}×10的负几次方？", exp,
+                    [exp - 1, exp + 1, -exp])
+            elif kind == 16:
+                a_, b_ = rng.randint(1, 6), rng.randint(1, 6)
+                if a_ != b_:
+                    add("数学", f"计算：{a_}/x + {b_}/x = ？", f"{a_ + b_}/x",
+                        [f"{a_ * b_}/x", f"{a_ + b_}/(2x)", f"{a_ + b_}/x²"],
+                        explanation="同分母分式相加，分母不变，分子相加。")
+            elif kind == 17:
+                b_score = rng.choice([70, 75, 80, 85, 90, 95])
+                f_score = rng.choice([70, 75, 80, 85, 90, 95])
+                total = 3 * b_score + 2 * f_score
+                if total % 5 == 0 and b_score != f_score:
+                    add("数学", f"某同学笔试成绩{b_score}分、面试成绩{f_score}分，按笔试60%、面试40%计算总成绩是？",
+                        total // 5, [(b_score + f_score) // 2, total // 5 + 2, max(1, total // 5 - 2)],
+                        explanation=f"总成绩 = {b_score}×0.6 + {f_score}×0.4 = {total // 5}分。")
+            elif kind == 18:
+                base = rng.randint(3, 15)
+                extra1, extra2 = rng.sample([x for x in range(1, 21) if x != base], 2)
+                data = sorted([base, base, base, extra1, extra2])
+                add("数学", f"数据 {'，'.join(map(str, data))} 的众数是？", base,
+                    [extra1, extra2, sum(data) // 5],
+                    explanation="出现次数最多的数是众数。")
+            elif kind == 19:
+                nums = sorted(rng.sample(range(1, 30), 5))
+                add("数学", f"数据 {'，'.join(map(str, nums))} 的极差是？", nums[-1] - nums[0],
+                    [nums[-1] - nums[1], nums[-2] - nums[0], nums[-1] + nums[0]],
+                    explanation="极差 = 最大值 - 最小值。")
+            elif kind == 20:
+                nums = sorted(rng.sample(range(2, 40), 6))
+                if (nums[2] + nums[3]) % 2 == 0:
+                    med = (nums[2] + nums[3]) // 2
+                    if med not in (nums[2], nums[3]):
+                        add("数学", f"数据 {'，'.join(map(str, nums))} 的中位数是？", med,
+                            [nums[2], nums[3], med + 1],
+                            explanation="偶数个数据的中位数是中间两数的平均数。")
+            else:
+                add("图形", *rng.choice([
+                    ("对角线互相垂直的平行四边形是？", "菱形", ["矩形", "正方形", "梯形"],
+                     "对角线互相垂直的平行四边形是菱形。"),
+                    ("对角线相等的平行四边形是？", "矩形", ["菱形", "梯形", "任意四边形"],
+                     "对角线相等的平行四边形是矩形。"),
+                    ("圆的切线垂直于经过切点的什么？", "半径", ["弦", "割线", "弧"],
+                     "切线垂直于经过切点的半径。"),
+                    ("平行四边形的对角线互相什么？", "平分", ["垂直", "相等", "垂直且相等"],
+                     "平行四边形的对角线互相平分。"),
+                    ("菱形的对角线互相什么？", "垂直平分", ["相等", "只平分不垂直", "只垂直不平分"],
+                     "菱形的对角线互相垂直平分。"),
+                    ("矩形的对角线有什么性质？", "相等且互相平分", ["互相垂直", "互相垂直且平分", "只互相垂直"],
+                     "矩形的对角线相等且互相平分。"),
+                ]))
 
         else:  # 13-14
             kind = rng.randrange(20)
@@ -1176,6 +1325,215 @@ def build_math_extra(age, rng, target, seen):
                 name = rng.choice(NAMES)
                 add("应用", f"{name}开车每小时行驶{speed}千米，行驶{time}小时共行多少千米？", speed * time)
 
+        elif age == 15:
+            # 初三（中考）水平，extra：更宽数值范围 + 应用情境
+            kind = rng.randrange(30)
+            if kind == 0:
+                a0 = rng.choice([100, 200, 300, 400, 500, 600, 800, 1000])
+                p = rng.choice([10, 20, 50])
+                grown = a0 * (100 + p) * (100 + p) // 10000
+                add("应用", f"某工厂今年产值{a0}万元，若每年增长{p}%，两年后的产值是多少万元？", grown,
+                    [a0 * (100 + 2 * p) // 100, grown - a0, a0 * (100 + p) // 100],
+                    explanation=f"两年后产值 = {a0}×(1+{p}%)² = {grown}万元。")
+            elif kind == 1:
+                m = rng.randint(1, 8)
+                c = rng.randint(-9, 9)
+                sq = m * m
+                add("数学", f"把 x² + {2 * m}x + {c} 配方成 (x + {m})² + n 的形式，n = ？", c - sq,
+                    [c + sq, sq - c, -sq],
+                    explanation=f"(x + {m})² = x² + {2 * m}x + {sq}，所以 n = {c} - {sq} = {c - sq}。")
+            elif kind == 2:
+                aa, bb = rng.randint(1, 4), rng.randint(-9, 9)
+                cc = rng.randint(-9, 9)
+                delta = bb * bb - 4 * aa * cc
+                if delta > 0:
+                    ans, others = "两个不相等的实数根", ["两个相等的实数根", "没有实数根", "只有一个实数根"]
+                elif delta == 0:
+                    ans, others = "两个相等的实数根", ["两个不相等的实数根", "没有实数根", "只有一个实数根"]
+                else:
+                    ans, others = "没有实数根", ["两个不相等的实数根", "两个相等的实数根", "只有一个实数根"]
+                add("数学", f"方程 {aa}x² + ({bb})x + ({cc}) = 0 的根的情况是？", ans, others,
+                    explanation=f"判别式 Δ = {bb}² - 4×{aa}×({cc}) = {delta}。")
+            elif kind == 3:
+                a_, b_ = sorted(rng.sample(range(1, 9), 2))
+                c = rng.randint(1, 9)
+                if (a_ * c) % (b_ - a_) == 0:
+                    x = a_ * c // (b_ - a_)
+                    if x > 0:
+                        add("数学", f"分式方程 {a_}/x = {b_}/(x + {c}) 的解是 x = ？", x,
+                            [x + 1, x + c, max(1, x - 1)],
+                            explanation=f"交叉相乘得 {a_}(x + {c}) = {b_}x，解得 x = {x}。")
+            elif kind == 4:
+                h, k = rng.randint(-6, 6), rng.randint(1, 20)
+                add("数学", f"二次函数 y = -(x - ({h}))² + {k} 的最大值是？", k,
+                    [-k, h, -h],
+                    explanation="开口向下的抛物线，顶点处取最大值。")
+            elif kind == 5:
+                x_, y_ = rng.randint(-12, 12), rng.randint(-12, 12)
+                if x_ != 0 and y_ != 0:
+                    add("数学", f"点 ({x_}, {y_}) 关于原点对称的点的坐标是？", f"({-x_}, {-y_})",
+                        [f"({x_}, {-y_})", f"({-x_}, {y_})", f"({y_}, {x_})"],
+                        explanation="关于原点对称的点，横、纵坐标都互为相反数。")
+            elif kind == 6:
+                m = rng.randint(-6, 6)
+                b_ = rng.randint(-9, 9)
+                if m != 0 and b_ != 0:
+                    add("数学", f"一次函数 y = {m}x + ({b_}) 的图象与 y 轴的交点坐标是？", f"(0, {b_})",
+                        [f"({b_}, 0)", f"(0, {m})", f"({m}, {b_})"],
+                        explanation="与 y 轴交点的横坐标为 0，代入得 y = b。")
+            elif kind == 7:
+                # 解直角三角形：30° 对边是斜边的一半
+                opp = rng.randint(2, 15)
+                if rng.random() < 0.5:
+                    add("图形", f"直角三角形中，30°角所对的直角边是{opp}，斜边长是？", 2 * opp,
+                        [opp + 2, 3 * opp, opp],
+                        explanation="直角三角形中，30°角所对的直角边等于斜边的一半。")
+                else:
+                    add("图形", f"直角三角形中，斜边长是{2 * opp}，30°角所对的直角边长是？", opp,
+                        [2 * opp, opp // 2 if opp % 2 == 0 else opp + 1, opp + 1],
+                        explanation="直角三角形中，30°角所对的直角边等于斜边的一半。")
+            elif kind == 8:
+                n, m = rng.randint(2, 9), rng.choice([2, 3, 5, 6, 7])
+                b_ = rng.choice([2, 3, 5])
+                val = n * n * m * b_ * b_
+                add("数学", f"化简：√{n * n * m} × √{b_ * b_} = ？", n * b_ * int(m ** 0.5) if m in (4, 9) else f"{n * b_}√{m}",
+                    [f"{n * b_ * m}", f"{n + b_}√{m}", f"{n * b_ + m}"],
+                    explanation=f"原式 = {n}√{m} × {b_} = {n * b_}√{m}。")
+            elif kind == 9:
+                b = rng.choice([2, 3, 5])
+                m, n, p = rng.randint(2, 5), rng.randint(2, 5), rng.randint(1, 3)
+                add("数学", f"{b}^{m} × {b}^{n} ÷ {b}^{p} = {b}的几次方？", m + n - p,
+                    [m + n + p, m * n - p, m + n - p + 1],
+                    explanation="同底数幂相乘指数相加，相除指数相减。")
+            elif kind == 10:
+                r, d = rng.choice([(5, 3), (5, 4), (10, 6), (10, 8), (13, 5), (13, 12)])
+                half = int((r * r - d * d) ** 0.5)
+                add("图形", f"半径为{r}的圆中，圆心到一条弦的距离是{d}，这条弦的长是？", 2 * half,
+                    [half, r - d, r + d],
+                    explanation=f"半弦长 = √({r}² - {d}²) = {half}，弦长 = 2×{half} = {2 * half}。")
+            elif kind == 11:
+                # 相似测高：同一时刻物高与影长成正比
+                s1 = rng.choice([1, 2, 4])
+                s2 = rng.choice([3, 5, 6, 8, 10, 12])
+                if s2 % s1 == 0 and s2 != s1:
+                    pole = rng.choice([1, 2])
+                    add("应用", f"同一时刻，{pole}米高的标杆影长{s1}米，旗杆影长{s2}米，旗杆高多少米？", pole * s2 // s1,
+                        [s2 - s1, pole * s2 // s1 + 1, pole * s1],
+                        explanation=f"旗杆高 = {pole} × {s2} ÷ {s1} = {pole * s2 // s1}米。")
+            elif kind == 12:
+                m = rng.choice([1, 2, 3])
+                h = rng.randint(2, 12)
+                add("应用", f"一段斜坡的坡度 i = 1:{m}，铅直高度是{h}米，水平距离是多少米？", m * h,
+                    [h + m, h * (m + 1), max(1, h - m)],
+                    explanation="坡度 i = 铅直高度 : 水平距离，水平距离 = 高度 × 坡比的分母。")
+            elif kind == 13:
+                lo, hi = sorted(rng.sample(range(-8, 12), 2))
+                add("数学", f"不等式 {lo} < x ≤ {hi} 的整数解有多少个？", hi - lo,
+                    [hi - lo + 1, hi - lo - 1, hi - lo + 2],
+                    explanation=f"整数解为 {lo + 1} 到 {hi}，共 {hi - lo} 个。")
+            elif kind == 14:
+                add("数学", "化简：(x² - 1) ÷ (x + 1) = ？", "x - 1", ["x + 1", "x² - x", "1 - x"],
+                    explanation="x² - 1 = (x + 1)(x - 1)，约去 (x + 1) 得 x - 1。")
+            elif kind == 15:
+                n = rng.choice([x for x in range(5, 100) if int(x ** 0.5) ** 2 != x])
+                lo = int(n ** 0.5)
+                add("数学", f"√{n} 的值在哪两个相邻整数之间？", f"{lo}和{lo + 1}",
+                    [f"{lo - 1}和{lo}", f"{lo + 1}和{lo + 2}", f"{lo}和{lo + 2}"],
+                    explanation=f"{lo}² = {lo * lo} < {n} < {lo + 1}² = {(lo + 1) * (lo + 1)}。")
+            elif kind == 16:
+                red, white = rng.randint(2, 5), rng.randint(1, 5)
+                total = red + white
+                add("数学", f"袋中有{red}个红球和{white}个白球，不放回地摸两次，两次都摸到红球的概率是？",
+                    frac(red * (red - 1), total * (total - 1)),
+                    [frac(red, total), frac(red * red, total * total), frac(red - 1, total - 1)],
+                    explanation=f"第一次 {red}/{total}，第二次 {red - 1}/{total - 1}，相乘并约分。")
+            elif kind == 17:
+                k0 = rng.randint(1, 50)
+                add("数学", f"数据 {k0}，{k0 + 1}，{k0 + 2}，{k0 + 3}，{k0 + 4} 的方差是？", "2",
+                    ["1", "2.5", "4"],
+                    explanation="5个连续整数的平均数是中间数，方差 = (4+1+0+1+4)÷5 = 2。")
+            elif kind == 18:
+                v1, v2 = rng.randint(3, 9) * 10, rng.randint(2, 9) * 10
+                if v1 != v2:
+                    t = rng.randint(2, 6)
+                    add("应用", f"甲、乙两车同时从{(v1 + v2) * t}千米外的两地相向开出，甲每小时行{v1}千米，乙每小时行{v2}千米，几小时后相遇？",
+                        t, [t + 1, max(1, t - 1), t + 2],
+                        explanation=f"相遇时间 = 路程 ÷ 速度和 = {(v1 + v2) * t} ÷ {v1 + v2} = {t}小时。")
+            elif kind == 19:
+                aa, bb = rng.choice([(6, 3), (4, 12), (6, 12), (8, 8), (10, 5), (12, 4), (9, 18), (10, 15)])
+                days = aa * bb // (aa + bb)
+                if aa * bb % (aa + bb) == 0:
+                    add("应用", f"一项工程，甲单独做{aa}天完成，乙单独做{bb}天完成，两人合作几天完成？", days,
+                        [(aa + bb) // 2, days + 1, max(1, days - 1)],
+                        explanation=f"合作效率 = 1/{aa} + 1/{bb}，天数 = {aa}×{bb}÷({aa}+{bb}) = {days}天。")
+            elif kind == 20:
+                base, exp = rng.choice([(2, 10), (2, 12), (3, 6), (3, 8), (5, 4), (5, 6), (7, 4), (2, 8), (10, 6), (4, 5)])
+                add("数学", f"(-{base})^{exp} ÷ {base}^{exp - 2} = ？", base * base,
+                    [-base * base, base, -(base * base)],
+                    explanation=f"偶次幂为正：(-{base})^{exp} = {base}^{exp}，再除以 {base}^{exp - 2} 得 {base}² = {base * base}。")
+            elif kind == 21:
+                p, q = rng.randint(-9, 9), rng.randint(-9, 9)
+                if p != 0 and q != 0 and p != -q:
+                    add("数学", f"把 x² + ({p + q})x + ({p * q}) 因式分解，结果是？", f"(x + ({p}))(x + ({q}))",
+                        [f"(x - ({p}))(x - ({q}))", f"(x + ({p}))(x - ({q}))", f"(x + ({p * q}))(x + 1)"],
+                        explanation=f"({p}) + ({q}) = {p + q}，({p}) × ({q}) = {p * q}。")
+            elif kind == 22:
+                mant = rng.choice([1.05, 2.03, 3.7, 4.56, 6.08, 7.5, 8.02, 9.99])
+                exp = rng.randint(6, 10)
+                add("数学", f"用科学记数法表示 {int(mant * 10 ** exp)}，应为{mant}×10的几次方？", exp,
+                    [exp - 1, exp + 1, exp + 2])
+            elif kind == 23:
+                nums = sorted(rng.sample(range(1, 60), 5))
+                med = nums[2]
+                if sum(nums) % 5 == 0:
+                    mean = sum(nums) // 5
+                    if mean != med and abs(mean - med) > 1:
+                        add("数学", f"数据 {'，'.join(map(str, nums))} 的中位数比平均数小多少？", mean - med,
+                            [mean - med + 1, max(1, mean - med - 1), med - nums[1]],
+                            explanation=f"中位数是 {med}，平均数是 {mean}，相差 {mean - med}。")
+            elif kind == 24:
+                r1, r2 = sorted(rng.sample(range(-12, 13), 2))
+                add("数学", f"已知一元二次方程的两根是 {r1} 和 {r2}，则两根之和是？", r1 + r2,
+                    [r1 * r2, r2 - r1, -(r1 + r2)],
+                    explanation="由韦达定理，x₁ + x₂ = -b/a。")
+            elif kind == 25:
+                r1, r2 = sorted(rng.sample(range(-9, 10), 2))
+                if r1 != 0 and r2 != 0:
+                    add("数学", f"已知一元二次方程的两根是 {r1} 和 {r2}，则两根之积是？", r1 * r2,
+                        [r1 + r2, -(r1 * r2), r2 - r1],
+                        explanation="由韦达定理，x₁ · x₂ = c/a。")
+            elif kind == 26:
+                price = rng.choice([40, 60, 80, 100, 120, 150, 200])
+                up = rng.choice([10, 20, 25, 50])
+                cost = price * 100 // (100 + up)
+                if price * 100 % (100 + up) == 0:
+                    add("应用", f"一件商品按进价提高{up}%后售价为{price}元，进价是多少元？", cost,
+                        [price * (100 - up) // 100, cost + 5, price - up],
+                        explanation=f"进价 = 售价 ÷ (1 + {up}%) = {price} ÷ 1.{up if up >= 10 else '0' + str(up)} = {cost}元。")
+            elif kind == 27:
+                x_, y_ = rng.randint(-9, 9), rng.randint(-9, 9)
+                if x_ != 0 and y_ != 0:
+                    axis = rng.random() < 0.5
+                    if axis:
+                        add("数学", f"点 ({x_}, {y_}) 关于 x 轴对称的点的坐标是？", f"({x_}, {-y_})",
+                            [f"({-x_}, {y_})", f"({-x_}, {-y_})", f"({y_}, {x_})"],
+                            explanation="关于 x 轴对称，横坐标不变，纵坐标变号。")
+                    else:
+                        add("数学", f"点 ({x_}, {y_}) 关于 y 轴对称的点的坐标是？", f"({-x_}, {y_})",
+                            [f"({x_}, {-y_})", f"({-x_}, {-y_})", f"({y_}, {x_})"],
+                            explanation="关于 y 轴对称，纵坐标不变，横坐标变号。")
+            elif kind == 28:
+                central = rng.choice([40, 60, 80, 100, 120, 140, 160])
+                add("图形", f"一条弧所对的圆周角是 {central // 2}°，则这条弧所对的圆心角是？", central,
+                    [central // 2, central // 4, 180 - central],
+                    explanation="同弧所对的圆心角是圆周角的2倍。")
+            else:
+                ratio = rng.randint(2, 5)
+                s_small = rng.randint(2, 12)
+                add("图形", f"两个相似三角形的相似比为 1:{ratio}，小三角形面积是{s_small}平方厘米，大三角形面积是？",
+                    s_small * ratio * ratio, [s_small * ratio, s_small * 2 * ratio, s_small + ratio * ratio],
+                    explanation=f"相似三角形面积比等于相似比的平方：{s_small}×{ratio}² = {s_small * ratio * ratio}。")
+
         else:  # 13-14
             kind = rng.randrange(24)
             if kind == 0:
@@ -1844,7 +2202,7 @@ def main():
     band_cache = {}
     lang_bank = load_lang_bank()
     shards = {}
-    for age in range(5, 15):
+    for age in range(5, 16):
         rng = random.Random(20261103 + age)
         legacy_math = build_math_legacy(age, rng)
         band_key = BANDS[age]
@@ -1899,7 +2257,7 @@ def main():
             ids.add(q["id"])
             prompts.add((q["age"], q["question"]))
         counts[age] = len(questions)
-    assert sum(counts.values()) == 10 * PER_AGE
+    assert sum(counts.values()) == 11 * PER_AGE
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for age, questions in shards.items():

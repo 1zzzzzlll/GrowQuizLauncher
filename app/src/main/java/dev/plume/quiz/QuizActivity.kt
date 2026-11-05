@@ -43,6 +43,11 @@ class QuizActivity : Activity() {
     private lateinit var answerGrid: GridLayout
     private var restPanel: LinearLayout? = null // admin address + QR, visible only while resting
 
+    // GrowQuiz: every size below is drawn for a 1280x720 dp canvas. Smaller screens scale the whole
+    // page down by the same factor (paddings, text, button heights), so the question, the four answers
+    // and the feedback line all fit without scrolling even on a low-resolution box.
+    private var uiScale = 1f
+
     // GrowQuiz: the growth badge (rank, stage, points) sits above the question and updates after every answer.
     private var ledger: QuizLedger? = null
     private lateinit var rootLayout: FrameLayout
@@ -159,6 +164,9 @@ class QuizActivity : Activity() {
     }
 
     private fun createContent(): View {
+        val dm = resources.displayMetrics
+        uiScale = minOf(dm.widthPixels / dm.density / 1280f, dm.heightPixels / dm.density / 720f, 1f)
+            .coerceAtLeast(0.5f)
         val root = FrameLayout(this).apply { setBackgroundColor(Color.rgb(16, 42, 67)) }
         rootLayout = root
         val content = LinearLayout(this).apply {
@@ -172,7 +180,7 @@ class QuizActivity : Activity() {
             setPadding(0, 0, 0, dp(6))
         }
         levelBadge = TextView(this).apply {
-            textSize = 16f
+            textSize = 16f * uiScale
             setTextColor(Color.rgb(16, 42, 67))
             setPadding(dp(16), dp(5), dp(16), dp(5))
             background = GradientDrawable().apply { cornerRadius = dp(20).toFloat() }
@@ -200,7 +208,7 @@ class QuizActivity : Activity() {
         }
         answerButtons = List(4) { index ->
             Button(this).apply {
-                textSize = 21f
+                textSize = 21f * uiScale
                 setTextColor(Color.rgb(16, 42, 67))
                 isAllCaps = false
                 gravity = Gravity.CENTER
@@ -471,19 +479,19 @@ class QuizActivity : Activity() {
         }
         val icon = TextView(this).apply {
             text = QuizRules.RANK_ICONS[rank]
-            textSize = 64f
+            textSize = 64f * uiScale
             gravity = Gravity.CENTER
         }
         val title = TextView(this).apply {
             text = "升级啦！"
-            textSize = 40f
+            textSize = 40f * uiScale
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
         }
         val stage = TextView(this).apply {
             text = QuizRules.tierName(tier)
-            textSize = 34f
+            textSize = 34f * uiScale
             setTextColor(color)
             gravity = Gravity.CENTER
             setTypeface(null, android.graphics.Typeface.BOLD)
@@ -501,7 +509,7 @@ class QuizActivity : Activity() {
         for (i in 0 until 10) {
             val star = TextView(this).apply {
                 text = "✦"
-                textSize = if (i % 2 == 0) 26f else 20f
+                textSize = (if (i % 2 == 0) 26f else 20f) * uiScale
                 setTextColor(if (i % 2 == 0) color else Color.rgb(255, 209, 102))
             }
             overlay.addView(star, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
@@ -580,7 +588,7 @@ class QuizActivity : Activity() {
 
     private fun text(value: String, size: Float, color: Int) = TextView(this).apply {
         text = value
-        textSize = size
+        textSize = size * uiScale
         setTextColor(color)
     }
 
@@ -595,7 +603,7 @@ class QuizActivity : Activity() {
         setStroke(dp(width), stroke)
     }
 
-    private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int) = (value * resources.displayMetrics.density * uiScale).toInt()
 
     companion object {
         private const val READ_REPEAT_MS = 20_000L // after the first reading, repeat question + options every 20 s

@@ -14,6 +14,13 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.13.0
+
+- **题库年龄扩展到 5–15 岁。** 新增 15 岁题库 3000 题，全库达 33000 题。
+- **15 岁题对齐初三水平。** 数学新增一元二次方程、二次函数、三角函数、圆等题型。语文与常识新增中考层素材。
+- **答题页适配小屏幕。** 全部控件按屏幕比例缩放，小屏设备无需滚动即可看到完整页面。
+- **其他页面同步适配小屏。** 首页内容超屏时可滚动。管理密码弹窗、长按菜单限高可滚动。设置面板宽度不超过屏幕 92%。
+
 ## 1.12.0
 
 - **控制台改用底部分页。** 分为总览、设置、题库、报告四个分页。手机端不用长滚动找按钮。

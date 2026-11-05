@@ -1092,7 +1092,8 @@ class MainActivity : Activity() {
         dialog.setContentView(card)
         dialog.window?.run {
             setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            setLayout(dp(if (extra != null) 600 else 480), ViewGroup.LayoutParams.WRAP_CONTENT)
+            // Never wider than 92% of the screen: on narrow screens a fixed 600 dp card would lose its sides.
+            setLayout(minOf(dp(if (extra != null) 600 else 480), (resources.displayMetrics.widthPixels * 0.92f).toInt()), ViewGroup.LayoutParams.WRAP_CONTENT)
             setDimAmount((if (frost) GlassStyle.FROSTED else glassLook().active)?.dim ?: 0.6f) // glass shows what is behind, so it needs less dimming
         }
         dialog.setOnDismissListener {
@@ -1164,7 +1165,16 @@ class MainActivity : Activity() {
         else -> Typeface.create("sans-serif-light", Typeface.NORMAL)
     }
 
-    private fun clockSize() = CLOCK_SIZES.keys.first { it.toString() == prefs.getString("clock_size", "48") }
+    // Small screens (below 480 dp of height) default to the small clock: the 48 sp clock plus the two
+    // content rows would not fit, and a bigger clock cannot be picked until the home screen is usable.
+    private fun clockSize() = CLOCK_SIZES.keys.first {
+        it.toString() == prefs.getString("clock_size", null) ?: defaultClockSize()
+    }
+
+    private fun defaultClockSize(): String {
+        val heightDp = resources.displayMetrics.heightPixels / resources.displayMetrics.density
+        return if (heightDp < 480) "38" else "48"
+    }
 
     private fun applyTheme() {
         dark = wantDark()
@@ -2564,6 +2574,10 @@ class MainActivity : Activity() {
     /** The panel is frosted glass over the wallpaper when Glass is on, and the plain surface otherwise. */
     private fun showPanelGlass() {
         val panel = findViewById<GlassBox>(R.id.settingsPanel)
+        // The XML width is 440 dp for a TV; a narrower screen keeps an 8% strip of the home screen visible.
+        panel.layoutParams = panel.layoutParams.apply {
+            width = minOf(dp(440), (resources.displayMetrics.widthPixels * 0.92f).toInt())
+        }
         if (glassActive()) {
             panel.background = null
             panel.setWillNotDraw(false)
@@ -3003,6 +3017,8 @@ class MainActivity : Activity() {
             toast(getString(R.string.too_many_tries, (pinWaitUntil - now) / 1000 + 1), long = true)
             return
         }
+        // Small screens get tighter padding and a smaller QR so the whole dialog stays on the screen.
+        val smallScreen = resources.displayMetrics.heightPixels / resources.displayMetrics.density < 480
         // GrowQuiz: besides typing, the parent can scan the QR in the dialog and enter the password on the
         // phone over the same Wi-Fi — nothing is ever typed where the kid can watch. The token dies with
         // the dialog, so a screenshot of the QR buys nobody anything later.
@@ -3043,7 +3059,7 @@ class MainActivity : Activity() {
         }
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(28), dp(26), dp(28), dp(10))
+            setPadding(dp(if (smallScreen) 18 else 28), dp(if (smallScreen) 16 else 26), dp(if (smallScreen) 18 else 28), dp(10))
             addView(TextView(this@MainActivity).apply {
                 text = getString(R.string.admin_password_required)
                 textSize = 22f
@@ -3067,15 +3083,22 @@ class MainActivity : Activity() {
                     setPadding(0, dp(16), 0, 0)
                 })
                 addView(ImageView(this@MainActivity).apply {
-                    setImageBitmap(qrBitmap(dev.plume.web.WebAdminServer.unlockUrl(qrToken), dp(112)))
+                    setImageBitmap(qrBitmap(dev.plume.web.WebAdminServer.unlockUrl(qrToken), dp(if (smallScreen) 84 else 112)))
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
                     topMargin = dp(8)
                 })
             }
         }
+        // The body scrolls under a height cap, so the dialog's own buttons stay on the screen on small TVs.
+        val dialogCap = (resources.displayMetrics.heightPixels * 0.72f).toInt()
+        val bodyScroll = object : android.widget.ScrollView(this) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(dialogCap, MeasureSpec.AT_MOST))
+            }
+        }.apply { addView(body) }
         val d = AlertDialog.Builder(this)
-            .setView(body)
+            .setView(bodyScroll)
             .setPositiveButton(R.string.confirm_button, null)
             .setNegativeButton(R.string.cancel, null) // the app's own 取消: not the locale-dependent android.R.string
             .show()
@@ -4342,7 +4365,10 @@ class MainActivity : Activity() {
         }
         list.orientation = LinearLayout.VERTICAL
         list.setPadding(dp(6), dp(6), dp(6), dp(6))
-        val menu = PopupWindow(list, LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT, true)
+        // The list sits in a ScrollView: a menu taller than the screen scrolls instead of losing its ends.
+        val menuCap = (resources.displayMetrics.heightPixels * 0.72f).toInt()
+        val menuScroll = android.widget.ScrollView(this).apply { addView(list) }
+        val menu = PopupWindow(menuScroll, LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT, true)
         rows { menu.dismiss() }.forEachIndexed { i, row ->
             list.addView(row, LinearLayout.LayoutParams(MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 if (i > 0) topMargin = dp(2)
@@ -4354,11 +4380,12 @@ class MainActivity : Activity() {
         list.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
         menu.width = list.measuredWidth.coerceIn(anchor.width, maxOf(anchor.width, dp(360)))
         list.measure(View.MeasureSpec.makeMeasureSpec(menu.width, View.MeasureSpec.EXACTLY), View.MeasureSpec.UNSPECIFIED)
+        menu.height = if (list.measuredHeight > menuCap) menuCap else LinearLayout.LayoutParams.WRAP_CONTENT
         val at = IntArray(2).also { anchor.getLocationInWindow(it) }
         menu.elevation = if (dark) 0f else dp(8).toFloat()
         // Over the anchor's left edge, but kept inside the row's 48 dp side margin near the right of the screen.
         val x = minOf(at[0], resources.displayMetrics.widthPixels - dp(48) - menu.width)
-        val y = if (below) at[1] + anchor.height + dp(8) else maxOf(dp(8), at[1] - list.measuredHeight - dp(8))
+        val y = if (below) at[1] + anchor.height + dp(8) else maxOf(dp(8), at[1] - minOf(list.measuredHeight, menuCap) - dp(8))
         menu.showAtLocation(anchor, Gravity.NO_GRAVITY, x, y)
         list.getChildAt(0).requestFocus()
     }
@@ -5004,7 +5031,9 @@ class MainActivity : Activity() {
         // Both links as QRs side by side: a phone scans the screen, which is the only way into the QQ group from a
         // TV (the TV has neither QQ nor a browser). Both codes are drawn by the app's own QR encoder; a cropped
         // screenshot of the group card blurred and lost its quiet zone, and phones refused to scan it.
-        val qrSide = dp(170)
+        // The codes must fit the panel side by side: on a narrow screen they shrink instead of overflowing.
+        val panelWidth = minOf(dp(440), (resources.displayMetrics.widthPixels * 0.92f).toInt())
+        val qrSide = minOf(dp(170), (panelWidth - dp(68) - dp(44)) / 2)
         fun qrColumn(caption: String, url: String) = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
