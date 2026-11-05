@@ -53,12 +53,18 @@ class HomeOverride : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         running = null
         handler.removeCallbacks(jump)
+        TvWatch.flush(this) // the watch-time bucket goes to disk before the service goes away
         if (listening) {
             listening = false
             unregisterReceiver(packageReceiver)
         }
         getSharedPreferences("home", MODE_PRIVATE).edit().putBoolean("home_off", true).apply()
         return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        TvWatch.flush(this)
+        super.onDestroy()
     }
 
     override fun onKeyEvent(e: KeyEvent): Boolean {
@@ -107,6 +113,7 @@ class HomeOverride : AccessibilityService() {
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
+        TvWatch.note(this, pkg) // watch-time tracking sees every foreground change first
         val after = watch.opened(pkg, e.className?.toString(), SystemClock.uptimeMillis())
         if (after == HomeWatch.KEEP) return // the waiting jump stays
         handler.removeCallbacks(jump) // any other window opening means Home wasn't where we were going

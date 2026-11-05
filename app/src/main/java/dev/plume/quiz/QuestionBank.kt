@@ -15,8 +15,11 @@ class QuestionBank(private val context: Context) {
     private val prefs get() = context.getSharedPreferences(QuizPrefs.NAME, Context.MODE_PRIVATE)
     private val stats get() = context.getSharedPreferences(STATS_NAME, Context.MODE_PRIVATE)
 
-    @Volatile private var all: List<Question> = emptyList()
+    /** Bundled bank, one shard per age, parsed lazily so a quiz never pays for ages it does not use. */
+    private val builtinShards = HashMap<Int, List<Question>>()
     @Volatile private var overriddenIds: Set<String> = emptySet()
+    @Volatile private var overridesCache: Map<String, JSONObject>? = null
+    @Volatile private var customCache: List<Question>? = null
     @Volatile private var loaded = false
 
     private fun ensureLoaded() {
@@ -30,17 +33,54 @@ class QuestionBank(private val context: Context) {
     @Synchronized
     fun reload() {
         val overrides = loadOverrides()
+        overridesCache = overrides
         overriddenIds = overrides.keys
-        all = loadBuiltin(overrides) + loadCustom()
+        customCache = loadCustom()
+        synchronized(this) { builtinShards.clear() }
         loaded = true
     }
 
-    private fun questions(): List<Question> {
-        ensureLoaded()
-        return all
+    private fun overrides(): Map<String, JSONObject> {
+        overridesCache?.let { return it }
+        synchronized(this) {
+            overridesCache?.let { return it }
+            val loadedOverrides = loadOverrides()
+            overridesCache = loadedOverrides
+            return loadedOverrides
+        }
     }
 
-    fun count(age: Int): Int = questions().count { it.age == age }
+    private fun custom(): List<Question> {
+        customCache?.let { return it }
+        synchronized(this) {
+            customCache?.let { return it }
+            val loadedCustom = loadCustom()
+            customCache = loadedCustom
+            return loadedCustom
+        }
+    }
+
+    /** One age's bundled questions with overrides applied; parsed on first use and cached. */
+    private fun shard(age: Int): List<Question> {
+        ensureLoaded()
+        val key = age.coerceIn(5, 14)
+        synchronized(this) {
+            builtinShards[key]?.let { return it }
+            val loadedShard = loadShard(key, overrides())
+            builtinShards[key] = loadedShard
+            return loadedShard
+        }
+    }
+
+    private fun builtin(age: Int?): List<Question> =
+        age?.let { shard(it) } ?: (5..14).flatMap { shard(it) }
+
+    private fun custom(age: Int?): List<Question> =
+        age?.let { a -> custom().filter { it.age == a } } ?: custom()
+
+    private fun questions(): List<Question> = builtin(null) + custom()
+
+    fun count(age: Int): Int = (builtin(age) + custom(age)).count { it.age == age }
 
     /**
      * Distinct categories, optionally limited to one age, first-seen order (bundled first).
@@ -48,7 +88,7 @@ class QuestionBank(private val context: Context) {
      * every parent-written question, regardless of the category text typed when it was created.
      */
     fun categories(age: Int? = null): List<String> {
-        val matching = questions().filter { age == null || it.age == age }
+        val matching = (builtin(age) + custom(age)).filter { age == null || it.age == age }
         val result = matching.map { it.category }.distinct().toMutableList()
         if (matching.any { it.custom } && CUSTOM_CATEGORY !in result) result += CUSTOM_CATEGORY
         return result
@@ -101,7 +141,7 @@ class QuestionBank(private val context: Context) {
     /** The maintenance list: optional filters, disabled state and correct counts included by the caller. */
     fun list(age: Int? = null, category: String? = null, onlyDisabled: Boolean? = null): List<Question> {
         val disabled = disabledIds()
-        return questions().filter { q ->
+        return (builtin(age) + custom(age)).filter { q ->
             (age == null || q.age == age) &&
                 matchesCategory(q, category) &&
                 (onlyDisabled == null || (q.id in disabled) == onlyDisabled)
@@ -167,8 +207,9 @@ class QuestionBank(private val context: Context) {
     @Synchronized
     fun saveOverride(id: String, age: Int, category: String, prompt: String, options: List<String>, answerIndex: Int, explanation: String): Boolean {
         validateQuestion(age, category, prompt, options, answerIndex)
-        if (questions().none { it.id == id && !it.custom }) return false
-        val overrides = loadOverrides().toMutableMap()
+        val home = ageOf(id)?.let { shard(it) } ?: questions()
+        if (home.none { it.id == id && !it.custom }) return false
+        val overrides = overrides().toMutableMap()
         overrides[id] = JSONObject()
             .put("age", age)
             .put("category", category.trim())
@@ -184,7 +225,7 @@ class QuestionBank(private val context: Context) {
     /** Drops a bundled question's override, restoring the original text. */
     @Synchronized
     fun removeOverride(id: String): Boolean {
-        val overrides = loadOverrides().toMutableMap()
+        val overrides = overrides().toMutableMap()
         if (overrides.remove(id) == null) return false
         saveOverrides(overrides)
         reload()
@@ -224,7 +265,7 @@ class QuestionBank(private val context: Context) {
 
     private fun pick(age: Int, categories: Set<String>, includeDisabled: Boolean): List<Question> {
         val disabled = if (includeDisabled) emptySet() else disabledIds()
-        return questions().filter { q ->
+        return (builtin(age) + custom(age)).filter { q ->
             q.age == age.coerceIn(5, 14) &&
                 (categories.isEmpty() || q.category in categories || (q.custom && CUSTOM_CATEGORY in categories)) &&
                 q.id !in disabled
@@ -240,8 +281,8 @@ class QuestionBank(private val context: Context) {
         }
     }
 
-    private fun loadBuiltin(overrides: Map<String, JSONObject>): List<Question> {
-        val text = context.assets.open("questions.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
+    private fun loadShard(age: Int, overrides: Map<String, JSONObject>): List<Question> {
+        val text = context.assets.open("questions/age_$age.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
         val array = JSONObject(text).getJSONArray("questions")
         val result = ArrayList<Question>(array.length())
         val ids = HashSet<String>(array.length())
@@ -251,9 +292,13 @@ class QuestionBank(private val context: Context) {
             check(ids.add(question.id)) { "Duplicate question id: ${question.id}" }
             result += question
         }
-        for (age in 5..14) check(result.count { it.age == age } >= 800) { "Too few questions for age $age" }
+        check(result.count { it.age == age } >= 800) { "Too few questions for age $age" }
         return result
     }
+
+    /** Bundled ids look like "a7-0123": the shard they live in is derivable from the id itself. */
+    private fun ageOf(id: String): Int? =
+        Regex("^a(\\d+)-").find(id)?.groupValues?.get(1)?.toIntOrNull()
 
     /** Applies a parent edit on top of a bundled question; broken fields fall back to the bundled values. */
     private fun applyOverride(question: Question, override: JSONObject): Question {
