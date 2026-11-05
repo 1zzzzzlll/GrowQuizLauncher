@@ -13,8 +13,8 @@ android {
         applicationId = "dev.plume.growquiz"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.8.0"
+        versionCode = 13
+        versionName = "1.8.1"
         // What's new: only this version's section of CHANGELOG.md ships, one entry per line, ** marks kept for bold.
         // A ### heading ships as a line that starts with #. A fix release (1.7.1) ships its x.y section after its own,
         // so people who update from 1.6 still see what 1.7 brought.
@@ -49,6 +49,12 @@ android {
             storePassword = keys.getProperty("storePassword")
             keyAlias = keys.getProperty("keyAlias")
             keyPassword = keys.getProperty("keyPassword")
+            // AGP drops v1 by default once minSdk >= 24, but many TV installers (TCL/FFalcon,
+            // older vendor package installers) still verify with the legacy JAR verifier only.
+            // Ship all three schemes so every installer accepts the APK.
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 
