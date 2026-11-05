@@ -197,8 +197,11 @@ class QuestionBank(private val context: Context) {
     @Synchronized
     fun next(age: Int, categories: Set<String> = emptySet(), previousId: String? = null): Question {
         val pool = pick(age, categories, includeDisabled = false).ifEmpty {
-            // The filter left nothing (every match disabled, or an odd selection): fall back so a quiz always starts.
-            pick(age, emptySet(), includeDisabled = false).ifEmpty { pick(age, emptySet(), includeDisabled = true) }
+            // The chosen categories have no questions at this age (e.g. 历史 starts at 11): stay within
+            // the parents' explicit category choice across all ages before ever ignoring it.
+            pickAnyAge(categories, includeDisabled = false).ifEmpty {
+                pick(age, emptySet(), includeDisabled = false).ifEmpty { pick(age, emptySet(), includeDisabled = true) }
+            }
         }
         require(pool.isNotEmpty()) { "No questions for age $age" }
         val key = "asked_$age"
@@ -225,6 +228,15 @@ class QuestionBank(private val context: Context) {
             q.age == age.coerceIn(5, 14) &&
                 (categories.isEmpty() || q.category in categories || (q.custom && CUSTOM_CATEGORY in categories)) &&
                 q.id !in disabled
+        }
+    }
+
+    /** Same filter as [pick] but without the age constraint: the last resort that still honours the chosen categories. */
+    private fun pickAnyAge(categories: Set<String>, includeDisabled: Boolean): List<Question> {
+        if (categories.isEmpty()) return emptyList()
+        val disabled = if (includeDisabled) emptySet() else disabledIds()
+        return questions().filter { q ->
+            (q.category in categories || (q.custom && CUSTOM_CATEGORY in categories)) && q.id !in disabled
         }
     }
 

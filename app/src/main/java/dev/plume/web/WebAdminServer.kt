@@ -214,9 +214,15 @@ object WebAdminServer {
                         .put("enabled", prefs.enabled)
                         .put("voice", prefs.voice)
                         .put("bootQuiz", prefs.bootQuiz)
+                        .put("restGuard", prefs.restGuard)
+                        .put("thinkSeconds", prefs.thinkSeconds)
+                        .put("wrongStreak", prefs.wrongStreak)
+                        .put("restUntil", prefs.restUntil)
+                        .put("restRemainingMs", (prefs.restUntil - System.currentTimeMillis()).coerceAtLeast(0L))
                         .put("categories", JSONArray(prefs.categories.toList()))
                         .put("next", prefs.nextTriggerAt)
                         .put("owner", QuizDeviceOwner.isOwner(context))
+                        .put("crash", dev.plume.CrashLog.peek(context) ?: "")
                         .put("tts", dev.plume.quiz.TtsProbe.describe())
                 } else {
                     JSONObject()
@@ -288,8 +294,16 @@ object WebAdminServer {
                 } ?: prefs.categories
                 prefs.save(age, interval, enabled, categories, voice)
                 prefs.bootQuiz = bootQuiz
+                if (json.has("restGuard")) prefs.restGuard = json.optBoolean("restGuard")
+                if (json.has("thinkSeconds")) prefs.thinkSeconds = json.optInt("thinkSeconds", prefs.thinkSeconds)
                 QuizScheduler.reschedule(context)
                 QuizDeviceOwner.configure(context)
+                reply(out, 200, "application/json; charset=utf-8", ok())
+            }
+
+            path == "/api/rest/clear" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                QuizPrefs(context).clearRest() // ends the enforced rest and wipes the anti-guess counters
                 reply(out, 200, "application/json; charset=utf-8", ok())
             }
 
@@ -547,15 +561,17 @@ object WebAdminServer {
 
     private fun localIpAddress(): String? {
         val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+        var fallback: String? = null
         for (nif in interfaces) {
             if (!nif.isUp || nif.isLoopback) continue
             for (address in Collections.list(nif.inetAddresses)) {
-                if (!address.isLoopbackAddress && address is java.net.Inet4Address && address.isSiteLocalAddress) {
-                    return address.hostAddress
-                }
+                if (address.isLoopbackAddress || address !is java.net.Inet4Address) continue
+                if (address.isSiteLocalAddress) return address.hostAddress
+                // Not a classic LAN range (some VMs and hotel networks use one): still the best guess.
+                if (fallback == null) fallback = address.hostAddress
             }
         }
-        return null
+        return fallback
     }
 
     private fun readLine(input: InputStream): String? {

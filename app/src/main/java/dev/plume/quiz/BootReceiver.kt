@@ -11,10 +11,7 @@ class BootReceiver : BroadcastReceiver() {
             QuizDeviceOwner.configure(context)
             QuizScheduler.reschedule(context)
         }
-        // A power-on with the boot quiz on owes one question; MainActivity shows it as soon as it comes up.
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            val prefs = QuizPrefs(context)
-            if (prefs.bootQuiz) prefs.bootPending = true
-        }
+        // GrowQuiz: the boot question no longer hooks BOOT_COMPLETED (it never fired on some TVs).
+        // MainActivity anchors it to the startup admin prompt's OK button instead.
     }
 }

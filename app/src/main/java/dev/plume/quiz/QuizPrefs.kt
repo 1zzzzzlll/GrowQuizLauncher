@@ -37,10 +37,45 @@ class QuizPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_BOOT_QUIZ, true)
         set(value) = prefs.edit().putBoolean(KEY_BOOT_QUIZ, value).apply()
 
-    /** Set at power-on while the boot quiz is on; cleared when a question is answered correctly. */
-    var bootPending: Boolean
-        get() = prefs.getBoolean(KEY_BOOT_PENDING, false)
-        set(value) = prefs.edit().putBoolean(KEY_BOOT_PENDING, value).apply()
+    /** Parents can switch the enforced rest after repeated wrong answers off from the web console. */
+    var restGuard: Boolean
+        get() = prefs.getBoolean(KEY_REST_GUARD, true)
+        set(value) = prefs.edit().putBoolean(KEY_REST_GUARD, value).apply()
+
+    /** Seconds of forced thinking time before the answer buttons respond; 0 turns the gate off. */
+    var thinkSeconds: Int
+        get() = prefs.getInt(KEY_THINK_SECONDS, QuizRules.DEFAULT_THINK_SECONDS).coerceIn(0, 60)
+        set(value) = prefs.edit().putInt(KEY_THINK_SECONDS, value.coerceIn(0, 60)).apply()
+
+    /** Consecutive wrong answers in the current session. Resets on any correct answer. Survives restarts. */
+    var wrongStreak: Int
+        get() = prefs.getInt(KEY_WRONG_STREAK, 0)
+        set(value) = prefs.edit().putInt(KEY_WRONG_STREAK, value.coerceAtLeast(0)).apply()
+
+    /** Epoch time until which the child must rest after too many wrong answers in a row. */
+    var restUntil: Long
+        get() = prefs.getLong(KEY_REST_UNTIL, 0L)
+        set(value) = prefs.edit().putLong(KEY_REST_UNTIL, value).apply()
+
+    /** Consecutive snap (too-fast) wrong answers, used to catch blind guessing. */
+    var snapWrongs: Int
+        get() = prefs.getInt(KEY_SNAP_WRONGS, 0)
+        set(value) = prefs.edit().putInt(KEY_SNAP_WRONGS, value.coerceAtLeast(0)).apply()
+
+    /** A verification question is owed: the last fast correct answer looked like a lucky guess. */
+    var verifyPending: Boolean
+        get() = prefs.getBoolean(KEY_VERIFY_PENDING, false)
+        set(value) = prefs.edit().putBoolean(KEY_VERIFY_PENDING, value).apply()
+
+    /** Parents released the rest early from the web console: wipe every anti-guess counter. */
+    fun clearRest() {
+        prefs.edit()
+            .putLong(KEY_REST_UNTIL, 0L)
+            .putInt(KEY_WRONG_STREAK, 0)
+            .putInt(KEY_SNAP_WRONGS, 0)
+            .putBoolean(KEY_VERIFY_PENDING, false)
+            .commit()
+    }
 
     fun save(age: Int, interval: Int, enabled: Boolean, categories: Set<String> = this.categories, voice: Boolean = this.voice) {
         prefs.edit()
@@ -61,6 +96,11 @@ class QuizPrefs(context: Context) {
         private const val KEY_CATEGORIES = "categories"
         private const val KEY_VOICE = "voice_enabled"
         private const val KEY_BOOT_QUIZ = "boot_quiz_enabled"
-        private const val KEY_BOOT_PENDING = "boot_quiz_pending"
+        private const val KEY_REST_GUARD = "rest_guard_enabled"
+        private const val KEY_THINK_SECONDS = "think_seconds"
+        private const val KEY_WRONG_STREAK = "wrong_streak"
+        private const val KEY_REST_UNTIL = "rest_until"
+        private const val KEY_SNAP_WRONGS = "snap_wrongs"
+        private const val KEY_VERIFY_PENDING = "verify_pending"
     }
 }
