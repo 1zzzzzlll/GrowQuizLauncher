@@ -19,6 +19,10 @@
     .field{margin-bottom:14px}
     button{cursor:pointer;border:0;font-weight:600}.primary{background:var(--gold);color:#1a2332}.primary:hover{filter:brightness(1.05)}.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}.danger{background:var(--red);color:#fff}.success{background:var(--green);color:#fff}
     .status{display:grid;grid-template-columns:1fr 1fr;gap:10px}.pill{padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--line)}.pill .k{color:var(--muted);font-size:13px;margin-bottom:4px}.pill .v{font-size:16px;font-weight:600}
+    .check-line{margin-top:12px;padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--line)}
+    .check-h{font-size:15px;font-weight:600}.check-d{color:var(--muted);font-size:13px;line-height:1.65;margin-top:5px}
+    .chk-ok{color:#9de8c6}.chk-warn{color:var(--gold)}.chk-bad{color:#ffb3b3}
+    code{font-size:12px;background:rgba(255,255,255,.07);padding:2px 6px;border-radius:6px;word-break:break-all}
     .msg{margin-top:12px;font-size:14px}.msg.ok{color:#9de8c6}.msg.err{color:#ffb3b3}
     .hidden{display:none!important}
     .footer{margin-top:10px;color:var(--muted);font-size:13px}
@@ -165,6 +169,10 @@
           <div class="pill"><div class="k">开机答题</div><div id="stBoot" class="v">--</div></div>
           <div class="pill"><div class="k">防蒙题休息</div><div id="stRest" class="v">--</div></div>
         </div>
+        <div class="check-line" id="snapLine">
+          <div id="snapHead" class="check-h">切走弹回：--</div>
+          <div id="snapHow" class="check-d"></div>
+        </div>
       </div>
 
       <div id="restCard" class="card rest-card hidden">
@@ -223,7 +231,7 @@
           <div class="sw"><input id="enabled" type="checkbox"><i></i></div>
         </div>
         <div class="set-row">
-          <div class="nm">语音朗读题目<div class="hint">关闭后答题时只显示文字，不再念题</div></div>
+          <div class="nm">语音朗读题目<div class="hint">关闭后答题时只显示文字，不再念题。只对 10 岁及以下的题目朗读</div></div>
           <div class="sw"><input id="voice" type="checkbox"><i></i></div>
         </div>
         <div class="set-row">
@@ -233,6 +241,10 @@
         <div class="set-row">
           <div class="nm">连错强制休息<div class="hint">连错 3 题休 10 分钟，每多错一题加 10 分钟，默认开启</div></div>
           <div class="sw"><input id="restGuard" type="checkbox"><i></i></div>
+        </div>
+        <div class="set-row">
+          <div class="nm">切走后自动弹回<div class="hint">答题时切到别的应用（含遥控器上的影视键），一秒内自动回到题目，默认开启</div></div>
+          <div class="sw"><input id="snapBack" type="checkbox"><i></i></div>
         </div>
       </div>
 
@@ -490,6 +502,7 @@
       $('voice').checked = s.voice !== false;
       $('bootQuiz').checked = s.bootQuiz !== false;
       $('restGuard').checked = s.restGuard !== false;
+      $('snapBack').checked = s.snapBack !== false;
       // 总览页状态
       $('stAge').textContent = s.age + ' 岁';
       $('stInterval').textContent = s.interval + ' 分钟';
@@ -507,6 +520,33 @@
       $('restHint').textContent = resting
         ? '已连续答错触发休息，点击上方按钮立即解除（连错计数同时清零）'
         : '';
+      // 切走弹回自检：开关 → 权限 → 真实拦截记录。家长不用守在电视前，看这一行就知道它有没有在工作。
+      const snapOn = s.snapBack !== false;
+      const okAt = s.snapOkAt || 0, okCount = s.snapOkCount || 0;
+      const ago = ts => {
+        const d = Math.max(0, Date.now() - ts);
+        return d < 60000 ? '刚刚' : d < 3600000 ? Math.floor(d / 60000) + ' 分钟前'
+          : d < 86400000 ? Math.floor(d / 3600000) + ' 小时前' : Math.floor(d / 86400000) + ' 天前';
+      };
+      const head = $('snapHead'), how = $('snapHow');
+      if (!snapOn) {
+        head.className = 'check-h chk-warn';
+        head.textContent = '切走弹回：已关闭';
+        how.innerHTML = '在下方「设置 → 功能开关」里可以重新打开。';
+      } else if (!s.overlay) {
+        head.className = 'check-h chk-bad';
+        head.textContent = '切走弹回：缺少权限，目前不生效';
+        how.innerHTML = '需要「显示在其他应用上层」权限。用安装脚本部署会自动授予；手动装的可以执行：'
+          + '<br><code>adb shell appops set dev.plume.growquiz SYSTEM_ALERT_WINDOW allow</code>';
+      } else if (okCount === 0) {
+        head.className = 'check-h chk-warn';
+        head.textContent = '切走弹回：已开启，暂时还没拦截过';
+        how.innerHTML = '下次答题时切到别的应用试一次，弹回成功后这里会记下时间与次数。';
+      } else {
+        head.className = 'check-h chk-ok';
+        head.textContent = '切走弹回：正常工作';
+        how.innerHTML = '已拦住 ' + okCount + ' 次，最近一次 ' + ago(okAt) + '。';
+      }
       authed = true;
       route();
       await loadCategories(s.categories || []);
@@ -593,6 +633,7 @@
           voice: $('voice').checked,
           bootQuiz: $('bootQuiz').checked,
           restGuard: $('restGuard').checked,
+          snapBack: $('snapBack').checked,
           categories
         });
         msg($('settingsMsg'), '已保存', true);

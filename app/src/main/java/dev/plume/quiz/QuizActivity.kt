@@ -6,12 +6,13 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.tts.TextToSpeech
-import java.util.Locale
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -64,33 +65,74 @@ class QuizActivity : Activity() {
     // GrowQuiz: while a question or a rest is up, a watchdog brings the quiz back to the front every
     // second if anything else stole it (Netflix-style remote keys, notifications, other apps).
     private var inForeground = false
+
+    // GrowQuiz: parents can switch the watchdog off from the web console, and they can see proof that it
+    // works. [snapPendingAt] is set when a comeback is on its way; if the page is in front again a few
+    // seconds later, the comeback worked and the time is kept for the console.
+    private var snapPendingAt = 0L
+    private var snapPrefs: QuizPrefs? = null
+
     private val guardLoop: Runnable = object : Runnable {
         override fun run() {
             if (isFinishing || isDestroyed || solved) return
-            val interactive = getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
-            if (!inForeground && interactive) {
-                try {
-                    startActivity(
-                        Intent(this@QuizActivity, QuizActivity::class.java).addFlags(
-                            Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
-                        ),
-                    )
-                } catch (e: Exception) {
-                    android.util.Log.w("GrowQuiz", "guard relaunch failed", e)
-                }
-            }
+            if (!inForeground) comeBack()
             ui.postDelayed(this, GUARD_POLL_MS)
         }
     }
 
+    /**
+     * Brings this page back over whatever took the screen. Android 10 and newer drop an activity start
+     * from the background, so this works in two cases only: while the app still has a window on screen
+     * (the moment it gets covered, see [onPause]) and when the app holds "display over other apps" (see
+     * the manifest). Nothing here needs the accessibility service.
+     */
+    private fun comeBack() {
+        if (snapPrefs?.snapBack == false) return // the parents turned it off in the web console
+        val interactive = getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
+        if (!interactive) return // the screen is off: the child is not looking at anything
+        try {
+            startActivity(
+                Intent(this@QuizActivity, QuizActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
+                ),
+            )
+            snapPendingAt = System.currentTimeMillis()
+        } catch (e: Exception) {
+            android.util.Log.w("GrowQuiz", "guard relaunch failed", e)
+        }
+    }
+
+    /** The page is in front again: a comeback that just started has worked. Recorded for the console. */
+    private fun noteSnapBack() {
+        val started = snapPendingAt
+        if (started == 0L) return
+        snapPendingAt = 0L
+        if (System.currentTimeMillis() - started > SNAP_OK_MS) return // too late to be our doing
+        snapPrefs?.apply {
+            snapOkAt = System.currentTimeMillis()
+            snapOkCount = snapOkCount + 1
+        }
+    }
+
     // GrowQuiz: the question is read aloud for children who cannot read yet, then repeated every 20 seconds.
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
+    // The engine itself lives in QuizVoice and is warmed when the desktop comes up, so a question is
+    // spoken at once instead of waiting for a model to load.
     private var ttsNoted = false // the "no TTS engine" toast shows once
+    private var ttsRetries = 0 // short retries while the engine is still loading, capped by TTS_RETRY_LIMIT
     private val speakLoop: Runnable = object : Runnable {
         override fun run() {
+            if (QuizVoice.isUnusable()) {
+                ttsMissing() // no engine on this TV: say so once and stop trying
+                return
+            }
+            if (!QuizVoice.isReady()) {
+                // Still loading: try again shortly. Waiting for the 20 s repeat would leave the first
+                // question silent, which is what "读题有延迟" looked like.
+                if (ttsRetries++ < TTS_RETRY_LIMIT) ui.postDelayed(this, TTS_RETRY_MS)
+                return
+            }
             speakQuestion()
             ui.postDelayed(this, READ_REPEAT_MS)
         }
@@ -98,9 +140,15 @@ class QuizActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        QuizVoice.warm(this) // already warm from the desktop; a no-op when it is
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(createContent())
         immersive()
+        holdSound() // stop the video that is playing before the first question is read out
+        snapPrefs = QuizPrefs(applicationContext) // the console may switch the watchdog off mid-question
+        // A question or a rest is open from now on: a power cut leaves this flag set, and the
+        // launcher brings the page back after the next power-on (see MainActivity.onResume).
+        snapPrefs?.quizActive = true
         ledger = QuizLedger(applicationContext)
         refreshLevel()
         if (QuizDeviceOwner.configure(this)) {
@@ -115,23 +163,6 @@ class QuizActivity : Activity() {
                 showNextQuestion()
             }
         }.start()
-        tts = TextToSpeech(applicationContext) { status ->
-            val engine = tts
-            if (status != TextToSpeech.SUCCESS || engine == null) {
-                android.util.Log.w("GrowQuiz", "tts init failed: $status")
-                runOnUiThread { ttsMissing() }
-                return@TextToSpeech
-            }
-            // zh-CN first, then plain Chinese, then the device's own locale: an engine that only has
-            // the latter still beats silence, and some engines miss the Chinese data until installed.
-            val ok = listOf(Locale.SIMPLIFIED_CHINESE, Locale.CHINESE, Locale.getDefault())
-                .any { l -> engine.setLanguage(l) >= TextToSpeech.LANG_AVAILABLE }
-            ttsReady = ok
-            android.util.Log.i("GrowQuiz", "tts ready=$ok lang=${engine.language}")
-            if (!ok) runOnUiThread { ttsMissing() }
-            // The bank may already be showing a question by the time the engine is up.
-            runOnUiThread { if (current != null && !solved && !isFinishing) startReading() }
-        }
     }
 
     /** No TTS engine (or no usable language) on this device: say so once, instead of reading nothing in silence. */
@@ -154,6 +185,7 @@ class QuizActivity : Activity() {
     override fun onResume() {
         super.onResume()
         inForeground = true
+        noteSnapBack() // a comeback that was on its way has arrived: that is the proof the console shows
         ui.removeCallbacks(guardLoop) // one watchdog, started here, re-posted by itself
         ui.postDelayed(guardLoop, GUARD_POLL_MS)
     }
@@ -161,6 +193,10 @@ class QuizActivity : Activity() {
     override fun onPause() {
         super.onPause()
         inForeground = false
+        // Back at once, without waiting for the next tick of the loop: at this instant the page still has
+        // a window on screen, which is the one case Android still allows a start from the background. It
+        // beats the loop by up to a second on TVs without "display over other apps".
+        if (!isFinishing && !solved) comeBack()
     }
 
     private fun createContent(): View {
@@ -300,7 +336,7 @@ class QuizActivity : Activity() {
                     if (!changing) feedbackText.text = "请选择正确答案"
                     return
                 }
-                feedbackText.text = "请认真听题和思考，${(left + 999) / 1000} 秒后可以作答"
+                feedbackText.text = "请认真${if (voiceAppliesTo(current)) "听题" else "读题"}和思考，${(left + 999) / 1000} 秒后可以作答"
                 ui.postDelayed(this, 500L)
             }
         }
@@ -330,9 +366,7 @@ class QuizActivity : Activity() {
         answerGrid.visibility = View.GONE
         restPanel?.visibility = View.VISIBLE
         progressText.text = "休息一下"
-        if (QuizPrefs(this).voice && ttsReady) {
-            try { tts?.speak("连续答错啦，休息一会再来答题", TextToSpeech.QUEUE_FLUSH, null, "quiz_rest") } catch (e: Exception) {}
-        }
+        if (QuizPrefs(this).voice) QuizVoice.speak("连续答错啦，休息一会再来答题")
         val loop = object : Runnable {
             override fun run() {
                 val left = restRemaining()
@@ -353,26 +387,40 @@ class QuizActivity : Activity() {
 
     /** Reads the current question and its options aloud, then keeps repeating every 20 seconds. */
     private fun startReading() {
-        stopReading()
+        // No stop() first: the engine would then have to restart its synthesis thread, which is what made
+        // the second question wait after a wrong answer. The stem is sent with QUEUE_FLUSH and cuts the old
+        // sentence by itself.
+        ui.removeCallbacks(speakLoop)
+        ttsRetries = 0
         if (!QuizPrefs(this).voice) return // the parents turned narration off in the web console
+        if (!voiceAppliesTo(current)) return // the older questions are read from the screen, not the speaker
         speakLoop.run()
     }
 
     private fun stopReading() {
         ui.removeCallbacks(speakLoop)
-        try { tts?.stop() } catch (e: Exception) {}
+        QuizVoice.stop()
     }
 
     private fun speakQuestion() {
         val q = current ?: return
-        val engine = tts ?: return
-        if (!ttsReady) return
-        val text = buildString {
-            append("题目：").append(q.prompt)
-            q.options.forEachIndexed { i, option -> append("。选项").append('A' + i).append("：").append(option) }
+        if (!voiceAppliesTo(q)) return
+        if (!QuizVoice.isReady()) {
+            if (QuizVoice.isUnusable()) ttsMissing()
+            return
         }
-        try { engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "quiz_question") } catch (e: Exception) {}
+        // The stem goes out first, the options are queued behind it: the voice starts while the rest is
+        // still being synthesised, so the question is heard at once. An option of one character, one
+        // number or one letter is left out - spoken aloud it hands the answer over.
+        QuizVoice.speak(SpeechText.forStem(q.prompt), flush = true)
+        QuizVoice.speak(SpeechText.forOptions(q.options), flush = false)
     }
+
+    /**
+     * Narration is for the children who cannot read yet. From 11 up a question is read from the screen:
+     * hearing it spoken makes the work easier than the age group is meant to be.
+     */
+    private fun voiceAppliesTo(question: Question?): Boolean = question != null && question.age <= VOICE_MAX_AGE
 
     private fun answer(index: Int) {
         val question = current ?: return
@@ -438,10 +486,12 @@ class QuizActivity : Activity() {
 
     private fun finishAfterCorrect() {
         justFinished = true // MainActivity skips the admin prompt right after a quiz
+        releaseSound() // hand the sound back before the video is shown again
         QuizPrefs(this).apply {
             wrongStreak = 0 // a finished session proves real work: every anti-guess counter resets
             snapWrongs = 0
             verifyPending = false
+            quizActive = false // the session ends here; nothing must come back after a power-on
         }
         if (lockActive) {
             stopLockTask()
@@ -530,12 +580,7 @@ class QuizActivity : Activity() {
         ui.postDelayed({
             (overlay.parent as? ViewGroup)?.removeView(overlay)
         }, 2_600L)
-        if (QuizPrefs(this).voice && ttsReady) {
-            try {
-                tts?.speak("恭喜你，升级到${QuizRules.tierName(tier)}，继续加油！", TextToSpeech.QUEUE_FLUSH, null, "quiz_levelup")
-            } catch (e: Exception) {
-            }
-        }
+        if (QuizPrefs(this).voice) QuizVoice.speak("恭喜你，升级到${QuizRules.tierName(tier)}，继续加油！")
     }
 
     // TV remotes still dispatch the back key; gesture-back migration would require AndroidX.
@@ -581,9 +626,47 @@ class QuizActivity : Activity() {
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
         stopReading()
-        try { tts?.shutdown() } catch (e: Exception) {}
-        tts = null
+        releaseSound()
+        // The engine itself stays up: it belongs to the app, and shutting it down here would make the next
+        // quiz pay the model load again.
         super.onDestroy()
+    }
+
+    // GrowQuiz: the quiz takes the sound away from whatever is playing, so a video stops instead of talking
+    // over the question reading. Asking for audio focus is what makes a well-behaved player pause; the media
+    // key is the fallback for the players that ignore focus (TCL's own player does). Both are undone when the
+    // question is answered, so the video picks up where it stopped.
+    private var focusRequest: AudioFocusRequest? = null
+    private var pausedMedia = false
+
+    private fun holdSound() {
+        val am = getSystemService(AudioManager::class.java) ?: return
+        if (focusRequest == null) {
+            focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                )
+                .build()
+        }
+        am.requestAudioFocus(focusRequest!!)
+        if (am.isMusicActive) {
+            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
+            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
+            pausedMedia = true
+        }
+    }
+
+    private fun releaseSound() {
+        val am = getSystemService(AudioManager::class.java) ?: return
+        if (pausedMedia) {
+            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
+            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY))
+            pausedMedia = false
+        }
+        focusRequest?.let { am.abandonAudioFocusRequest(it) }
     }
 
     private fun text(value: String, size: Float, color: Int) = TextView(this).apply {
@@ -607,7 +690,14 @@ class QuizActivity : Activity() {
 
     companion object {
         private const val READ_REPEAT_MS = 20_000L // after the first reading, repeat question + options every 20 s
+        private const val TTS_RETRY_MS = 250L // the engine is still loading: ask again this soon
+        private const val TTS_RETRY_LIMIT = 40 // 10 s of short retries, then give up and keep quiet
+        /** Above this age a question is not read aloud: the child reads it from the screen. */
+        private const val VOICE_MAX_AGE = 10
         private const val GUARD_POLL_MS = 1_000L // while a quiz or rest is up, check the foreground every second
+
+        /** A comeback that lands within this window counts as ours; anything slower was the child coming back. */
+        private const val SNAP_OK_MS = 4_000L
 
         /** Set when a quiz is completed; MainActivity reads (and clears) it to skip the admin prompt then. */
         @Volatile var justFinished = false

@@ -1,48 +1,24 @@
 package dev.plume.quiz
 
 import android.content.Context
-import android.speech.tts.TextToSpeech
-import java.util.Locale
 
 /**
- * One TTS engine kept for the whole process, so the web admin can tell whether this TV can read
- * questions aloud — Chinese-brand TVs often have no Google TTS; some have iFlytek or nothing at all.
+ * The parents' console asks two things about speech: can this TV read aloud, and does it work right now.
+ * The engine itself lives in [QuizVoice], so the TV loads one model instead of two — a second engine
+ * would double the memory and the startup cost on a TV.
  */
 object TtsProbe {
-    @Volatile private var tts: TextToSpeech? = null
-    @Volatile private var state = "initializing"
 
-    fun start(context: Context) {
-        if (tts != null) return
-        val app = context.applicationContext
-        tts = TextToSpeech(app) { status ->
-            val engine = tts
-            if (status != TextToSpeech.SUCCESS || engine == null) {
-                state = "no-engine"
-                return@TextToSpeech
-            }
-            // zh-CN first, then plain Chinese, then the device's own locale: any engine beats silence.
-            val ok = listOf(Locale.SIMPLIFIED_CHINESE, Locale.CHINESE, Locale.getDefault())
-                .any { l -> engine.setLanguage(l) >= TextToSpeech.LANG_AVAILABLE }
-            state = if (ok) "ok" else "no-language"
-            android.util.Log.i("GrowQuiz", "tts probe: $state")
-        }
-    }
+    /** Starts the shared engine (no-op when [QuizVoice] already started it at desktop start). */
+    fun start(context: Context) = QuizVoice.warm(context)
 
-    /** Reads a sentence aloud (the web console's test button); false when it could not be spoken. */
-    fun speak(text: String): Boolean {
-        val engine = tts ?: return false
-        return try {
-            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "probe") == TextToSpeech.SUCCESS
-        } catch (e: Exception) {
-            false
-        }
-    }
+    /** Reads a sentence aloud (the console's test button); false when it could not be spoken. */
+    fun speak(text: String): Boolean = QuizVoice.speak(text, flush = true)
 
-    fun describe(): String = when (state) {
-        "ok" -> "available"
-        "no-engine" -> "no-engine"
-        "no-language" -> "no-language"
+    /** "available" / "no-engine" / "no-language" / "initializing", the values the console knows. */
+    fun describe(): String = when {
+        QuizVoice.failureReason() != null -> QuizVoice.failureReason()!!
+        QuizVoice.isReady() -> "available"
         else -> "initializing"
     }
 }

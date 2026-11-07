@@ -25,6 +25,11 @@ class HomeOverride : AccessibilityService() {
         running = this
         applyKeyFilter()
         loadHomes()
+        // This TV never delivers BOOT_COMPLETED to third-party receivers (TCL's boot manager holds
+        // them), so the quiz alarm armed before a power cut is lost at reboot. Arm it again here:
+        // an accessibility service is one of the few components the system starts on its own.
+        dev.plume.quiz.QuizScheduler.ensureScheduled(this)
+        handler.postDelayed(bootCatchUp, BOOT_SETTLE_MS)
         if (!listening) {
             listening = true
             registerReceiver(packageReceiver, IntentFilter().apply {
@@ -34,6 +39,31 @@ class HomeOverride : AccessibilityService() {
                 addDataScheme("package")
             })
         }
+    }
+
+    /**
+     * The system binds this service a few seconds into a boot. By then the firmware's own launcher
+     * is already on screen, and its one window event went by before we were bound — the cover in
+     * [onAccessibilityEvent] never fires (this TCL starts com.tcl.cyberui directly, ignoring the
+     * default home). Look at what is in front once, shortly after the bind, and take over. A quiz
+     * or a forced rest that a power cut interrupted comes back instead of the home screen. Runs
+     * only in the first minutes after power-on: a later re-bind (update, revive) must not pull the
+     * viewer out of whatever they watch.
+     */
+    private val bootCatchUp = Runnable {
+        if (SystemClock.uptimeMillis() > BOOT_WINDOW_MS) return@Runnable
+        val prefs = dev.plume.quiz.QuizPrefs(this)
+        val rest = prefs.restGuard && prefs.restUntil > System.currentTimeMillis()
+        if (prefs.enabled && (prefs.quizActive || rest)) {
+            startActivity(
+                Intent(this, dev.plume.quiz.QuizActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
+                ),
+            )
+            return@Runnable
+        }
+        val front = rootInActiveWindow?.packageName?.toString() ?: return@Runnable
+        if (front != packageName && watch.coversPackage(front)) goHome()
     }
 
     /**
@@ -53,6 +83,7 @@ class HomeOverride : AccessibilityService() {
     override fun onUnbind(intent: Intent?): Boolean {
         running = null
         handler.removeCallbacks(jump)
+        handler.removeCallbacks(bootCatchUp)
         TvWatch.flush(this) // the watch-time bucket goes to disk before the service goes away
         if (listening) {
             listening = false
@@ -156,6 +187,10 @@ class HomeOverride : AccessibilityService() {
         var running: HomeOverride? = null
             private set
         private const val LONG_PRESS_MS = 500L
+        /** The boot catch-up runs only this long after power-on; later binds must not take the screen. */
+        private const val BOOT_WINDOW_MS = 3 * 60_000L
+        /** Let the firmware's launcher draw first, so the take-over replaces a settled screen. */
+        private const val BOOT_SETTLE_MS = 4_000L
 
         /** Fire OS keeps Amazon's home and ignores the home role; Plume can only cover it (see [HomeWatch]). */
         fun fireTv(c: Context) = c.packageManager.hasSystemFeature("amazon.hardware.fire_tv")

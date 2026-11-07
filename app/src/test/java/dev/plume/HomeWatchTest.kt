@@ -256,4 +256,21 @@ class HomeWatchTest {
         assertEquals(HomeWatch.KEEP, w.opened("android", "Dialog", 2_200))
         assertEquals(HomeWatch.KEEP, w.opened(amazon, amazonHome, 2_300))
     }
+
+    @Test fun bootCatchUpCoversKnownHomePackages() { // the window class is unknown right after a boot
+        val w = watch(stock = mapOf("com.tcl.cyberui" to setOf("com.tcl.cyberui.MainActivity")))
+        org.junit.Assert.assertTrue(w.coversPackage(amazon))
+        org.junit.Assert.assertTrue(w.coversPackage(oldFire))
+        org.junit.Assert.assertTrue(w.coversPackage(gtv))
+        org.junit.Assert.assertTrue(w.coversPackage(HomeWatch.MITV))
+        org.junit.Assert.assertTrue(w.coversPackage("com.tcl.cyberui")) // from the system Home query
+        org.junit.Assert.assertTrue(w.coversPackage("com.ktcp.launcher")) // from the firmware table
+    }
+
+    @Test fun bootCatchUpLeavesOtherAppsAlone() {
+        val w = watch()
+        org.junit.Assert.assertFalse(w.coversPackage("dev.plume.growquiz"))
+        org.junit.Assert.assertFalse(w.coversPackage("com.netflix.ninja"))
+        org.junit.Assert.assertFalse(w.coversPackage("com.example.launcher3")) // not in any home list
+    }
 }

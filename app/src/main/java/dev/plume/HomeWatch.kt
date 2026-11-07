@@ -64,6 +64,16 @@ class HomeWatch(
 
     fun jumped() { waitingPkg = null }
 
+    /**
+     * Boot catch-up, judged by package alone: the first window event of a boot goes by before the
+     * service is bound, so [opened] never sees the stock home that is already on screen. The window
+     * class is not available at that point; owning a home screen we cover is evidence enough.
+     */
+    fun coversPackage(pkg: String): Boolean = when (pkg) {
+        GOOGLE_TV, AMAZON, OLD_AMAZON, MITV, MITV_ATV -> true
+        else -> pkg in FIRMWARE_HOMES || stockHomes().containsKey(pkg)
+    }
+
     private fun isHome(pkg: String, cls: String?): Boolean = cls != null && when (pkg) {
         GOOGLE_TV -> googleHomes().let { homes -> if (homes.isEmpty()) !cls.contains("dashboard", ignoreCase = true) else cls in homes } // holding Home opens the dashboard
         AMAZON -> cls.startsWith("$AMAZON.ui.HomeActivity") // HomeActivity_vNext on current builds
