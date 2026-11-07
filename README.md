@@ -6,7 +6,7 @@
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
   <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3ddc84">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-100%25-7f52ff">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.9.0-brightgreen">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.13.0-brightgreen">
   <img alt="Questions" src="https://img.shields.io/badge/%E9%A2%98%E5%BA%93-33000%20%E9%81%93-f2c14e">
   <img alt="Offline" src="https://img.shields.io/badge/%E8%BF%90%E8%A1%8C-%E7%A6%BB%E7%BA%BF%E6%97%A0%E9%9C%80%E7%99%BB%E5%BD%95-lightgrey">
 </p>
@@ -37,18 +37,19 @@
 | 🗂 | **分类多选抽题** | 家长可按分类多选抽题范围（如只出数学和英语），不选即为全部；控制台按年龄显示各分类题量，该年龄无题的分类自动置灰不可选 |
 | 📥 | **批量导入题库** | 控制台内置 AI 出题教程与提示词模板，AI 批量生成的题库文件（JSON）上传即入库，逐题校验、重复跳过，与内置题一起随机出现 |
 | 🛠 | **题库维护** | 控制台可按年龄、分类、状态筛选题目，批量禁用/启用；同一道题答对满 5 次自动"退休"，不再出现 |
-| 🔊 | **语音朗读题目** | 调用系统 TTS 朗读题干，识字不多的孩子也能独立完成 |
+| 🔊 | **语音朗读题目** | 只对 10 岁及以下的题目朗读，11 岁起自己看屏幕。符号、括号、分数、单位都会转成可读字词；只有一个字/数字/字母（或一串英文）的选项不朗读——一读就等于送答案 |
 | ⏳ | **答题先思考** | 出题后数秒内选项不生效，屏幕显示倒计时，杜绝秒选乱点；默认 5 秒，管理台可调 0–60 秒 |
 | 😮‍💨 | **连续答错强制休息** | 连错 3 题休息 10 分钟，之后每多错一题多休息 10 分钟；重启也赖不掉；管理台可一键解除或整体关闭 |
 | 🕵️ | **蒙题验证** | 快速连错后又快速答对，追加一道验证题；验证答错按连错 3 题处理，立即休息 |
+| 🔁 | **切走后自动弹回** | 答题时切到别的应用（含遥控器上的一键直达键），一秒内自动回到题目，默认开启；控制台可开关，并显示它是否真的拦截过、最近一次是什么时候 |
 | 🏆 | **成长等级体系** | 答对 +10、答错 −5、同题重复答错再额外 −8（答对该题即清零错题记忆）；塑料→铁→铜→白银→黄金→铂金→钻石，每级 4 阶共 28 阶，积分 4 万封顶钻石 4 阶；答题页顶部实时显示等级徽章与积分，升阶触发全屏庆祝动画与语音祝贺 |
 | 📊 | **学习统计报告** | 控制台「报告」分页：按整体/年度/半年/季度/月度/周度查看答题量与正确率变化、知识点掌握分布、高频错题 TOP5、学习活跃天数与看电视时长（看电视统计依赖「主屏幕键」无障碍服务） |
-| ⏻ | **开机先答一题** | 开机后弹出管理端提醒，按「确定」立即答一题（管理控制台可关闭，默认开启） |
+| ⏻ | **开机先答一题** | 开机后弹出管理端提醒，按「确定」立即答一题。提醒每次开机只弹一次，点过「我知道了」当次开机不再弹（管理控制台可关闭，默认开启） |
 | 🔒 | **设备所有者锁定** | 配置 Device Owner 后启用 Lock Task，答题期间无法用遥控器切走 |
 | 🔑 | **设置密码保护** | 设置管理密码后，电视上的 Wi-Fi、系统设置和桌面设置入口也需输入密码 |
 | 📱 | **手机当管理台** | 电视内置一个局域网网页控制台（默认 `:8081`），手机浏览器即可改年龄、间隔、管题库、立即出题 |
 | ⬆️ | **自动更新** | 每天自动检查一次新版本并静默下载安装；更新服务器每 3 小时从 GitHub Releases 同步最新发版 |
-| ♻️ | **开机自动恢复** | 重启电视后自动重新排定下一次问答，不必手动打开应用 |
+| ♻️ | **开机自动恢复** | 重启电视后自动重新排定下一次问答，不必手动打开应用；答题或强制休息中途断电，开机后自动回到对应界面 |
 | 🖥 | **完整桌面功能** | 应用行、继续观看、HDMI 信号源、壁纸/屏保、遥控器按键自定义等上游能力全部保留 |
 
 ## 一次答题循环
@@ -105,26 +106,34 @@ adb install -r app-release.apk
 
 也可以用 U 盘 + 文件管理器、或电视上的 Downloader 类应用侧载安装。各品牌电视开启 ADB 的具体路径差异很大，完整的品牌速查表和 AI 辅助安装方法见下文[附录：把 APK 装进电视的完整指南](#附录把-apk-装进电视的完整指南)。
 
+> **TCL / 雷鸟（FFalcon）注意**：这类固件在系统安装器里加了一道签名白名单，`adb install` 会直接报 `INSTALL_FAILED_VERIFICATION_FAILURE`。手工绕过的方法见[TCL / 雷鸟的签名白名单拦截](#tcl--雷鸟的签名白名单拦截)；用下面的安装脚本则不需要管，脚本会自动识别并处理。
+
 ### 3. 设为默认桌面
 
 打开 **设置 → 应用 → 默认应用 → 主屏幕**，选择「宝贝成长桌面」。
 
 > **找不到这个设置？** 很多电视没有「默认应用」这一步：有的系统会在按主屏幕键时弹出选择框，有的压根不提供切换入口。找不到时**不用纠结，按软件内指引配置即可**——首次启动桌面会逐步引导（选默认桌面、开「主屏幕键」无障碍服务等），照着走完就能正常接管，即使厂商系统不提供手动切换入口。
 
-安装脚本 `tools/growquiz-install.sh` 也封装了安装与切换步骤：
+安装脚本 `tools/growquiz-install.sh` 把整条部署链路串了起来：连接并等待电视上的授权 → 安装（含 TCL 签名白名单的自动绕过）→ 从电视读回版本号核对 → 授予 `WRITE_SECURE_SETTINGS` → 拉起桌面。
 
 ```sh
-sh tools/growquiz-install.sh app/build/outputs/apk/release/app-release.apk 192.168.1.20:5555
+sh tools/growquiz-install.sh GrowQuiz-v1.13.0.apk 192.168.1.20:5555
+
+# adb 不在 PATH 时指定路径
+ADB="/d/SDK/platform-tools/adb.exe" sh tools/growquiz-install.sh GrowQuiz-v1.13.0.apk 192.168.1.20
+
+# 省略参数则用 app/build/outputs/apk/release/app-release.apk 与当前已连接的唯一设备
+sh tools/growquiz-install.sh
 ```
 
-脚本只切换默认桌面，不会禁用原桌面，出问题随时切回去。
+脚本不会禁用原桌面，出问题随时切回去。TCL / 雷鸟设备也走同一条命令，无需额外步骤。
 
 ### 4. 父母设置
 
 所有设置都通过手机上的管理控制台完成：电视屏幕会显示形如 `http://10.0.2.15:8081` 的地址。让手机连同一个 Wi-Fi，在浏览器打开即可（首次进入需设置至少 6 位管理密码）。控制台分为**总览、设置、题库、报告**四个底部分页：
 
-- **总览**：查看运行状态与今日概览（答题数、正确率、看电视时长），一键立即出题；宝贝被强制休息时出现警告卡，可一键解除；
-- **设置**：修改年龄、答题间隔、思考时间、抽题分类，开关定时答题/语音朗读/开机答题/连错强制休息；修改密码与语音朗读测试收在「工具与账号」；
+- **总览**：查看运行状态与今日概览（答题数、正确率、看电视时长），一键立即出题；宝贝被强制休息时出现警告卡，可一键解除；运行状态下方有一行**「切走弹回」自检**，直接告诉你它是正常、已关闭、缺少权限还是还没拦截过、已拦住几次；
+- **设置**：修改年龄、答题间隔、思考时间、抽题分类，开关定时答题/语音朗读/开机答题/连错强制休息/切走后自动弹回；修改密码与语音朗读测试收在「工具与账号」；
 - **报告**：查看宝贝学习统计（当前等级、各时段答题与正确率、知识点掌握分布、高频错题、看电视时长），与独立页 `/stats` 内容一致；
 - **题库**：按年龄、分类、状态筛选题目，勾选后批量禁用/启用；「一键开关全部题目」默认折叠防误触；编辑题目在底部弹层完成；批量导入入口附 AI 出题教程和提示词模板，上传 AI 生成的 JSON 题库文件（可追加或替换），逐题校验并报告错误位置，重复题自动跳过；
 - 查看每道题的答对次数——同一道题答对满 5 次会自动禁用，已掌握的题不再反复出现。
@@ -155,7 +164,9 @@ adb shell dpm set-device-owner dev.plume.growquiz/dev.plume.quiz.QuizDeviceAdmin
 
 - 返回、OK、方向、音量、电源、主屏幕键不可改也不可屏蔽，防止误把自己锁死；
 - 个别按键若在该页面按下后没有反应，说明它没有经过 Android 按键系统（如红外直接控制电视本体），此类按键无法拦截，建议停用对应 App 或换一个不带专用键的遥控器；
-- 要恢复按键原功能，同一页面选「移除此按键」。
+- 要恢复按键原功能，同一页面选「移除此按键」；
+- **「添加按键」按下没反应、或之前设好的按键突然不生效**：说明无障碍服务没有真正跑起来（覆盖安装后系统会把它判为「已崩溃」且不再自动绑定，TCL 固件尤其明显）。v1.13.1 起应用会在启动后自查并重新启用一次；旧版本请到系统「无障碍」里把「宝贝成长桌面：主屏幕键」关掉再打开一次。
+- **完全不依赖无障碍的兜底**：答题页一旦被切到别的 App，会立刻（最迟一秒内）自动切回，这条路径只需要「显示在其他应用上层」权限，与无障碍无关。
 
 ## 附录：把 APK 装进电视的完整指南
 
@@ -185,7 +196,7 @@ adb shell dpm set-device-owner dev.plume.growquiz/dev.plume.quiz.QuizDeviceAdmin
 | **小米 / 红米** | 设置 → 账号与安全 → 打开「ADB 调试」；新系统路径：设置 → 我的设备 → 连点版本号 ×7 → 开发者选项。注意小米多数机型默认只开 USB ADB（黑色 USB 口有线连），网络 ADB 需新系统或先有线执行 `adb tcpip 5555` |
 | **华为 / 荣耀智慧屏** | 设置 → 关于本机 → 连点版本号 ×7 → 返回 → 系统和更新 → 开发者选项 → 同时打开「USB 调试」和「ADB 调试」，**重启一次生效** |
 | **海信 / Vidda** | 通用法；或「我的应用 → VIDAA 助手 → 设置 → 电视调试授权」；老机型：设置 → 声音 → 音量平衡 → 遥控器输 `0532`（部分机型 `1969`）进工厂模式开 ADB。注意：VIDAA 系统（非安卓定制）多数不开放 ADB，只能 U 盘安装 |
-| **TCL / 雷鸟** | 通用法可直接开；或：设置 → 系统 → 本机信息 → 遥控器依次按「上、下、左、右」弹出 ADB 开关；带数字键遥控器的老机型：信源 → 模拟接收 → 菜单 → 显示 → 专业设定 → 光标移到「对比度」→ 快输 `1950` 进工厂菜单 → Other → ADB 选项 |
+| **TCL / 雷鸟** | 通用法可直接开；或：设置 → 系统 → 本机信息 → 遥控器依次按「上、下、左、右」弹出 ADB 开关；带数字键遥控器的老机型：信源 → 模拟接收 → 菜单 → 显示 → 专业设定 → 光标移到「对比度」→ 快输 `1950` 进工厂菜单 → Other → ADB 选项。**注意**：部分固件对侧载 APK 有签名白名单，`adb install` 会报 `INSTALL_FAILED_VERIFICATION_FAILURE`，见[对应章节](#tcl--雷鸟的签名白名单拦截) |
 | **创维 / 酷开** | 设置 → 本机信息，遥控器缓慢输入「上上下下左右左右」→ 工厂菜单（部分机型密码 `123456`）→ 高级设置 → ADB 开关 |
 | **康佳** | 按菜单键 → 输数字 `2008` → 工厂菜单 → 开 ADB/远程调试；或用通用法 |
 | **海尔** | 信源界面按「信源键 + 左左上右」（部分机型为左左右右）→ 隐藏菜单 → 开 ADB；新机型也可用通用法 |
@@ -290,6 +301,53 @@ adb install -r GrowQuiz-vX.Y.Z.apk
 
 把报错原文贴给它，让它给下一步命令，你在电脑上照做即可——这相当于"豆包出脑、你出手"；而 WorkBuddy 是"出脑又出手"。
 
+### TCL / 雷鸟的签名白名单拦截
+
+部分 TCL 固件（实测机型 `tcl_mt5879_cn`，Android 11）在系统安装器内部加了一道签名校验：APK 的签名必须落在该机型的白名单里，否则拒绝安装。表现是安装直接失败：
+
+```sh
+adb install -r GrowQuiz.apk
+# Performing Streamed Install
+# adb: failed to install ...: Failure [INSTALL_FAILED_VERIFICATION_FAILURE]
+```
+
+`adb logcat` 能看到拒绝者是谁：
+
+```
+verifier: fetch signature info from: com.tcl.cyberui
+verifier: signature does not match for tcl dev.plume.growquiz, will not be installed!
+```
+
+**以下办法都无效**（实机验证过）：`settings put global verifier_verify_adb_installs 0`、`settings put global package_verifier_enable 0`、停用 `com.tcl.guard`（电视卫士）。校验发生在 `com.android.packageinstaller` 内部、早于 AOSP 的 verifier，全局开关根本够不到它。
+
+**有效办法**：临时停用系统安装器，装完立刻恢复。
+
+```sh
+adb shell pm disable-user --user 0 com.android.packageinstaller
+adb install -r GrowQuiz.apk
+adb shell pm enable com.android.packageinstaller     # 必须执行
+```
+
+> `pm enable` 那一步不能省：安装器停用期间电视装不了任何应用，包括它自己的安装界面。如果忘了恢复，用同一条命令补上即可。
+
+`tools/growquiz-install.sh` 已内置这套流程——只在真被拦下时才走这条路，并用 `trap` 保证按 Ctrl-C、报错、终端关闭时都会把安装器恢复回去。TCL 设备用脚本部署时不需要手工敲上面三行。
+
+### 装一个中文语音引擎
+
+电视出厂不带语音引擎时，题目能显示但不会朗读。装一个系统级 TTS 引擎即可，无需改应用：
+
+- **推荐 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)**（Apache-2.0，离线神经网络合成）。官方提供现成的 TTS Engine APK，内含中文 Piper 模型，按电视 CPU 架构选 `arm64-v8a` 或 `armeabi-v7a` 版本，下载页见 <https://k2-fsa.github.io/sherpa/onnx/tts/apk-engine.html>。装上后在电视「设置 → 无障碍 → 文字转语音」里选它。
+- eSpeak（体积小、完全离线）也能读出中文，但音色机械，只适合临时用。
+
+装完后核对两件事，任何一项不对都会退回无声：
+
+```sh
+adb shell settings get secure tts_default_synth    # 应显示引擎包名，不能是 null
+adb shell cmd package query-services -a android.intent.action.TTS_SERVICE   # 应列出该引擎
+```
+
+> 电视自带的「朗读导览 / Audio Guide」帮不上忙：它是无障碍服务，合成能力走厂商私有接口，不向第三方应用开放标准的 `TTS_SERVICE`，所以不能在这里被选用。
+
 ### 常见问题排查
 
 | 现象 | 原因与处理 |
@@ -298,6 +356,10 @@ adb install -r GrowQuiz-vX.Y.Z.apk
 | 设备显示 `unauthorized` | 电视上的授权弹窗没点「允许」，重新 connect 并留意屏幕 |
 | 设备显示 `offline` | 执行 `adb kill-server` 后重新 `adb connect` |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | 签名冲突（如 debug 版覆盖正式版），先 `adb uninstall 包名` 再装 |
+| `INSTALL_FAILED_VERIFICATION_FAILURE` | 厂商签名白名单拦截，TCL / 雷鸟常见。见 [TCL / 雷鸟的签名白名单拦截](#tcl--雷鸟的签名白名单拦截)，或直接用 `tools/growquiz-install.sh` |
+| 切到别的应用后答题页不再弹回 | Android 10 起禁止应用在后台启动界面，需「显示在其他应用上层」权限（`SYSTEM_ALERT_WINDOW`）。安装脚本会自动授予；手动装的电视执行 `adb shell appops set dev.plume.growquiz SYSTEM_ALERT_WINDOW allow` |
+| 「遥控器按键 → 添加按键」按了没反应，或设好的按键失效 | 无障碍服务没有在跑。覆盖安装会杀掉进程，部分固件（TCL / 雷鸟实测）之后不再自动绑定，服务处于「已启用但已崩溃」状态。v1.13.1 起启动后会自动重新启用一次；旧版本手动开关一遍无障碍，或执行 `adb shell settings put secure enabled_accessibility_services "$(adb shell settings get secure enabled_accessibility_services \| tr -d '\r'),dev.plume.growquiz/dev.plume.HomeOverride"` |
+| 装完题目不朗读，提示「本机没有可用的语音（TTS）引擎」 | 该电视系统没有预装 TTS 引擎（不少国产电视如此）。装一个离线 TTS 引擎后到系统设置里设为默认即可，做法见[装一个中文语音引擎](#装一个中文语音引擎) |
 | 点击版本号没反应 | 点得不够快或次数不够，有的电视要 8–10 次 |
 | 装完找不到应用图标 | TV 应用可能不在手机式应用列表里，到「设置 → 应用」里确认已安装 |
 
@@ -306,7 +368,7 @@ adb install -r GrowQuiz-vX.Y.Z.apk
 | 模块 | 位置 | 职责 |
 |---|---|---|
 | 定时调度 | `quiz/QuizScheduler.kt` | 用 `AlarmManager.setAlarmClock()` 排定下一次触发；Android 12+ 无精确闹钟权限时降级为 `set()` |
-| 开机恢复 | `quiz/BootReceiver.kt` | 监听开机广播，读取上次排定时间并重新调度 |
+| 开机恢复 | `quiz/BootReceiver.kt` | 监听开机广播，读取上次排定时间并重新调度；TCL 等不投递开机广播的固件由无障碍服务绑定时补上（含恢复未完成的答题/休息、接管厂商桌面） |
 | 答题界面 | `quiz/QuizActivity.kt` | 全屏、遥控器优先；可配置思考期；错误答案换题，正确答案 1.3 秒后返回；连错触发全屏休息；每秒看护前台防跳过；有 Device Owner 时 `startLockTask()` |
 | 答题规则 | `quiz/QuizRules.kt` | 纯 Kotlin 逻辑（思考期、休息分钟数、蒙题检测），脱离 Android 框架，便于单元测试 |
 | 题库 | `app/src/main/assets/questions/age_<5-15>.json` | 33000 题，按年龄分 11 个分片，含年龄段、分类、选项、答案下标与解析；App 按需加载单个分片 |
@@ -314,7 +376,7 @@ adb install -r GrowQuiz-vX.Y.Z.apk
 | 答题记录与自定义题 | `quiz/QuestionBank.kt` | 记录每题答对次数（满 5 次自动禁用），合并家长自定义题与题目启停状态 |
 | 局域网管理台 | `web/WebAdminServer.kt` | 纯 JDK `ServerSocket` 单页服务：设置、题库维护、批量导入（`/import` 独立页）、改密码、TTS 测试；SHA-256 加盐口令、24 小时会话 Cookie，无第三方依赖 |
 | 自动更新 | `ApkProvider.kt` + 更新服务器 | 每天检查一次自有更新服务器；服务器每 3 小时从 GitHub Releases 同步最新发版 |
-| 语音 | `quiz/TtsProbe.kt` + `QuizActivity` | 系统 TTS 朗读题干，检测引擎可用性 |
+| 语音 | `quiz/QuizVoice.kt` + `quiz/SpeechText.kt` + `quiz/TtsProbe.kt` | `QuizVoice` 是全局唯一的 TTS 引擎，桌面启动即预热；`SpeechText` 把题目改写成可朗读的中文（纯 JVM，有单测）；`TtsProbe` 供管理台检测引擎可用性 |
 | 桌面本体 | `dev.plume.*` | 上游 Plume 的桌面、壁纸、屏保、按键重映射等 |
 
 ## 题库
@@ -352,9 +414,9 @@ tools/                               # 安装脚本、题库生成、上游设�
 - **强锁定依赖 Device Owner**：不配置时只是"默认桌面"，无法阻止通过系统设置切走。
 - **遥控器专用键**：Netflix 等一键直达键可绕过桌面；可被本应用拦截的键请按「快速开始」第 6 步设为「无操作」，不经过 Android 按键系统的键则无法拦截。
 - **精确闹钟**：Android 12+ 若未授予「闹钟和提醒」权限，触发时间可能被系统推迟数分钟。
-- **TTS**：电视没有可用语音引擎时题目不会朗读，其余功能正常。
+- **TTS**：不少国产电视出厂不带语音引擎，此时题目照常显示但不朗读；装一个离线 TTS 引擎并在系统设置里设为默认即可，其余功能不受影响。
 - **Fire TV**：Fire OS 不把 Home 键交给第三方应用，首个桌面会先闪现约 5 秒；细节见[上游文档](docs/UPSTREAM-PLUME.md#fire-tv)。
-- **国产电视的桌面还原**：小米 MIUI 每次开机都会把默认桌面还给自带桌面，「设为默认桌面」不能持久。开启「主屏幕键」无障碍服务后，自带桌面（含 TCL、海信、创维、乐视、腾讯极光等）一出现本应用就自动切回。个别固件（海信聚好看、腾讯极光盒子的部分版本）不向无障碍服务报告窗口变化，这类机型暂时无法自动切回。
+- **国产电视的桌面还原**：小米 MIUI 每次开机都会把默认桌面还给自带桌面，「设为默认桌面」不能持久；TCL 开机时无视默认桌面设置，直接拉起自带桌面。开启「主屏幕键」无障碍服务后，自带桌面（含 TCL、海信、创维、乐视、腾讯极光等）一出现本应用就自动切回；开机后服务绑定时也会主动检查一次前台，把还停留在厂商桌面的电视切回来。个别固件（海信聚好看、腾讯极光盒子的部分版本）不向无障碍服务报告窗口变化，这类机型暂时无法自动切回。
 - **不做家长端远程监督**：管理台只在同一局域网内可用，且仅在桌面进程存活时开启。
 
 ## 隐私

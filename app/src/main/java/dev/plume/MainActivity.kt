@@ -388,6 +388,10 @@ class MainActivity : Activity() {
         dev.plume.quiz.QuizScheduler.ensureScheduled(this)
         dev.plume.web.WebAdminServer.start(this)
         dev.plume.quiz.TtsProbe.start(this) // the web console reports whether this TV can read aloud
+        // GrowQuiz: load the speech engine now, while the desktop is idle. On TV hardware a Chinese engine
+        // takes seconds to bring its model up; doing it here means the quiz page can speak the first
+        // question at once instead of leaving it silent while the engine loads.
+        dev.plume.quiz.QuizVoice.warm(this)
         // GrowQuiz: a TV has no logcat in reach — surface the last crash once, then forget it.
         CrashLog.peek(this)?.let { trace ->
             ui.post {
@@ -515,13 +519,39 @@ class MainActivity : Activity() {
         // GrowQuiz: with the boot quiz on, the startup admin prompt's OK button starts one question
         // right away. The old BOOT_COMPLETED gate never fired on some TVs; anchoring the quiz to the
         // prompt — which always shows after power-on — makes the trigger visible and reliable.
-        if (!resumed && !fromQuiz) showWebAdminPrompt(quizAfterOk = dev.plume.quiz.QuizPrefs(this).bootQuiz)
+        // Once it has been dismissed, it stays away until the next power-on: the desktop is a launcher,
+        // so it gets recreated often (memory pressure, another app stealing the screen) and an
+        // every-recreation prompt would land on the child again and again.
+        val quizPrefs = dev.plume.quiz.QuizPrefs(this)
+        if (!resumed && !fromQuiz && !promptDismissedThisBoot()) {
+            // GrowQuiz: a power cut in the middle of a question or a forced rest keeps quizActive /
+            // restUntil set. Go back to that page before anything else — the quiz lives in its own
+            // task, so the desktop below stays as it was. The rest page already shows the console
+            // address and QR, which is what the admin prompt would have reminded of.
+            val restOwed = quizPrefs.restGuard && quizPrefs.restUntil > System.currentTimeMillis()
+            if (quizPrefs.enabled && (quizPrefs.quizActive || restOwed)) {
+                startActivity(Intent(this, dev.plume.quiz.QuizActivity::class.java))
+            } else {
+                showWebAdminPrompt(quizAfterOk = quizPrefs.bootQuiz)
+            }
+        }
         resumed = true
         if (currentWallpaper().startsWith("video:")) videoWallpaper.resume()
         returnTo = null // back by another way than Home: the next Home starts again at the first tile
         openedFrom?.get()?.let { tile -> ui.post { if (tile.isAttachedToWindow) settleRow(tile) } }
         openedFrom = null
         ensureHomeService()
+        reviveHomeService()
+        // GrowQuiz: Android 10+ refuses a background start of the quiz page unless the app holds "display
+        // over other apps", so the guard that brings a skipped question back cannot work without it. The
+        // installer grants it over adb; a manual install needs the parent to switch it on once. Say so
+        // once, and do not jump to Settings from here: that would leave a child on a system screen.
+        if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
+            if (!quizPrefs.overlayAsked) {
+                quizPrefs.overlayAsked = true
+                toast("请在「设置 → 应用 → 特殊权限」里允许「显示在其他应用上层」，否则切走后答题页回不来", long = true, system = true)
+            }
+        }
         homeSetupResumed()
         // Back from a screen that settings opened: settings again, on the same row (and the Home switch as it is now).
         val back = prefs.getInt("return_settings", 0)
@@ -635,6 +665,37 @@ class MainActivity : Activity() {
         Settings.Secure.putInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
     }
 
+    private var revived = false // once per process: the revive below must never loop
+
+    /**
+     * GrowQuiz: an install stops the app, and this TV's system then refuses to bind the service again.
+     * It stays in the enabled list but is dead ("forbid bind service" in logcat, "Crashed services" in
+     * dumpsys accessibility). The Home key, the remote-key page and the watch-time count all stop,
+     * silently. [ensureHomeService] cannot see it — the setting still lists the service. Rewriting the
+     * setting makes the system bind it again. Runs once, after the normal bind has had a few seconds.
+     */
+    private fun reviveHomeService() {
+        if (revived || !homeServiceOn()) return
+        if (checkSelfPermission(WRITE_SECURE) != PackageManager.PERMISSION_GRANTED) return
+        revived = true
+        ui.postDelayed({
+            if (isFinishing || isDestroyed) return@postDelayed
+            if (HomeOverride.running != null || !homeServiceOn()) return@postDelayed
+            val me = ComponentName(this, HomeOverride::class.java)
+            val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+            // Take ours out, then put it back: the value must change, or nothing is bound again.
+            Settings.Secure.putString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                on.split(':').filter { it.isNotEmpty() && ComponentName.unflattenFromString(it) != me }.joinToString(":"))
+            ui.postDelayed({
+                if (isFinishing || isDestroyed) return@postDelayed
+                val now = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+                val parts = now.split(':').filter { it.isNotEmpty() } + me.flattenToString()
+                Settings.Secure.putString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, parts.distinct().joinToString(":"))
+                Settings.Secure.putInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
+            }, 300)
+        }, 3_000)
+    }
+
     /** Startup hint for the LAN admin console: same Wi-Fi, phone browser, then background this app. */
     private fun showWebAdminPrompt(quizAfterOk: Boolean = false) {
         if (webPromptShown) return
@@ -721,6 +782,10 @@ class MainActivity : Activity() {
                 covered.forEach { (view, before) -> view.descendantFocusability = before }
                 root.removeView(overlay)
                 webPromptShown = false // allows the menu's 后台管理 button to bring the prompt up again
+                // Mark this power-on as told: the desktop may be recreated many times before the TV is
+                // switched off again, and the prompt must not come back on its own until then.
+                val boot = bootCount()
+                if (boot > 0) dev.plume.quiz.QuizPrefs(this@MainActivity).promptBootCount = boot
                 if (quizAfterOk && dev.plume.quiz.QuizPrefs(this@MainActivity).bootQuiz) {
                     // GrowQuiz: the boot question fires here — after power-on the prompt is the first thing
                     // on screen, so OK means "I'm ready" and the quiz follows immediately.
@@ -744,6 +809,23 @@ class MainActivity : Activity() {
     }
 
     private var webPromptShown = false
+
+    /** Settings.Global.BOOT_COUNT: +1 on every power-on. 0 when the firmware does not report it. */
+    private fun bootCount(): Int = try {
+        Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, 0)
+    } catch (e: Exception) {
+        0
+    }
+
+    /**
+     * True once the parents have tapped "我知道了" on this power-on. Reading BOOT_COUNT instead of a
+     * plain "seen" flag is what makes it per power-on: a reboot raises the count and the prompt returns,
+     * while the same boot never shows it twice even if the launcher is recreated.
+     */
+    private fun promptDismissedThisBoot(): Boolean {
+        val boot = bootCount()
+        return boot > 0 && dev.plume.quiz.QuizPrefs(this).promptBootCount == boot
+    }
     private var rowEmptyNoted = false // the empty-desktop hint shows once per session
 
     /** Compared as components: Settings may store us in short form (dev.plume/.HomeOverride). */

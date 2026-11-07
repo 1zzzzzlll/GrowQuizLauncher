@@ -22,6 +22,13 @@
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <!-- The quiz page is not allowed to come back by itself on Android 10 and newer: the system blocks a
+         background start ("isBgStartWhitelisted: false" in logcat) unless the app holds this permission.
+         Without it, a child that opens another app keeps it, and the question never returns. Granted once
+         over adb (appops set dev.plume.growquiz SYSTEM_ALERT_WINDOW allow), or by the user on TV. -->
+    <uses-permission
+        android:name="android.permission.SYSTEM_ALERT_WINDOW"
+        tools:ignore="ProtectedPermissions" />
 
     <uses-feature android:name="android.software.leanback" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

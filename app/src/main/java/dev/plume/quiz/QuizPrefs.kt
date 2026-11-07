@@ -42,6 +42,27 @@ class QuizPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_REST_GUARD, true)
         set(value) = prefs.edit().putBoolean(KEY_REST_GUARD, value).apply()
 
+    /**
+     * A question comes back by itself when the child opens another app. On by default: without it a
+     * Netflix-style key leaves the question behind, and nothing else catches that. Parents can turn it
+     * off from the web console, e.g. while they use the TV themselves.
+     */
+    var snapBack: Boolean
+        get() = prefs.getBoolean(KEY_SNAP_BACK, true)
+        set(value) = prefs.edit().putBoolean(KEY_SNAP_BACK, value).apply()
+
+    /**
+     * Proof that [snapBack] works on this TV: when it last brought a question back, and how often it has
+     * done so. A parent can see it in the console instead of having to sit and watch.
+     */
+    var snapOkAt: Long
+        get() = prefs.getLong(KEY_SNAP_OK_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_SNAP_OK_AT, value).apply()
+
+    var snapOkCount: Int
+        get() = prefs.getInt(KEY_SNAP_OK_COUNT, 0)
+        set(value) = prefs.edit().putInt(KEY_SNAP_OK_COUNT, value).apply()
+
     /** Seconds of forced thinking time before the answer buttons respond; 0 turns the gate off. */
     var thinkSeconds: Int
         get() = prefs.getInt(KEY_THINK_SECONDS, QuizRules.DEFAULT_THINK_SECONDS).coerceIn(0, 60)
@@ -66,6 +87,29 @@ class QuizPrefs(context: Context) {
     var verifyPending: Boolean
         get() = prefs.getBoolean(KEY_VERIFY_PENDING, false)
         set(value) = prefs.edit().putBoolean(KEY_VERIFY_PENDING, value).apply()
+
+    /**
+     * A quiz session is open: a question or a forced rest waits for an answer. Set when the quiz
+     * page opens, cleared only when a question is answered correctly and the page closes. A power
+     * cut keeps the flag, so after the next power-on the page comes back on its own.
+     */
+    var quizActive: Boolean
+        get() = prefs.getBoolean(KEY_QUIZ_ACTIVE, false)
+        set(value) = prefs.edit().putBoolean(KEY_QUIZ_ACTIVE, value).apply()
+
+    /** The "show over other apps" request was shown once; do not send the TV to Settings again. */
+    var overlayAsked: Boolean
+        get() = prefs.getBoolean(KEY_OVERLAY_ASKED, false)
+        set(value) = prefs.edit().putBoolean(KEY_OVERLAY_ASKED, value).apply()
+
+    /**
+     * The boot session (Settings.Global.BOOT_COUNT) in which the parents already dismissed the startup
+     * admin prompt. -1 means it has never been shown. A reboot raises the boot count, so the prompt comes
+     * back exactly once per power-on and stays away after that.
+     */
+    var promptBootCount: Int
+        get() = prefs.getInt(KEY_PROMPT_BOOT, -1)
+        set(value) = prefs.edit().putInt(KEY_PROMPT_BOOT, value).apply()
 
     /** Parents released the rest early from the web console: wipe every anti-guess counter. */
     fun clearRest() {
@@ -97,10 +141,16 @@ class QuizPrefs(context: Context) {
         private const val KEY_VOICE = "voice_enabled"
         private const val KEY_BOOT_QUIZ = "boot_quiz_enabled"
         private const val KEY_REST_GUARD = "rest_guard_enabled"
+        private const val KEY_SNAP_BACK = "snap_back_enabled"
+        private const val KEY_SNAP_OK_AT = "snap_back_ok_at"
+        private const val KEY_SNAP_OK_COUNT = "snap_back_ok_count"
         private const val KEY_THINK_SECONDS = "think_seconds"
         private const val KEY_WRONG_STREAK = "wrong_streak"
         private const val KEY_REST_UNTIL = "rest_until"
         private const val KEY_SNAP_WRONGS = "snap_wrongs"
         private const val KEY_VERIFY_PENDING = "verify_pending"
+        private const val KEY_QUIZ_ACTIVE = "quiz_active"
+        private const val KEY_OVERLAY_ASKED = "overlay_asked"
+        private const val KEY_PROMPT_BOOT = "prompt_boot_count"
     }
 }

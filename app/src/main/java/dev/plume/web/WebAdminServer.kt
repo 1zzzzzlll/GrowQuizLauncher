@@ -319,6 +319,12 @@ object WebAdminServer {
                         .put("voice", prefs.voice)
                         .put("bootQuiz", prefs.bootQuiz)
                         .put("restGuard", prefs.restGuard)
+                        // "A skipped question comes back": the switch, and the evidence it works.
+                        .put("snapBack", prefs.snapBack)
+                        .put("snapOkAt", prefs.snapOkAt)
+                        .put("snapOkCount", prefs.snapOkCount)
+                        .put("overlay", android.provider.Settings.canDrawOverlays(context))
+                        .put("a11y", dev.plume.HomeOverride.running != null)
                         .put("thinkSeconds", prefs.thinkSeconds)
                         .put("wrongStreak", prefs.wrongStreak)
                         .put("restUntil", prefs.restUntil)
@@ -399,6 +405,7 @@ object WebAdminServer {
                 prefs.save(age, interval, enabled, categories, voice)
                 prefs.bootQuiz = bootQuiz
                 if (json.has("restGuard")) prefs.restGuard = json.optBoolean("restGuard")
+                if (json.has("snapBack")) prefs.snapBack = json.optBoolean("snapBack")
                 if (json.has("thinkSeconds")) prefs.thinkSeconds = json.optInt("thinkSeconds", prefs.thinkSeconds)
                 QuizScheduler.reschedule(context)
                 QuizDeviceOwner.configure(context)
