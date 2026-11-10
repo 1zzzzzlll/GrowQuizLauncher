@@ -18,7 +18,7 @@
 
 ```sh
 # 换口令：新的在前，旧的垫后（旧的先别删）
-ssh mylinux 'printf "GROWQUIZ_REPORT_TOKEN=%s,%s\n" "<新口令>" "***REMOVED***" > /root/growquiz/report.env && chmod 600 /root/growquiz/report.env && systemctl restart growquiz-report'
+ssh mylinux 'printf "GROWQUIZ_REPORT_TOKEN=%s,%s\n" "<新口令>" "<旧口令>" > /root/growquiz/report.env && chmod 600 /root/growquiz/report.env && systemctl restart growquiz-report'
 # 然后把新口令写进本机 secrets.properties 的 reportToken，重新构建发版
 # 设备都升级完之后，再单独保留新口令重启一次
 ```
