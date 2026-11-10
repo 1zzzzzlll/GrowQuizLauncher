@@ -84,6 +84,24 @@
     .danger-fold{border:1px dashed rgba(217,83,79,.5);border-radius:12px;padding:12px 14px;font-size:14px;color:#ffb3b3;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;margin-top:14px}
     .danger-zone{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
+    /* ---- 环境检测：右上角按钮 + 居中弹窗 ---- */
+    .env-btn{margin-left:auto;width:auto;padding:9px 16px;font-size:14px;flex:none}
+    .modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:18px}
+    .modal{background:var(--card);border:1px solid var(--line);border-radius:20px;width:100%;max-width:640px;max-height:86vh;overflow-y:auto;padding:20px 22px}
+    .env-row{display:flex;gap:12px;padding:13px 0;border-bottom:1px solid rgba(39,68,108,.5)}
+    .env-row:last-child{border-bottom:0}
+    .env-ic{flex:none;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;margin-top:2px}
+    .env-ic.ok{background:rgba(46,166,123,.18);color:#9de8c6}
+    .env-ic.warn{background:rgba(255,209,102,.16);color:var(--gold)}
+    .env-ic.bad{background:rgba(217,83,79,.18);color:#ffb3b3}
+    .env-main{flex:1;min-width:0}
+    .env-name{font-size:15px;font-weight:600}
+    .env-st{font-weight:400;color:var(--muted);font-size:13px;margin-left:6px}
+    .env-fix{color:var(--muted);font-size:13px;line-height:1.65;margin-top:5px}
+    .cmd{display:flex;gap:8px;align-items:flex-start;margin-top:7px}
+    .cmd code{flex:1;min-width:0;display:block;padding:8px 10px;line-height:1.5}
+    .cmd .copy{flex:none;width:auto;padding:8px 14px;font-size:12px;border-radius:8px}
+
     /* ---- 编辑题底部弹层 ---- */
     .sheet-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center}
     .sheet{background:var(--card);border-radius:20px 20px 0 0;width:100%;max-width:760px;max-height:88vh;overflow-y:auto;padding:12px 20px calc(20px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
@@ -128,6 +146,7 @@
         <h1 id="brandTitle">宝贝成长桌面 · 控制端</h1>
         <p>局域网内使用，所有配置都在浏览器里完成</p>
       </div>
+      <button id="envBtn" class="ghost env-btn hidden">🧪 环境检测</button>
     </div>
 
     <!-- ============ 首次使用 ============ -->
@@ -169,24 +188,9 @@
           <div class="pill"><div class="k">开机答题</div><div id="stBoot" class="v">--</div></div>
           <div class="pill"><div class="k">防蒙题休息</div><div id="stRest" class="v">--</div></div>
         </div>
-        <div class="check-line" id="snapLine">
-          <div id="snapHead" class="check-h">切走弹回：--</div>
-          <div id="snapHow" class="check-d"></div>
-        </div>
-        <div class="check-line">
-          <div class="check-d">以下自检显示红字时，按提示在电视设置里开启，或用电脑连电视执行给出的 adb 命令；命令可长按复制，也可直接交给手机上的 AI 助手（如 WorkBuddy、豆包）代为执行。</div>
-        </div>
-        <div class="check-line" id="alarmLine">
-          <div id="alarmHead" class="check-h">答题时间：--</div>
-          <div id="alarmHow" class="check-d"></div>
-        </div>
-        <div class="check-line" id="homeLine">
-          <div id="homeHead" class="check-h">主屏幕键服务：--</div>
-          <div id="homeHow" class="check-d"></div>
-        </div>
-        <div class="check-line" id="guardLine">
-          <div id="guardHead" class="check-h">答题保障：--</div>
-          <div id="guardHow" class="check-d"></div>
+        <div class="check-line" id="envLine" style="cursor:pointer">
+          <div id="envHead" class="check-h">环境检测：--</div>
+          <div id="envHow" class="check-d"></div>
         </div>
       </div>
 
@@ -452,6 +456,16 @@
     </div>
   </div>
 
+  <!-- ============ 环境检测弹窗 ============ -->
+  <div id="envModal" class="modal-mask hidden">
+    <div class="modal">
+      <h2>环境检测</h2>
+      <p class="muted" style="margin-top:0;font-size:13px">绿勾为已通过；红叉需要处理：电视上优先用给出的 adb 命令（点「复制」后可交给电脑或手机上的 AI 助手代为执行），手机/平板按提示在设置里开启即可。</p>
+      <div id="envList"></div>
+      <button id="envClose" class="ghost" style="margin-top:16px">关闭</button>
+    </div>
+  </div>
+
   <!-- ============ 底部 Tab 栏 ============ -->
   <div id="tabbar" class="tabbar hidden">
     <div class="tab on" data-tab="home"><span class="ic">🏠</span>总览</div>
@@ -476,6 +490,7 @@
       AUTH_CARDS.forEach(s => $(s).classList.toggle('hidden', s !== name));
       TABS.forEach(t => $('tab-' + t).classList.toggle('hidden', isAuthView || t !== name));
       $('tabbar').classList.toggle('hidden', isAuthView);
+      $('envBtn').classList.toggle('hidden', isAuthView);
       if (!isAuthView) {
         currentTab = name;
         document.querySelectorAll('.tab').forEach(el => el.classList.toggle('on', el.dataset.tab === name));
@@ -509,6 +524,139 @@
     const fmtMinutes = min => !min ? '0 分钟' : min < 60 ? min + ' 分钟' : Math.floor(min / 60) + ' 小时 ' + (min % 60) + ' 分';
     const pct = v => Math.round(v * 100) + '%';
     const AUTO_DISABLE_AFTER = 5; // 与电视端 QuestionBank.AUTO_DISABLE_AFTER 一致
+
+    // ---------- 环境检测（判定逻辑与电视端 EnvCheck.kt 一致，改动要两边同步） ----------
+    // 形态决定给什么修复路径：电视常没有系统设置页 → adb 命令为主；手机/平板 → 常规设置路径，
+    // 只有装语音引擎这类没有设置页的才保留命令。
+    const PKG = 'dev.plume.growquiz';
+    let lastStatus = null;
+    const ago = ts => {
+      const d = Math.max(0, Date.now() - ts);
+      return d < 60000 ? '刚刚' : d < 3600000 ? Math.floor(d / 60000) + ' 分钟前'
+        : d < 86400000 ? Math.floor(d / 3600000) + ' 小时前' : Math.floor(d / 86400000) + ' 天前';
+    };
+
+    function envChecks(s) {
+      const missing = s.guardMissing || [];
+      const sdk = s.sdk || 0;
+      const tv = s.form !== 'phone' && s.form !== 'tablet'; // unknown 按电视处理：设置页可能不存在
+      const grant = (name, ok, okSt, badSt, reason, path, adb) => ({
+        name, ok, st: ok ? okSt : badSt,
+        fix: ok ? '' : reason + (tv
+          ? '用电脑连电视执行下方命令即可；若电视有对应设置页，也可在电视上直接开启。'
+          : '在「' + path + '」里允许本应用。'),
+        adb: ok || !tv ? [] : adb
+      });
+      const rows = [];
+      rows.push(grant('悬浮窗权限', s.overlay === true, '已允许', '未允许',
+        '没有它，答题页无法盖在其他应用上。',
+        '设置 → 应用 → 特殊应用权限 → 显示在其他应用上层',
+        ['adb shell appops set ' + PKG + ' SYSTEM_ALERT_WINDOW allow']));
+      if (sdk >= 31) rows.push(grant('闹钟和提醒', s.exactAlarm === true, '已允许', '未允许',
+        '没有它，答题时间可能被系统推迟几分钟。',
+        '设置 → 应用 → 特殊权限 → 闹钟和提醒',
+        ['adb shell pm grant ' + PKG + ' android.permission.SCHEDULE_EXACT_ALARM']));
+      rows.push(grant('电池不受限制', !missing.includes('battery'), '不限制', '受限制',
+        '系统会在后台冻结本应用，到点不弹题。',
+        '设置 → 应用 → 宝贝成长桌面 → 电池里选「不限制」',
+        ['adb shell dumpsys deviceidle whitelist +' + PKG]));
+      if (sdk >= 33) rows.push(grant('通知权限', !missing.includes('notification'), '已允许', '未允许',
+        '弹题的全屏提醒靠通知兜底。',
+        '设置 → 应用 → 宝贝成长桌面 → 通知',
+        ['adb shell pm grant ' + PKG + ' android.permission.POST_NOTIFICATIONS']));
+      if (sdk >= 34) rows.push(grant('全屏提醒', !missing.includes('full_screen'), '已允许', '未允许',
+        '到点直接弹出答题页靠它。',
+        '设置 → 应用 → 宝贝成长桌面 → 全屏提醒',
+        ['adb shell appops set ' + PKG + ' USE_FULL_SCREEN_INTENT allow']));
+      rows.push({ name: '主屏幕键服务',
+        ok: !!(s.a11yEnabled && s.a11y), warn: !!(s.a11yEnabled && !s.a11y),
+        st: !s.a11yEnabled ? '未开启' : s.a11y ? '正常工作' : '已开启但未生效',
+        fix: s.a11yEnabled
+          ? '服务已开启但系统没有绑定。在设备上打开一次「宝贝成长桌面」即可恢复；若反复出现请联系开发者。'
+          : '不开启时，遥控器的一键影视键、厂商桌面抢屏都无法拦截。' + (tv
+            ? '用电脑连电视执行下方两条命令即可；若电视有无障碍设置页，也可直接开启。TCL/雷鸟设备代开后如未生效，在电视上打开一次本应用即可绑定。'
+            : '在「设置 → 无障碍」里开启「宝贝成长桌面（主屏幕键）」服务。'),
+        adb: !s.a11yEnabled && tv ? [
+          'adb shell settings put secure enabled_accessibility_services ' + PKG + '/dev.plume.HomeOverride',
+          'adb shell settings put secure accessibility_enabled 1' ] : [] });
+      const snapOn = s.snapBack !== false, okCount = s.snapOkCount || 0;
+      const snapOk = snapOn && s.overlay === true && okCount > 0;
+      rows.push({ name: '切走弹回',
+        ok: snapOk, warn: snapOn && s.overlay === true && okCount === 0,
+        st: !snapOn ? '已关闭' : s.overlay !== true ? '缺少悬浮窗权限'
+          : okCount === 0 ? '已开启，还没拦截过' : '正常工作，已拦截 ' + okCount + ' 次，最近一次 ' + ago(s.snapOkAt || 0),
+        fix: snapOk ? ''
+          : !snapOn ? '在下方「设置 → 功能开关」里打开「切走后自动弹回」。'
+          : s.overlay !== true ? '先补上面的「悬浮窗权限」，弹回才能生效。'
+          : '下次答题时切到别的应用试一次，弹回成功后这里会记下次数。',
+        adb: [] });
+      if (s.voice !== false) rows.push({ name: '语音朗读引擎',
+        ok: s.tts === 'available', warn: s.tts === 'initializing',
+        st: s.tts === 'available' ? '可用' : s.tts === 'initializing' ? '加载中' : s.tts === 'no-language' ? '缺中文语音' : '未安装',
+        fix: s.tts === 'available' ? '' : s.tts === 'initializing' ? '语音引擎正在加载，稍等片刻再检测一次。'
+          : '读题需要中文语音引擎。安装 sherpa-onnx TTS Engine（安装手册附带安装包，'
+            + (tv ? '用电脑 adb install 装上' : '直接下载安装')
+            + '），装好后在「设置 → 语音 → 文字转语音」里把它设为首选引擎。',
+        adb: [] });
+      return rows;
+    }
+
+    function envSummary(s) {
+      const rows = envChecks(s);
+      const bad = rows.filter(r => !r.ok && !r.warn);
+      const warn = rows.filter(r => r.warn);
+      const head = $('envHead'), how = $('envHow');
+      if (bad.length === 0 && warn.length === 0) {
+        head.className = 'check-h chk-ok';
+        head.textContent = '环境检测：全部通过（' + rows.length + ' 项）';
+        how.textContent = '答题所需的授权与服务都已就绪。点本行可查看明细。';
+      } else if (bad.length === 0) {
+        head.className = 'check-h chk-warn';
+        head.textContent = '环境检测：' + warn.length + ' 项需注意';
+        how.textContent = warn.map(r => r.name).join('、') + '。点本行查看。';
+      } else {
+        head.className = 'check-h chk-bad';
+        head.textContent = '环境检测：' + bad.length + ' 项未通过';
+        how.textContent = '未通过：' + bad.map(r => r.name).join('、') + '。点本行查看解决办法。';
+      }
+    }
+
+    function openEnv() {
+      if (!lastStatus) return;
+      $('envList').innerHTML = envChecks(lastStatus).map(r => {
+        const cls = r.ok ? 'ok' : r.warn ? 'warn' : 'bad';
+        const mark = r.ok ? '✓' : r.warn ? '!' : '✗';
+        const fix = r.fix ? '<div class="env-fix">' + esc(r.fix) + '</div>' : '';
+        const cmds = (r.ok ? [] : (r.adb || [])).map(c =>
+          '<div class="cmd"><code>' + esc(c) + '</code><button class="ghost copy" data-cmd="' + esc(c) + '">复制</button></div>').join('');
+        return '<div class="env-row"><div class="env-ic ' + cls + '">' + mark + '</div>' +
+          '<div class="env-main"><div class="env-name">' + esc(r.name) + '<span class="env-st">' + esc(r.st || '') + '</span></div>' +
+          fix + cmds + '</div></div>';
+      }).join('');
+      $('envList').querySelectorAll('.copy').forEach(btn => btn.onclick = () => copyText(btn.dataset.cmd, btn));
+      $('envModal').classList.remove('hidden');
+    }
+
+    // http 局域网页面没有 clipboard API，退回 execCommand；两者都失败就提示长按复制。
+    async function copyText(text, btn) {
+      let done = false;
+      try { await navigator.clipboard.writeText(text); done = true; } catch (e) {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          done = document.execCommand('copy');
+          ta.remove();
+        } catch (e2) {}
+      }
+      btn.textContent = done ? '已复制 ✓' : '请长按复制';
+      setTimeout(() => { btn.textContent = '复制'; }, 1500);
+    }
+
+    $('envBtn').onclick = openEnv;
+    $('envLine').onclick = openEnv;
+    $('envClose').onclick = () => $('envModal').classList.add('hidden');
+    $('envModal').addEventListener('click', e => { if (e.target === $('envModal')) $('envModal').classList.add('hidden'); });
 
     async function refresh() {
       const s = await status();
@@ -545,91 +693,10 @@
       $('restHint').textContent = resting
         ? '已连续答错触发休息，点击上方按钮立即解除（连错计数同时清零）'
         : '';
-      // 切走弹回自检：开关 → 权限 → 真实拦截记录。家长不用守在电视前，看这一行就知道它有没有在工作。
-      const snapOn = s.snapBack !== false;
-      const okAt = s.snapOkAt || 0, okCount = s.snapOkCount || 0;
-      const ago = ts => {
-        const d = Math.max(0, Date.now() - ts);
-        return d < 60000 ? '刚刚' : d < 3600000 ? Math.floor(d / 60000) + ' 分钟前'
-          : d < 86400000 ? Math.floor(d / 3600000) + ' 小时前' : Math.floor(d / 86400000) + ' 天前';
-      };
-      const head = $('snapHead'), how = $('snapHow');
-      if (!snapOn) {
-        head.className = 'check-h chk-warn';
-        head.textContent = '切走弹回：已关闭';
-        how.innerHTML = '在下方「设置 → 功能开关」里可以重新打开。';
-      } else if (!s.overlay) {
-        head.className = 'check-h chk-bad';
-        head.textContent = '切走弹回：缺少权限，目前不生效';
-        how.innerHTML = '需要「显示在其他应用上层」权限。用安装脚本部署会自动授予；手动装的可以执行：'
-          + '<br><code>adb shell appops set dev.plume.growquiz SYSTEM_ALERT_WINDOW allow</code>';
-      } else if (okCount === 0) {
-        head.className = 'check-h chk-warn';
-        head.textContent = '切走弹回：已开启，暂时还没拦截过';
-        how.innerHTML = '下次答题时切到别的应用试一次，弹回成功后这里会记下时间与次数。';
-      } else {
-        head.className = 'check-h chk-ok';
-        head.textContent = '切走弹回：正常工作';
-        how.innerHTML = '已拦住 ' + okCount + ' 次，最近一次 ' + ago(okAt) + '。';
-      }
-      // 答题时间精度自检：Android 12+ 未授「闹钟和提醒」时，触发时间会被系统推迟数分钟。
-      // 客户可按提示在电脑上执行 adb 命令代授，无需进设置翻菜单。
-      const aHead = $('alarmHead'), aHow = $('alarmHow');
-      if (s.exactAlarm === false) {
-        aHead.className = 'check-h chk-bad';
-        aHead.textContent = '答题时间：缺少权限，可能被推迟';
-        aHow.innerHTML = '在电视「设置 → 应用 → 特殊权限 → 闹钟和提醒」里允许本应用，'
-          + '或用电脑连电视 adb 代授（Android 12 及以上）：<br>'
-          + '<code>adb shell pm grant dev.plume.growquiz android.permission.SCHEDULE_EXACT_ALARM</code><br>'
-          + '修改后这里会立即变绿，无需重启。';
-      } else {
-        aHead.className = 'check-h chk-ok';
-        aHead.textContent = '答题时间：准点触发';
-        aHow.innerHTML = '';
-      }
-      // 主屏幕键服务自检：服务没开 → 按键拦截、厂商桌面切回、开机补课都不工作。
-      // 客户可按提示在电脑上执行 adb 命令代开；TCL/雷鸟首次绑定可能要在电视上打开一次本应用。
-      const hHead = $('homeHead'), hHow = $('homeHow');
-      if (!s.a11yEnabled) {
-        hHead.className = 'check-h chk-bad';
-        hHead.textContent = '主屏幕键服务：未开启';
-        hHow.innerHTML = '在电视「设置 → 无障碍」里开启「宝贝成长桌面（主屏幕键）」服务，'
-          + '或用电脑连电视 adb 代开：<br>'
-          + '<code>adb shell settings put secure enabled_accessibility_services '
-          + 'dev.plume.growquiz/dev.plume.HomeOverride</code><br>'
-          + '<code>adb shell settings put secure accessibility_enabled 1</code><br>'
-          + 'TCL/雷鸟设备代开后如未生效，在电视上打开一次「宝贝成长桌面」即可绑定。'
-          + '不开启时，遥控器的一键影视键、厂商桌面抢屏都无法拦截。';
-      } else if (!s.a11y) {
-        hHead.className = 'check-h chk-warn';
-        hHead.textContent = '主屏幕键服务：已开启但未生效';
-        hHow.innerHTML = '打开一次「宝贝成长桌面」即可恢复；若反复出现请联系开发者。';
-      } else {
-        hHead.className = 'check-h chk-ok';
-        hHead.textContent = '主屏幕键服务：正常工作';
-        hHow.innerHTML = '';
-      }
-      // 答题保障自检：到点必弹靠这五项授权。手机/平板尤其需要，缺任一项都可能静默不弹。
-      // 名称与 quiz/QuizLock.Need 的 name.lowercase() 一一对应。
-      const needNames = {
-        overlay: '悬浮窗权限',
-        exact_alarm: '闹钟和提醒',
-        battery: '电池不受限制',
-        notification: '通知权限',
-        full_screen: '全屏提醒'
-      };
-      const missing = (s.guardMissing || []).map(k => needNames[k] || k);
-      const gHead = $('guardHead'), gHow = $('guardHow');
-      if (missing.length === 0) {
-        gHead.className = 'check-h chk-ok';
-        gHead.textContent = '答题保障：已就绪';
-        gHow.innerHTML = '到点弹出、答对才能退出所需的授权都已允许。';
-      } else {
-        gHead.className = 'check-h chk-bad';
-        gHead.textContent = '答题保障：还缺 ' + missing.length + ' 项，可能到点不弹';
-        gHow.innerHTML = '还缺：<b>' + missing.join('、') + '</b><br>'
-          + '在这台设备的「设置 → 儿童定时问答 → 答题保障」里逐项点开允许，不需要电脑。';
-      }
+      // 环境检测：明细与操作指引都在右上角「环境检测」弹窗里，这里只留一行汇总。
+      // 判定逻辑与电视端 EnvCheck.kt 保持一致；guardMissing 的名称与 quiz/QuizLock.Need 一一对应。
+      lastStatus = s;
+      envSummary(s);
       authed = true;
       route();
       await loadCategories(s.categories || []);

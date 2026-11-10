@@ -7,16 +7,16 @@ class TopBarTest {
     private val known = listOf("wifi", "sources", "apps", "system", "plume")
 
     @Test fun nothingSavedShowsTheDefault() {
-        assertEquals(known, TopBar.parse(null, known, known, "plume"))
+        assertEquals(known, TopBar.parse(null, known, known, listOf("plume")))
     }
 
     @Test fun aSavedListKeepsItsOrderAndDropsWhatIsUnknownOrRepeated() {
-        assertEquals(listOf("apps", "wifi", "plume"), TopBar.parse("apps,wifi,gone,apps,plume", known, known, "plume"))
+        assertEquals(listOf("apps", "wifi", "plume"), TopBar.parse("apps,wifi,gone,apps,plume", known, known, listOf("plume")))
     }
 
     @Test fun plumeSettingsIsNeverMissing() {
-        assertEquals(listOf("wifi", "plume"), TopBar.parse("wifi", known, known, "plume"))
-        assertEquals(listOf("plume"), TopBar.parse("", known, known, "plume")) // the bar is never empty
+        assertEquals(listOf("wifi", "plume"), TopBar.parse("wifi", known, known, listOf("plume")))
+        assertEquals(listOf("plume"), TopBar.parse("", known, known, listOf("plume"))) // the bar is never empty
     }
 
     @Test fun anIconSlidesPastTheOnesOnScreen() {
@@ -42,7 +42,12 @@ class TopBarTest {
 
     @Test fun aDefaultCanLeaveAnIconOut() { // Power is not on the bar until someone adds it
         val all = known + "power"
-        assertEquals(known, TopBar.parse(null, all, all - "power", "plume"))
-        assertEquals(known + "power", TopBar.parse("wifi,sources,apps,system,plume,power", all, all - "power", "plume"))
+        assertEquals(known, TopBar.parse(null, all, all - "power", listOf("plume")))
+        assertEquals(known + "power", TopBar.parse("wifi,sources,apps,system,plume,power", all, all - "power", listOf("plume")))
+    }
+
+    @Test fun aBarSavedBeforeAnUpdateGainsTheNewRequiredIcon() { // 环境检测 landed after people had saved bars
+        assertEquals(listOf("apps", "plume", "env"), TopBar.parse("apps,plume", known, known, listOf("plume", "env")))
+        assertEquals(listOf("apps", "plume", "env"), TopBar.parse("apps,plume,env", known + "env", known, listOf("plume", "env")))
     }
 }

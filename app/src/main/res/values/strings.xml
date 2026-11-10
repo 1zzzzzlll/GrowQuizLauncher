@@ -138,6 +138,7 @@
     <string name="checking">正在检查…</string>
     <string name="lock_layout">PIN 锁定</string>
     <string name="plume_settings">宝贝成长桌面设置</string>
+    <string name="env_check">环境检测</string>
     <string name="enter_pin">输入 PIN</string>
     <string name="wrong_pin">PIN 错误</string>
     <string name="wrong_password">密码错误</string>

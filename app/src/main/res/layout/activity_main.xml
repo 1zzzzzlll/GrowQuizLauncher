@@ -159,6 +159,17 @@
                 android:padding="8dp"
                 android:src="@drawable/ic_tune" />
 
+            <!-- GrowQuiz: one look at what the quiz needs from this TV; always on the bar. -->
+            <ImageView
+                android:id="@+id/envCheck"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:contentDescription="@string/env_check"
+                android:focusable="true"
+                android:padding="8dp"
+                android:src="@drawable/ms_checklist" />
+
             <!-- Hidden until it is added from the top bar's menu. -->
             <ImageView
                 android:id="@+id/powerButton"

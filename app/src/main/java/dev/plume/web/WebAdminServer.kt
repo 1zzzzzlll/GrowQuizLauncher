@@ -355,6 +355,12 @@ object WebAdminServer {
                         // The parents exited to the TV's own desktop from here or from the TV: the switch
                         // on the phone shows it, and takes the desktop back (see DesktopExit).
                         .put("exited", dev.plume.DesktopExit.exited(context))
+                        // The console's environment check hides the rows the platform cannot grant
+                        // (see EnvCheck): it needs to know which Android this is. The form decides
+                        // whether a fix is an adb command (TV: settings pages may not exist) or a
+                        // settings path (phone/tablet: every page is there).
+                        .put("sdk", android.os.Build.VERSION.SDK_INT)
+                        .put("form", dev.plume.DeviceProbe.form(context))
                         .put("crash", dev.plume.CrashLog.peek(context) ?: "")
                         .put("tts", dev.plume.quiz.TtsProbe.describe())
                 } else {

@@ -464,6 +464,7 @@ class MainActivity : Activity() {
             R.id.allAppsButton to { openAllApps() },
             R.id.systemSettings to { unlock { openSettings(Settings.ACTION_SETTINGS) } },
             R.id.launcherSettings to { unlock { openLauncherSettings() } },
+            R.id.envCheck to { unlock { showEnvCheck(findViewById(R.id.envCheck)) } },
             R.id.powerButton to { powerDialog() },
         )) findViewById<ImageView>(id).apply {
             setColorFilter(fg)
@@ -4622,17 +4623,17 @@ class MainActivity : Activity() {
 
     /** The bar's icons in their default order, with the key each is saved under. */
     private val TOP_KEYS = linkedMapOf(R.id.wifi to "wifi", R.id.sourcesButton to "sources", R.id.allAppsButton to "apps",
-        R.id.systemSettings to "system", R.id.launcherSettings to "plume", R.id.powerButton to "power")
+        R.id.systemSettings to "system", R.id.launcherSettings to "plume", R.id.envCheck to "env", R.id.powerButton to "power")
 
     private var movingTop: View? = null // the icon being moved, while Left and Right slide it
     private var topLive: List<Int> = emptyList() // the order while moving; saved when OK places the icon
     private var topBefore: List<Int> = emptyList() // the order when the move started, for Back
 
-    /** The icons the bar shows, in order: the saved list, or all of them. Plume settings is always on it. */
+    /** The icons the bar shows, in order: the saved list, or all of them. Plume settings and the environment check are always on it. */
     private fun topOrder(): List<Int> {
         val all = TOP_KEYS.values.toList()
         // Power is not on the bar until someone adds it.
-        return keys(TopBar.parse(prefs.getString("top_bar", null), all, all - "power", "plume"))
+        return keys(TopBar.parse(prefs.getString("top_bar", null), all, all - "power", listOf("plume", "env")))
     }
 
     /** What is really on screen: Sources stays out while the TV has no input. */
@@ -4677,13 +4678,13 @@ class MainActivity : Activity() {
         Remap.powerMenu(service)
     }
 
-    /** Hold OK on a top-bar icon: Move, Hide (not Plume settings, so the bar is never empty) and Add icon. */
+    /** Hold OK on a top-bar icon: Move, Hide (not the required icons, so the bar never loses them) and Add icon. */
     private fun topMenu(v: View) {
         if (locked()) return holdMenu(v, listOf(getString(R.string.unlock_to_edit) to { unlock { v.requestFocus(); topMenu(v) } }), below = true)
         val hidden = TOP_KEYS.keys - topOrder().toSet()
         holdMenu(v, listOfNotNull(
             getString(R.string.move) to { startTopMove(v) },
-            if (v.id == R.id.launcherSettings) null else getString(R.string.hide) to { hideTop(v) },
+            if (v.id == R.id.launcherSettings || v.id == R.id.envCheck) null else getString(R.string.hide) to { hideTop(v) },
             if (hidden.isEmpty()) null else getString(R.string.add_icon) to { addIconMenu(v) },
         ), below = true)
     }
@@ -4770,6 +4771,118 @@ class MainActivity : Activity() {
             else -> return false
         }
         return true
+    }
+
+    // ---------- the environment check: what the quiz still needs from this TV ----------
+
+    /**
+     * The top bar's 环境检测 icon: every grant the quiz rests on, one row each — a green ✓ when it
+     * holds, a red ✗ (or gold ! when it merely lacks evidence) with what to do about it. A failed
+     * row that has a system page opens it; the rest point at the console's adb commands.
+     */
+    private fun showEnvCheck(anchor: View) {
+        val quiz = dev.plume.quiz.QuizPrefs(this)
+        val items = EnvCheck.items(
+            sdk = Build.VERSION.SDK_INT,
+            form = DeviceProbe.form(this),
+            overlay = Settings.canDrawOverlays(this),
+            exactAlarm = DeviceProbe.exactAlarm(this),
+            batteryFree = dev.plume.quiz.QuizReady.batteryFree(this),
+            notifications = dev.plume.quiz.QuizReady.notifications(this),
+            fullScreen = dev.plume.quiz.QuizReady.fullScreen(this),
+            a11yEnabled = DeviceProbe.a11yEnabled(this),
+            a11yBound = HomeOverride.running != null,
+            snapBack = quiz.snapBack,
+            snapOkCount = quiz.snapOkCount,
+            tts = dev.plume.quiz.TtsProbe.describe(),
+            ttsWanted = quiz.voice,
+        )
+        val open = EnvCheck.openCount(items)
+        popupMenu(anchor, below = true) { dismiss ->
+            listOf(envCheckHead(open)) + items.map { item -> envCheckRow(item) { dismiss(); fixEnv(item) } }
+        }
+    }
+
+    /** The pop-up's title row: the verdict at a glance. Focusable, so the pop-up's first focus lands here. */
+    private fun envCheckHead(open: Int): View {
+        val name = label(if (open == 0) "环境检测：全部通过" else "环境检测：$open 项待处理", 17f).apply {
+            setTextColor(if (open == 0) ENV_OK else ENV_BAD)
+            maxLines = 2
+        }
+        val sub = label(if (open == 0) "答题所需的授权与服务都已就绪。" else "红叉项按提示操作；带「点本行」的可直接打开对应设置。", 13f).apply {
+            setTextColor(valueInk())
+            maxLines = 2
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(4), dp(16), dp(8))
+            addView(name)
+            addView(sub, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) })
+            panelFocus(this, 12, null, null) { f -> sub.setTextColor(valueInk(f)) }
+        }
+    }
+
+    /** One check: the mark in its colour, the name, and — while it fails — the fix under both. */
+    private fun envCheckRow(item: EnvCheck.Item, action: () -> Unit): View {
+        val mark = label(
+            when (item.state) {
+                EnvCheck.State.PASS -> "✓"
+                EnvCheck.State.WARN -> "!"
+                EnvCheck.State.FAIL -> "✗"
+            }, 17f,
+        ).apply {
+            setTextColor(
+                when (item.state) {
+                    EnvCheck.State.PASS -> ENV_OK
+                    EnvCheck.State.WARN -> ENV_WARN
+                    EnvCheck.State.FAIL -> ENV_BAD
+                },
+            )
+            gravity = Gravity.CENTER
+        }
+        val name = label("${item.name}  ${item.detail}", 16f).apply { setTextColor(restInk()); panelShadow() }
+        // A TV's settings pages are often missing, so the fix text names the adb commands in full:
+        // the parent reads them off the screen, or copies them from the console's own 环境检测.
+        val fixText = item.fix + if (item.adb.isEmpty()) "" else "\n" + item.adb.joinToString("\n")
+        val note = if (fixText.isEmpty()) null else label(fixText, 13f).apply {
+            setTextColor(valueInk())
+            panelShadow()
+            maxLines = 8 // label() defaults to one line; a fix wraps
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+            addView(mark, LinearLayout.LayoutParams(dp(26), dp(26)))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(name)
+                note?.let { addView(it, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(2) }) }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(10) })
+            if (item.state != EnvCheck.State.PASS) setOnClickListener { action() }
+            panelFocus(this, 12, null, null) { focused ->
+                name.setTextColor(if (focused) focusInk() else restInk())
+                note?.setTextColor(valueInk(focused))
+            }
+        }
+    }
+
+    /** What pressing a failed row does: the system page when one exists, otherwise the fix as a toast. */
+    private fun fixEnv(item: EnvCheck.Item) {
+        when (item.key) {
+            EnvCheck.Key.OVERLAY ->
+                openSettings(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+            EnvCheck.Key.EXACT_ALARM ->
+                if (Build.VERSION.SDK_INT >= 31) openSettings(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName"))
+            EnvCheck.Key.BATTERY ->
+                openSettings(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+            EnvCheck.Key.NOTIFICATION ->
+                if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS)
+            EnvCheck.Key.FULL_SCREEN ->
+                if (Build.VERSION.SDK_INT >= 34) openSettings(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$packageName"))
+            EnvCheck.Key.HOME_SERVICE -> turnOnHomeButton()
+            EnvCheck.Key.SNAP_BACK, EnvCheck.Key.TTS -> toast(item.fix, long = true)
+        }
     }
 
     /** The TV's inputs under the Sources icon, as on any TV: the logo of what is plugged in, its name, no signal if none. */
@@ -6300,6 +6413,10 @@ class MainActivity : Activity() {
         const val DARK_SURFACE = 0xFF0B0B0B.toInt() // placeholders behind images
         const val DARK_TEXT = 0xFFF5F5F5.toInt()
         const val DARK_TEXT_2 = 0xFF7A7A7A.toInt() // values, unfocused rows, supporting text
+        const val ENV_OK = 0xFF2EA67B.toInt() // environment check: the grant holds (console --green)
+        const val ENV_WARN = 0xFFE8A33D.toInt() // on, but no proof yet, or still loading
+        const val ENV_BAD = 0xFFD9534F.toInt() // missing: the quiz cannot do its job (console --red)
+        const val REQ_NOTIFICATIONS = 42 // requestPermissions code for the env check's notification row
         // Translucent (70% at rest, 80% selected), so the wallpaper shows through the tiles like frosted glass.
         /** Android's own Watch Next list, listed with the channels so it can be turned off too. */
         const val WATCH_NEXT = "watchnext"

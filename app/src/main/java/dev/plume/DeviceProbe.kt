@@ -110,6 +110,9 @@ object DeviceProbe {
             ?.activityInfo?.packageName ?: ""
     }
 
+    /** The form factor string the report, the console and the env check all share (see [DeviceForm]). */
+    fun form(context: Context): String = deviceForm(context)
+
     private fun deviceForm(context: Context): String {
         val pm = context.packageManager
         return DeviceForm.of(

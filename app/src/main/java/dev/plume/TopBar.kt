@@ -5,10 +5,11 @@ package dev.plume
  * the home screen turns the keys into its views.
  */
 internal object TopBar {
-    /** The saved list ("wifi,apps,plume") without unknown or repeated keys, or [default]. [required] is always on the bar. */
-    fun parse(saved: String?, known: List<String>, default: List<String>, required: String): List<String> {
+    /** The saved list ("wifi,apps,plume") without unknown or repeated keys, or [default]. [required] keys are always on the bar. */
+    fun parse(saved: String?, known: List<String>, default: List<String>, required: List<String>): List<String> {
         val order = saved?.split(',')?.filter { it in known }?.distinct() ?: default
-        return if (required in order) order else order + required
+        // Fold in place: an icon added by an update (环境检测) lands on bars saved before it existed.
+        return required.fold(order) { o, key -> if (key in o) o else o + key }
     }
 
     /** [key] one place to [dir] (-1 or 1) among the icons that [shown]; the others keep their places in [order]. */
