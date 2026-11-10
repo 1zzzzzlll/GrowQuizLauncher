@@ -17,5 +17,9 @@ class App : Application() {
         // lose the console until someone walks to the TV again. Every process start — the
         // accessibility bind, the quiz alarm, the update check — brings it back. Idempotent.
         dev.plume.web.WebAdminServer.start(this)
+        // GrowQuiz: a question must arrive at the minute the parents chose, hours after anyone last
+        // touched the device. Every process start is a chance to put the guard back; it also takes
+        // itself down when the quiz is switched off.
+        dev.plume.quiz.QuizGuardService.sync(this)
     }
 }

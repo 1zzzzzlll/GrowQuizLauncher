@@ -338,6 +338,10 @@ object WebAdminServer {
                         // The console needs both facts apart from "bound right now".
                         .put("a11yEnabled", dev.plume.DeviceProbe.a11yEnabled(context))
                         .put("exactAlarm", dev.plume.DeviceProbe.exactAlarm(context))
+                        // "The question arrives on time" needs five grants on a phone or tablet; the
+                        // console lists what is still open so a parent can see it before walking to
+                        // the device (see quiz/QuizLock and quiz/QuizReady).
+                        .put("guardMissing", JSONArray(dev.plume.quiz.QuizReady.missingKeys(context)))
                         .put("thinkSeconds", prefs.thinkSeconds)
                         .put("wrongStreak", prefs.wrongStreak)
                         .put("restUntil", prefs.restUntil)

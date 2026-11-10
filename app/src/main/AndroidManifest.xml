@@ -29,6 +29,19 @@
     <uses-permission
         android:name="android.permission.SYSTEM_ALERT_WINDOW"
         tools:ignore="ProtectedPermissions" />
+    <!-- The quiz must arrive at the minute the parents chose, long after the device was last used.
+         A foreground service is the only process kind the system keeps; the guards below make it legal
+         on every level the app supports. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Android 13 and newer: the guard's notification, and the reminder the parents see. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Lets the alarm open the question page over whatever is on screen: a background activity start
+         is dropped without one, and this is the path alarm apps are allowed to use instead. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Lets the parents exempt the app from battery optimisation in one tap, from the quiz settings
+         page. Without it a maker's power manager freezes the guard and no question arrives. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <uses-feature android:name="android.software.leanback" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -160,10 +173,20 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:lockTaskMode="if_whitelisted"
+            android:resizeableActivity="false"
             android:screenOrientation="landscape"
             android:showWhenLocked="true"
             android:taskAffinity="dev.plume.growquiz.quiz"
             android:turnScreenOn="true" />
+        <!-- Keeps a process alive between questions: see QuizGuardService. -->
+        <service
+            android:name=".quiz.QuizGuardService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Holds the process so the parent-set quiz alarm can open the question page at the chosen minute, hours after the device was last used." />
+        </service>
         <receiver
             android:name=".quiz.QuizAlarmReceiver"
             android:exported="false" />

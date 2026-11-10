@@ -184,6 +184,10 @@
           <div id="homeHead" class="check-h">主屏幕键服务：--</div>
           <div id="homeHow" class="check-d"></div>
         </div>
+        <div class="check-line" id="guardLine">
+          <div id="guardHead" class="check-h">答题保障：--</div>
+          <div id="guardHow" class="check-d"></div>
+        </div>
       </div>
 
       <div id="restCard" class="card rest-card hidden">
@@ -594,6 +598,27 @@
         hHead.className = 'check-h chk-ok';
         hHead.textContent = '主屏幕键服务：正常工作';
         hHow.innerHTML = '';
+      }
+      // 答题保障自检：到点必弹靠这五项授权。手机/平板尤其需要，缺任一项都可能静默不弹。
+      // 名称与 quiz/QuizLock.Need 的 name.lowercase() 一一对应。
+      const needNames = {
+        overlay: '悬浮窗权限',
+        exact_alarm: '闹钟和提醒',
+        battery: '电池不受限制',
+        notification: '通知权限',
+        full_screen: '全屏提醒'
+      };
+      const missing = (s.guardMissing || []).map(k => needNames[k] || k);
+      const gHead = $('guardHead'), gHow = $('guardHow');
+      if (missing.length === 0) {
+        gHead.className = 'check-h chk-ok';
+        gHead.textContent = '答题保障：已就绪';
+        gHow.innerHTML = '到点弹出、答对才能退出所需的授权都已允许。';
+      } else {
+        gHead.className = 'check-h chk-bad';
+        gHead.textContent = '答题保障：还缺 ' + missing.length + ' 项，可能到点不弹';
+        gHow.innerHTML = '还缺：<b>' + missing.join('、') + '</b><br>'
+          + '在这台设备的「设置 → 儿童定时问答 → 答题保障」里逐项点开允许，不需要电脑。';
       }
       authed = true;
       route();

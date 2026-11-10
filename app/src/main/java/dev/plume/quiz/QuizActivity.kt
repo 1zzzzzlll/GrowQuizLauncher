@@ -77,6 +77,17 @@ class QuizActivity : Activity() {
     private var snapMisses = 0
     private var snapLossNoted = false
 
+    // GrowQuiz: attempts since the page last lost the front, and when the last one was made. A page
+    // that cannot come back (no "display over other apps" grant) must not relaunch every second — the
+    // delay grows per attempt, see QuizLock.retryDelay.
+    private var reclaimAttempt = 0
+    private var lastComeBackAt = 0L
+
+    // GrowQuiz: one focus-loss event per episode. Pulling the shade down is not an escape by itself —
+    // the app the child then opens pauses this page, which is what brings it back — but how often it
+    // happens tells us whether a phone's shade is being used to get out.
+    private var focusLossNoted = false
+
     private val guardLoop: Runnable = object : Runnable {
         override fun run() {
             if (isFinishing || isDestroyed || solved) return
@@ -102,6 +113,12 @@ class QuizActivity : Activity() {
         if (snapPrefs?.snapBack == false) return // the parents turned it off in the web console
         val interactive = getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
         if (!interactive) return // the screen is off: the child is not looking at anything
+        // Rate limited: a page the firmware keeps down would otherwise start an activity every second,
+        // which drains the battery and never succeeds faster.
+        val now = System.currentTimeMillis()
+        if (now - lastComeBackAt < QuizLock.retryDelay(reclaimAttempt)) return
+        lastComeBackAt = now
+        reclaimAttempt++
         try {
             startActivity(
                 Intent(this@QuizActivity, QuizActivity::class.java).addFlags(
@@ -110,7 +127,7 @@ class QuizActivity : Activity() {
                         Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
                 ),
             )
-            snapPendingAt = System.currentTimeMillis()
+            snapPendingAt = now
         } catch (e: Exception) {
             android.util.Log.w("GrowQuiz", "guard relaunch failed", e)
             dev.plume.DiagLog.event("snapback_fail", e.message ?: e.javaClass.simpleName)
@@ -170,6 +187,8 @@ class QuizActivity : Activity() {
         dev.plume.DiagLog.event("quiz_open")
         // Proof the pop-up made it onto the screen; the alarm audit compares against this stamp.
         snapPrefs?.lastQuizOpenAt = System.currentTimeMillis()
+        // The alarm also posts a full-screen notification as its fallback path; the page is up now.
+        getSystemService(android.app.NotificationManager::class.java)?.cancel(QuizAlarmReceiver.NOTIFICATION_ID)
         ledger = QuizLedger(applicationContext)
         refreshLevel()
         if (QuizDeviceOwner.configure(this)) {
@@ -207,9 +226,23 @@ class QuizActivity : Activity() {
     override fun onResume() {
         super.onResume()
         inForeground = true
+        reclaimAttempt = 0 // the page is in front: the next escape gets the quick first retry again
         noteSnapBack() // a comeback that was on its way has arrived: that is the proof the console shows
         ui.removeCallbacks(guardLoop) // one watchdog, started here, re-posted by itself
         ui.postDelayed(guardLoop, GUARD_POLL_MS)
+    }
+
+    /**
+     * Split screen is the one way out that [onPause] never sees: the page stays visible and resumed in
+     * its half while the child uses the other half. The manifest refuses to be resizeable, and this is
+     * the second line for firmwares that split anyway.
+     */
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode)
+        if (isInMultiWindowMode && !solved) {
+            dev.plume.DiagLog.event("quiz_multiwindow")
+            comeBack()
+        }
     }
 
     override fun onPause() {
@@ -643,7 +676,16 @@ class QuizActivity : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) immersive()
+        if (hasFocus) {
+            immersive()
+            focusLossNoted = false
+        } else if (!solved && !focusLossNoted) {
+            // Recorded, not acted on: a system dialog and a pulled-down shade look the same here, and
+            // taking the screen back from a dialog the system owns would only fight it. An actual
+            // escape pauses this page, and that path does bring it back.
+            focusLossNoted = true
+            dev.plume.DiagLog.event("quiz_focus_lost")
+        }
     }
 
     override fun onDestroy() {

@@ -11,6 +11,10 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             QuizDeviceOwner.configure(context)
             QuizScheduler.reschedule(context)
+            // A boot is one of the few moments the system allows a foreground service to start from
+            // the background, so the guard is put back here rather than waiting for someone to open
+            // the app: see QuizGuardService.
+            QuizGuardService.sync(context)
         }
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             // GrowQuiz: some TVs never deliver this broadcast (TCL's boot manager holds it), so this

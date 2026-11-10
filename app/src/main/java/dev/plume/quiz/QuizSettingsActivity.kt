@@ -1,12 +1,16 @@
 package dev.plume.quiz
 
+import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
@@ -35,6 +39,7 @@ class QuizSettingsActivity : Activity() {
     private var selectedEnabled = true
     private var selectedCategories: MutableSet<String> = mutableSetOf()
     private var bank: QuestionBank? = null
+    private var needButtons: Map<QuizLock.Need, Button> = emptyMap()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,10 +90,12 @@ class QuizSettingsActivity : Activity() {
         ownerText = label("", 16f, Color.rgb(184, 199, 217))
         content.addView(nextText, margins(bottom = 4))
         content.addView(ownerText, margins(bottom = 18))
+        addReadiness(content)
         content.addView(actionButton("保存并重新计时") {
             prefs.save(selectedAge, selectedInterval, selectedEnabled, selectedCategories)
             QuizScheduler.reschedule(this)
             QuizDeviceOwner.configure(this)
+            QuizGuardService.sync(this) // the guard follows the quiz switch: on with it, off with it
             refresh()
             Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show()
         }, margins(bottom = 10))
@@ -113,6 +120,66 @@ class QuizSettingsActivity : Activity() {
         content.addView(label("普通模式：可替换默认桌面并定时答题，但系统主页键限制因电视而异。\n增强模式：Device Owner + Lock Task，答对后自动解除锁定。", 15f, Color.rgb(184, 199, 217)), margins(top = 18))
         scroll.addView(content, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         return scroll
+    }
+
+    /**
+     * The four permissions the "answer on time" promise rests on, one row each, so a parent can fix
+     * them on the device itself — no computer, no adb. The quiz cannot arrive at the chosen minute
+     * while the system is free to drop the pop-up (no overlay), delay the alarm (no exact alarms),
+     * freeze the app (battery limits) or hide the guard (no notifications).
+     */
+    private fun addReadiness(content: LinearLayout) {
+        content.addView(label("答题保障（到点必弹）", 18f, Color.rgb(255, 209, 102)))
+        needButtons = NEEDS.associateWith { need ->
+            actionButton("") { openNeed(need) }.also { content.addView(it, margins(bottom = 8)) }
+        }
+        content.addView(
+            label("四项全部允许后，到点弹题与「答对才能退出」才可靠。未允许时系统会拦下弹题，或提前冻结应用。", 15f, Color.rgb(184, 199, 217)),
+            margins(top = 6, bottom = 16),
+        )
+    }
+
+    private fun openNeed(need: QuizLock.Need) {
+        if (need == QuizLock.Need.NOTIFICATION) {
+            if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+            return
+        }
+        val page = when (need) {
+            QuizLock.Need.OVERLAY -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+            QuizLock.Need.EXACT_ALARM ->
+                if (Build.VERSION.SDK_INT >= 31) Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")) else null
+            QuizLock.Need.BATTERY -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+            QuizLock.Need.FULL_SCREEN ->
+                if (Build.VERSION.SDK_INT >= 34) Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$packageName")) else null
+            QuizLock.Need.NOTIFICATION -> null
+        } ?: return
+        try {
+            startActivity(page)
+        } catch (e: ActivityNotFoundException) {
+            // Some TV firmwares ship no settings page at all (a Huawei vision screen had none): say so
+            // instead of crashing, and record it so the report shows which firmware that was.
+            dev.plume.DiagLog.event("settings_open_fail", "need=$need")
+            Toast.makeText(this, "本机没有可打开的系统设置页面", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun granted(need: QuizLock.Need): Boolean = when (need) {
+        QuizLock.Need.OVERLAY -> Settings.canDrawOverlays(this)
+        QuizLock.Need.EXACT_ALARM -> dev.plume.DeviceProbe.exactAlarm(this)
+        QuizLock.Need.BATTERY -> QuizReady.batteryFree(this)
+        QuizLock.Need.NOTIFICATION -> QuizReady.notifications(this)
+        QuizLock.Need.FULL_SCREEN -> QuizReady.fullScreen(this)
+    }
+
+    private fun needLabel(need: QuizLock.Need): String {
+        val name = when (need) {
+            QuizLock.Need.OVERLAY -> "悬浮窗权限"
+            QuizLock.Need.EXACT_ALARM -> "闹钟和提醒"
+            QuizLock.Need.BATTERY -> "电池不受限制"
+            QuizLock.Need.NOTIFICATION -> "通知权限"
+            QuizLock.Need.FULL_SCREEN -> "全屏提醒"
+        }
+        return if (granted(need)) "$name：已允许" else "$name：未允许，点此开启"
     }
 
     private fun stepInterval(direction: Int) {
@@ -186,6 +253,8 @@ class QuizSettingsActivity : Activity() {
         } else {
             "权限状态：普通模式（可通过 ADB 配置增强锁定）"
         }
+        // Read again on every resume: the parent comes back from a system page and sees the row change.
+        needButtons.forEach { (need, button) -> button.text = needLabel(need) }
     }
 
     private fun label(value: String, size: Float, color: Int) = TextView(this).apply {
@@ -226,5 +295,12 @@ class QuizSettingsActivity : Activity() {
 
     companion object {
         private val INTERVALS = listOf(1, 5, 10, 15, 20, 30, 45, 60, 90, 120)
+        private val NEEDS = listOf(
+            QuizLock.Need.OVERLAY,
+            QuizLock.Need.EXACT_ALARM,
+            QuizLock.Need.BATTERY,
+            QuizLock.Need.NOTIFICATION,
+            QuizLock.Need.FULL_SCREEN,
+        )
     }
 }
