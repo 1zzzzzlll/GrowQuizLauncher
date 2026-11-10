@@ -1674,14 +1674,14 @@ def build_lang_extra(age, band_key, rng, target, seen, bank):
         ant = bank.ANTONYMS_LOW
         idioms = []
         poems = bank.POEMS_LOW
-        radicals = bank.RADICAL_LOW
+        radicals = []  # 部首是一年级概念，5-6 岁不出；RADICAL_LOW 转给 7_8
     elif band_key == "7_8":
         pinyin = half_slice(bank.PINYIN_MID)
         syn = half_slice(bank.SYNONYMS_MID)
         ant = half_slice(bank.ANTONYMS_MID)
         idioms = half_slice(bank.IDIOMS_MID)
         poems = half_slice(bank.POEMS_MID)
-        radicals = half_slice(bank.RADICAL_MID)
+        radicals = half_slice(bank.RADICAL_LOW)  # 一二年级先认常见部首（氵木口…）
     elif band_key == "9_10":
         pinyin = half_slice(bank.PINYIN_MID)
         syn = half_slice(bank.SYNONYMS_MID)
@@ -1724,13 +1724,19 @@ def build_lang_extra(age, band_key, rng, target, seen, bank):
         return rng.sample(pool, count)
 
     pool = []
-    # 读音题的方向（v3.1）：给读音、选汉字，不再给汉字、选读音。旧方向在语音朗读下泄题——
-    # 题干里的字会被念出来，孩子照音挑拼音即可；翻转后选项是单字，按朗读规则单字选项不读。
-    # 干扰字必须与答案不同音，否则题目没有唯一解。
-    for ch, py in pinyin:
-        d = distract([c for c, p in pinyin if p != py], ch)
-        if d:
-            pool.append(("语文", f"下面哪个字读作「{py}」？", ch, d, f"「{ch}」读作 {py}。"))
+    # 5-6 岁还没学拼音（一年级内容）：给字选读音、给读音选字都超出认知。这个年龄段出
+    # 「听音认字」——朗读会念出题干里的字，孩子听音找字形，选项是单字不会被朗读。
+    # 7 岁起用翻转后的「给读音选汉字」：干扰字必须与答案不同音，否则题目没有唯一解。
+    if band_key == "5_6":
+        for ch, py in pinyin:
+            d = distract([c for c, _ in pinyin], ch)
+            if d:
+                pool.append(("语文", f"下面哪个字是「{ch}」？", ch, d, f"这是「{ch}」字，读作 {py}。"))
+    else:
+        for ch, py in pinyin:
+            d = distract([c for c, p in pinyin if p != py], ch)
+            if d:
+                pool.append(("语文", f"下面哪个字读作「{py}」？", ch, d, f"「{ch}」读作 {py}。"))
 
     syn_answers = [a for _, a in syn]
     for w, s in syn:
@@ -2181,12 +2187,16 @@ def build_knowledge_extra(age, rng, target, seen):
 # band pools (legacy) + validation
 # ---------------------------------------------------------------------------
 
-def load_band(band_key):
+def load_band(band_key, lang_bank):
     path = DATA_DIR / f"band_{band_key}.py"
     spec = importlib.util.spec_from_file_location(f"band_{band_key}", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.LANG, module.CURATED
+    # 读音类题目在入库前按年龄段改写（见 adapt_reading），让采样和校验看到的就是最终形态。
+    table = getattr(lang_bank, PINYIN_TABLE[band_key])
+    rng = random.Random(20261110 + sum(ord(c) for c in band_key))
+    return (adapt_pool(module.LANG, table, rng, band_key),
+            adapt_pool(module.CURATED, table, rng, band_key))
 
 
 def validate_pool(name, pool):
@@ -2210,33 +2220,75 @@ def validate_pool(name, pool):
 # in the stem aloud and the question answers itself. Flipped, the stem gives the reading and the
 # child picks the character — and single-character options are never read aloud (SpeechText).
 # Multi-reading characters stay valid: 「长」 is the right answer for both zhǎng and cháng.
+#
+# 5-6 岁例外：拼音是一年级内容，这个年龄段一律转成「听音认字」（下面哪个字是「X」？），
+# 纯拼音概念（声母/韵母/整体认读）无处安放，直接删除。
 READING_PATTERNS = [
     re.compile(r"^汉字「(.)」的正确读音是？$"),
     re.compile(r"^「(.)」的正确读音是？$"),
     re.compile(r"^“(.+?)”中“(.)”的正确读音是？$"),
     re.compile(r"^“(.+?)”的“(.)”正确读音是？$"),
 ]
+# 带字锚点的拼音概念题（「爸（bà）」的声母是哪个？），5-6 岁段转成听音认字。
+CONCEPT_PATTERNS_56 = [
+    re.compile(r"^「(.)（[^）]+）」的声母是哪个？$"),
+    re.compile(r"^「(.)（[^）]+）」的韵母是哪个？$"),
+    re.compile(r"^「(.)（[^）]+）」的音节 .+ 属于哪一类？$"),
+]
+# 纯音节概念题（下面哪一个是整体认读音节？）——没有字可以认，删除。
+DROP_PATTERNS_56 = ["声母", "韵母", "音节", "整体认读"]
 # A pinyin answer is latin letters plus the tone-marked vowels the tables use.
 PINYIN_ANSWER = re.compile(r"^[a-züāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]+$")
 
 
-def flip_reading(item, pinyin_table, rng):
-    """Turn a "选读音" question into a "选汉字" one; anything else passes through unchanged.
+def adapt_reading(item, pinyin_table, rng, band_key):
+    """Rewrite one hand-written question for the band's actual knowledge, or None to drop it.
 
-    Distractor characters come from the band's own pinyin table and never share the answer's
-    reading, so the question keeps exactly one right answer.
+    Anything that is not a reading question passes through unchanged.
     """
     category, prompt, correct, distractors, explanation = item
+    if band_key == "5_6":
+        for pattern in CONCEPT_PATTERNS_56:
+            m = pattern.match(prompt)
+            if m:
+                ch = m.group(1)
+                pool = [c for c, _ in pinyin_table if c != ch]
+                return (category, f"下面哪个字是「{ch}」？", ch, rng.sample(pool, 3), explanation)
+        if any(k in prompt for k in DROP_PATTERNS_56):
+            return None
     for pattern in READING_PATTERNS:
         m = pattern.match(prompt)
         if not m:
             continue
         ch = m.group(m.re.groups)  # the last group is the character in every pattern
+        if band_key == "5_6":
+            pool = [c for c, _ in pinyin_table if c != ch]
+            return (category, f"下面哪个字是「{ch}」？", ch, rng.sample(pool, 3), explanation)
         assert len(ch) == 1 and PINYIN_ANSWER.match(correct), (prompt, correct)
         pool = [c for c, p in pinyin_table if p != correct and c != ch]
         assert len(pool) >= 3, (prompt, correct)
         return (category, f"下面哪个字读作「{correct}」？", ch, rng.sample(pool, 3), explanation)
     return item
+
+
+def adapt_pool(pool, pinyin_table, rng, band_key):
+    """Apply [adapt_reading] to a whole pool, then dedupe: identical prompts collapse, and in the
+    5-6 岁 band one character keeps only one 认字 question (the pool already ships several forms)."""
+    out = {}
+    seen_char = set()
+    for item in pool:
+        q = adapt_reading(item, pinyin_table, rng, band_key)
+        if q is None or q[1] in out:
+            continue
+        if band_key == "5_6":
+            m = re.match(r"^下面哪个字[是读]「(.+?)」", q[1])
+            if m:
+                key = m.group(1)
+                if key in seen_char:
+                    continue
+                seen_char.add(key)
+        out[q[1]] = q
+    return list(out.values())
 
 
 # The band a flipped question's distractors are drawn from (same table the band's generated
@@ -2254,7 +2306,7 @@ def main():
         legacy_math = build_math_legacy(age, rng)
         band_key = BANDS[age]
         if band_key not in band_cache:
-            lang, curated = load_band(band_key)
+            lang, curated = load_band(band_key, lang_bank)
             validate_pool(f"LANG[{band_key}]", lang)
             validate_pool(f"CURATED[{band_key}]", curated)
             assert len(lang) >= LEGACY_LANG, (band_key, len(lang))
@@ -2264,11 +2316,6 @@ def main():
         lang_pick = rng.sample(lang, LEGACY_LANG)
         curated_pick = rng.sample(curated, LEGACY_KNOW)
         assert len(legacy_math) == LEGACY_MATH, (age, len(legacy_math))
-
-        # 手写读音题翻转：给读音、选汉字，与生成题同规则（泄题修复见 flip_reading）。
-        pinyin_table = getattr(lang_bank, PINYIN_TABLE[band_key])
-        lang_pick = [flip_reading(q, pinyin_table, rng) for q in lang_pick]
-        curated_pick = [flip_reading(q, pinyin_table, rng) for q in curated_pick]
 
         legacy = legacy_math + lang_pick + curated_pick
         seen = {prompt for _, prompt, _, _, _ in legacy}
