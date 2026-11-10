@@ -173,6 +173,15 @@ class QuizActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Android 13+ routes Back through OnBackInvokedDispatcher; with targetSdk 36 the legacy
+        // onBackPressed() override is never called and Back finishes the page (first seen on an
+        // Android 17 phone: the quiz task was simply gone, quiz_abandoned with finishing=true).
+        // A registered callback owns Back again. Below 33 the override at the bottom still serves.
+        if (Build.VERSION.SDK_INT >= 33) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+            ) { blockBack() }
+        }
         QuizVoice.warm(this) // already warm from the desktop; a no-op when it is
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(createContent())
@@ -639,10 +648,24 @@ class QuizActivity : Activity() {
         if (QuizPrefs(this).voice) QuizVoice.speak("恭喜你，升级到${QuizRules.tierName(tier)}，继续加油！")
     }
 
-    // TV remotes still dispatch the back key; gesture-back migration would require AndroidX.
+    // GrowQuiz: one "back blocked" event per session. Its presence in a report proves the interception
+    // works on that firmware; quiz_open without quiz_done and without this line is the escape signature.
+    private var backNoted = false
+
+    /** Back means "let me out". The answer is always the same sentence; the page stays. */
+    private fun blockBack() {
+        feedbackText.text = if (restRemaining() > 0L) "休息结束后，答对一题才能退出" else "答对一题后才能退出"
+        if (!backNoted) {
+            backNoted = true
+            dev.plume.DiagLog.event("quiz_back_blocked")
+        }
+    }
+
+    // TV remotes still dispatch the back key; pre-13 Android comes through here (newer ones use the
+    // callback registered in onCreate). Gesture-back migration would require AndroidX.
     @android.annotation.SuppressLint("GestureBackNavigation")
     override fun onBackPressed() {
-        feedbackText.text = if (restRemaining() > 0L) "休息结束后，答对一题才能退出" else "答对一题后才能退出"
+        blockBack()
     }
 
     override fun onUserLeaveHint() {

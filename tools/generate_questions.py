@@ -2,9 +2,10 @@
 """Deterministically build and validate the offline 5-15 year-old question bank (v3, 33k).
 
 Composition per age (3000 questions):
-  - legacy 800 (ids a{age}-0001..0800, bit-identical to v2):
-      500 procedural math/logic (build_math_legacy)
+  - legacy 800 (ids a{age}-0001..0800):
+      500 procedural math/logic (build_math_legacy, bit-identical to v2)
       200 language questions sampled from the band's LANG pool
+          (reading questions flip to "give the reading, pick the character", see flip_reading)
       100 general-knowledge questions sampled from the band's CURATED pool
   - extra 2200 (ids a{age}-0801..3000):
       1500 math/logic (build_math_extra, wider ranges + contextual word problems)
@@ -16,6 +17,7 @@ Output: per-age shards app/src/main/assets/questions/age_<N>.json (lazy-loaded b
 import importlib.util
 import json
 import random
+import re
 from math import gcd
 from pathlib import Path
 
@@ -1722,11 +1724,13 @@ def build_lang_extra(age, band_key, rng, target, seen, bank):
         return rng.sample(pool, count)
 
     pool = []
-    all_pinyin = [p for _, p in pinyin]
+    # 读音题的方向（v3.1）：给读音、选汉字，不再给汉字、选读音。旧方向在语音朗读下泄题——
+    # 题干里的字会被念出来，孩子照音挑拼音即可；翻转后选项是单字，按朗读规则单字选项不读。
+    # 干扰字必须与答案不同音，否则题目没有唯一解。
     for ch, py in pinyin:
-        d = distract(all_pinyin, py)
+        d = distract([c for c, p in pinyin if p != py], ch)
         if d:
-            pool.append(("语文", f"汉字「{ch}」的正确读音是？", py, d, f"「{ch}」读作 {py}。"))
+            pool.append(("语文", f"下面哪个字读作「{py}」？", ch, d, f"「{ch}」读作 {py}。"))
 
     syn_answers = [a for _, a in syn]
     for w, s in syn:
@@ -2198,6 +2202,49 @@ def validate_pool(name, pool):
         assert prompt.strip() and explanation.strip(), (name, prompt)
 
 
+# ---------------------------------------------------------------------------
+# reading questions, flipped (v3.1)
+# ---------------------------------------------------------------------------
+
+# The hand-written band pools ask "这个字的正确读音是？"; the voice engine then reads the character
+# in the stem aloud and the question answers itself. Flipped, the stem gives the reading and the
+# child picks the character — and single-character options are never read aloud (SpeechText).
+# Multi-reading characters stay valid: 「长」 is the right answer for both zhǎng and cháng.
+READING_PATTERNS = [
+    re.compile(r"^汉字「(.)」的正确读音是？$"),
+    re.compile(r"^「(.)」的正确读音是？$"),
+    re.compile(r"^“(.+?)”中“(.)”的正确读音是？$"),
+    re.compile(r"^“(.+?)”的“(.)”正确读音是？$"),
+]
+# A pinyin answer is latin letters plus the tone-marked vowels the tables use.
+PINYIN_ANSWER = re.compile(r"^[a-züāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]+$")
+
+
+def flip_reading(item, pinyin_table, rng):
+    """Turn a "选读音" question into a "选汉字" one; anything else passes through unchanged.
+
+    Distractor characters come from the band's own pinyin table and never share the answer's
+    reading, so the question keeps exactly one right answer.
+    """
+    category, prompt, correct, distractors, explanation = item
+    for pattern in READING_PATTERNS:
+        m = pattern.match(prompt)
+        if not m:
+            continue
+        ch = m.group(m.re.groups)  # the last group is the character in every pattern
+        assert len(ch) == 1 and PINYIN_ANSWER.match(correct), (prompt, correct)
+        pool = [c for c, p in pinyin_table if p != correct and c != ch]
+        assert len(pool) >= 3, (prompt, correct)
+        return (category, f"下面哪个字读作「{correct}」？", ch, rng.sample(pool, 3), explanation)
+    return item
+
+
+# The band a flipped question's distractors are drawn from (same table the band's generated
+# questions use, in full — the half-slices are for question difficulty, not for option supply).
+PINYIN_TABLE = {"5_6": "PINYIN_LOW", "7_8": "PINYIN_MID", "9_10": "PINYIN_MID",
+                "11_12": "PINYIN_HIGH", "13_14": "PINYIN_HIGH", "15": "PINYIN_HIGH"}
+
+
 def main():
     band_cache = {}
     lang_bank = load_lang_bank()
@@ -2217,6 +2264,11 @@ def main():
         lang_pick = rng.sample(lang, LEGACY_LANG)
         curated_pick = rng.sample(curated, LEGACY_KNOW)
         assert len(legacy_math) == LEGACY_MATH, (age, len(legacy_math))
+
+        # 手写读音题翻转：给读音、选汉字，与生成题同规则（泄题修复见 flip_reading）。
+        pinyin_table = getattr(lang_bank, PINYIN_TABLE[band_key])
+        lang_pick = [flip_reading(q, pinyin_table, rng) for q in lang_pick]
+        curated_pick = [flip_reading(q, pinyin_table, rng) for q in curated_pick]
 
         legacy = legacy_math + lang_pick + curated_pick
         seen = {prompt for _, prompt, _, _, _ in legacy}

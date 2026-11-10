@@ -72,6 +72,7 @@ import android.text.style.StyleSpan
 import android.util.LruCache
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
@@ -519,6 +520,20 @@ class MainActivity : Activity() {
         if (checkSelfPermission(TV_LISTINGS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(TV_LISTINGS), 1)
         }
+        // GrowQuiz: a desktop build that the user did not ask for reads as the home screen entering again
+        // instead of returning as it was. Count and label the builds, so the reports tell a theme flip
+        // (desktop_retheme) from a system kill (a create with no retheme in front of it).
+        DESKTOP_CREATES++
+        DiagLog.event("desktop_create", kv = mapOf(
+            "dark" to if (wantDark()) "1" else "0",
+            "again" to if (DESKTOP_CREATES > 1) "1" else "0",
+        ))
+    }
+
+    /** GrowQuiz: the one way the desktop re-themes. Logs the cause: the reports then show how often each one hits. */
+    private fun retheme(why: String) {
+        DiagLog.event("desktop_retheme", kv = mapOf("why" to why))
+        recreate()
     }
 
     override fun onResume() {
@@ -582,7 +597,7 @@ class MainActivity : Activity() {
         }
         hidden = false
         if (wantDark() != dark) {
-            recreate()
+            retheme("resume") // Auto crossed sunrise or sunset while another app was up
             return
         }
         // Only rebuild what changed, so focus stays where it was when returning from an app.
@@ -607,7 +622,7 @@ class MainActivity : Activity() {
     /** Auto theme flips at sunrise and sunset (or 7:00 and 19:00) even while the home screen just sits there. */
     private val themeTick = object : Runnable {
         override fun run() {
-            if (wantDark() != dark) recreate() else ui.postDelayed(this, 60_000L)
+            if (wantDark() != dark) retheme("tick") else ui.postDelayed(this, 60_000L)
         }
     }
 
@@ -1773,7 +1788,7 @@ class MainActivity : Activity() {
                 wpFrames = listOfNotNull(thumb)
                 // The glass is tinted with the wallpaper's mean colour; kept, so the next start has it before the picture.
                 thumb?.let { t -> prefs.edit().putInt("glass_hue", meanColour(IntArray(t.width * t.height).also { t.getPixels(it, 0, t.width, 0, 0, t.width, t.height) })).apply() }
-                if (wantDark() != dark) return@post recreate() // the Wallpaper theme follows the new picture
+                if (wantDark() != dark) return@post retheme("wallpaper") // the Wallpaper theme follows the new picture
                 fitInk()
                 val old = view.drawable
                 if (video && thumb != null) io.execute {
@@ -3464,7 +3479,45 @@ class MainActivity : Activity() {
             setPadding(0, dp(16), 0, dp(8))
             addView(row)
             addView(status.apply { setPadding(0, dp(12), 0, 0) })
-            addView(label(getString(R.string.pin_hint), 12f).apply {
+            // GrowQuiz: a phone or tablet has no remote, and the boxes take no soft keyboard — there the PIN
+            // page was a dead end. In touch mode a number pad types into the same boxes and the same submit.
+            if (window.decorView.isInTouchMode) {
+                fun key(text: String, action: () -> Unit) = TextView(this@MainActivity).apply {
+                    this.text = text
+                    textSize = 20f
+                    gravity = Gravity.CENTER
+                    setTextColor(fg)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(10).toFloat()
+                        setColor(if (dark) DARK_CARD[0] else Color.WHITE)
+                    }
+                    isClickable = true
+                    setOnClickListener { action() }
+                }
+                fun type(d: Int) { // the same as a number key on the remote
+                    digits[at] = d
+                    if (at == 3) { draw(); submit() } else { at++; draw() }
+                }
+                fun clear() { // the box being typed in, or the one before it
+                    if (at > 0 && digits[at] == null) at--
+                    digits[at] = null
+                    draw()
+                }
+                fun cell() = GridLayout.LayoutParams().apply {
+                    width = 0; height = dp(52)
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(5), dp(5), dp(5), dp(5))
+                }
+                addView(GridLayout(this@MainActivity).apply {
+                    columnCount = 3
+                    setPadding(dp(28), dp(4), dp(28), 0)
+                    for (d in 1..9) addView(key(d.toString()) { type(d) }, cell())
+                    addView(label("", 20f), cell()) // the 0 sits under the 8, as on a phone
+                    addView(key("0") { type(0) }, cell())
+                    addView(key(getString(R.string.delete)) { clear() }, cell())
+                })
+            }
+            addView(label(getString(if (window.decorView.isInTouchMode) R.string.pin_hint_touch else R.string.pin_hint), 12f).apply {
                 maxLines = 2
                 gravity = Gravity.CENTER
                 alpha = 0.6f
@@ -4412,6 +4465,16 @@ class MainActivity : Activity() {
         }
 
     // ---------- holding OK, and editing the apps row ----------
+
+    /**
+     * Touch has no OK key, so nothing on that road resets [holdFired]: after the first long-press the flag
+     * stayed set, and every later one was swallowed — a phone or tablet could not hold an app. The down of a
+     * finger does what the down of the OK key does; remotes keep the key path above.
+     */
+    override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) holdFired = false
+        return super.dispatchTouchEvent(e)
+    }
 
     /**
      * Hold detection lives here, not in View long-click: this TV's remote doesn't reliably trigger the
@@ -6492,6 +6555,8 @@ class MainActivity : Activity() {
         val DECELERATE = android.view.animation.DecelerateInterpolator(1.5f)
         @Volatile var APPS: List<App>? = null
         @Volatile var SOURCES: List<App>? = null
+        /** GrowQuiz: how many desktops this process has built; a build beyond the first is a rebuild. */
+        var DESKTOP_CREATES = 0
         /** Mono marks made by glyph(), by package; null = icon has no usable symbol. Main thread only. */
         val GLYPHS = HashMap<String, Bitmap?>()
         /** accent() colours by package; null = no clear colour. Main thread only. */

@@ -153,6 +153,7 @@
     <string name="pins_mismatch">两次输入的 PIN 不一致，请重新设置。</string>
     <string name="layout_locked">布局已锁定。现在更改宝贝成长桌面设置和主屏幕需要输入 PIN。</string>
     <string name="pin_hint">▲ ▼ 改变数字  ·  ◀ ▶ 移动  ·  OK 确认。数字键也可以输入。</string>
+    <string name="pin_hint_touch">点数字键盘输入 PIN，输满 4 位自动确认。</string>
     <string name="pin_forgot">忘记了？在 Android 设置 → 应用 →宝贝成长桌面→ 清除数据，可解除锁定，但同时也会清除你的布局和设置。</string>
     <string name="tip_move">提示：在应用上长按 OK 键可整理该行</string>
     <string name="open">打开</string>

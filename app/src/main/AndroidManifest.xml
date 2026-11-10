@@ -88,6 +88,10 @@
              TCL sets. Other firmwares ignore it. -->
         <meta-data android:name="com.tcl.app.type" android:value="com.tcl.ui" />
 
+        <!-- GrowQuiz: nothing in the app reads the system dark mode (the Auto theme follows the sun), so a
+             uiMode change — dark mode or Battery Saver on a phone — must not build the desktop again. Without
+             this flag Android destroyed and re-created the whole home screen on such flips, which read as the
+             desktop entering again instead of returning as it was. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -95,7 +99,7 @@
             android:stateNotNeeded="true"
             android:clearTaskOnLaunch="true"
             android:screenOrientation="landscape"
-            android:configChanges="keyboard|keyboardHidden|navigation">
+            android:configChanges="keyboard|keyboardHidden|navigation|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
