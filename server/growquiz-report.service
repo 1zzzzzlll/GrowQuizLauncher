@@ -3,6 +3,9 @@ Description=GrowQuiz compatibility report receiver (TV diag logs upload)
 After=network.target
 
 [Service]
+# 口令只放在服务器本地（权限 600），不进仓库：report.env 里一行 GROWQUIZ_REPORT_TOKEN=...
+# 缺少该文件时服务拒绝启动，不会以空口令接报告。
+EnvironmentFile=-/root/growquiz/report.env
 ExecStart=/usr/bin/python3 /root/growquiz/growquiz-report.py
 Restart=always
 RestartSec=3

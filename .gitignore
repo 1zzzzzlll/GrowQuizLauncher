@@ -7,3 +7,7 @@ local.properties
 keystore.properties
 *.jks
 *.keystore
+# Server addresses and the report token: local only (see secrets.properties.example).
+secrets.properties
+__pycache__/
+*.pyc

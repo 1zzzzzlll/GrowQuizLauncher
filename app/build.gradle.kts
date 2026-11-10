@@ -4,6 +4,14 @@ plugins {
     id("com.android.application")
 }
 
+// Server addresses and the report token live outside the repo, in secrets.properties (git-ignored), the same way
+// keystore.properties keeps the signing key out. A fresh clone has neither file: the fields below are then empty,
+// the app still builds and runs, and it just skips the update check and the report upload (no server to talk to).
+val secrets = rootProject.file("secrets.properties").takeIf { it.exists() }
+    ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
+fun secret(key: String): String = secrets?.getProperty(key)?.trim().orEmpty()
+fun quoted(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
 // No dependencies on purpose: framework Views only, to keep RAM and APK size minimal.
 android {
     namespace = "dev.plume"
@@ -26,10 +34,16 @@ android {
             .map { if (it.startsWith("### ")) "#" + it.removePrefix("### ") else it.removePrefix("- ") }
         require(notes.isNotEmpty()) { "CHANGELOG.md has no entries under \"## $versionName\"" }
         resValue("string", "whats_new", notes.joinToString("\\n") { it.replace("'", "\\'").replace("\"", "\\\"") })
+
+        // See secrets.properties.example at the repo root for the three keys and what each one is for.
+        buildConfigField("String", "UPDATE_BASE", quoted(secret("updateBase")))
+        buildConfigField("String", "REPORT_URL", quoted(secret("reportUrl")))
+        buildConfigField("String", "REPORT_TOKEN", quoted(secret("reportToken")))
     }
 
     buildFeatures {
         resValues = true
+        buildConfig = true
     }
 
     // CI fails on new lint errors only; the ones already here are listed in lint-baseline.xml

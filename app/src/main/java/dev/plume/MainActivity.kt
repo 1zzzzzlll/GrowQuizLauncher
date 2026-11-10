@@ -5462,7 +5462,7 @@ class MainActivity : Activity() {
 
     // ---------- updates (from this fork's own server) ----------
     // Checked once a day from the home screen; a new version is announced once, then waits in settings.
-    // The server is the nginx directory behind https://updates.invalid:8443/growquiz/ (see tools/publish_update.py):
+    // The server is the nginx directory behind the update host set in secrets.properties (see tools/publish_update.py):
     // latest.json tells the version and the APK file name of the newest release. Never the upstream Plume GitHub,
     // or an update would replace GrowQuiz with Plume. The APK goes to a file in the cache, then into an install
     // session. TVs without the confirm box open that file in their own installer (see ApkProvider). The file is
@@ -5477,6 +5477,7 @@ class MainActivity : Activity() {
     private fun availableUpdate() = prefs.getString("upd_ver", null)?.takeIf { newerVersion(it, myVersion()) }
 
     private fun checkUpdate(force: Boolean) {
+        if (UPDATE_BASE.isBlank()) return // built without secrets.properties: there is no server to ask
         if (checking || !force && System.currentTimeMillis() - prefs.getLong("upd_time", 0) < 24 * 3600_000L) return
         checking = true
         if (force) renderUpdatePages()
@@ -6511,8 +6512,9 @@ class MainActivity : Activity() {
         )
         const val CHOSEN = "✓"
         const val REPO = "aradhyas8/Plume_Launcher"
-        /** This fork's own update server: Caddy → nginx static directory; latest.json names the version and APK. */
-        const val UPDATE_BASE = "https://updates.invalid:8443/growquiz"
+        /** This fork's own update server: Caddy → nginx static directory; latest.json names the version and APK.
+         *  Comes from secrets.properties (git-ignored); empty in a fresh clone, and the check is then skipped. */
+        val UPDATE_BASE = BuildConfig.UPDATE_BASE
         /** The project's own repository, shown and linked on the About page. */
         const val GITHUB_URL = "https://github.com/1zzzzzlll/GrowQuizLauncher"
         /** The users' QQ group invite, on the About page; a TV can only copy or QR it, phones join from there. */

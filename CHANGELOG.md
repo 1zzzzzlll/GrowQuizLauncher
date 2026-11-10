@@ -14,6 +14,11 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## Unreleased
+
+- 更新服务器地址与上报口令不再写在源码里。构建时从本机的 `secrets.properties` 读取，该文件不入库，仓库里只留空模板 `secrets.properties.example`。新克隆照常能编译、能安装，只是不检查更新、不上报。
+- 服务器端口令改从 `/root/growquiz/report.env` 读，没配置就拒绝启动。已泄露的旧口令要在服务器与本机同时换掉，见 `server/README.md`。
+
 ## 1.18.0
 
 - **读音题改为看拼音选汉字。** 旧题问「这个字的正确读音是」，语音朗读会把题干里的字念出来，题目等于自问自答。现在题目给读音、选项是四个汉字；单字选项本就不朗读，不再泄题。干扰字与答案不同音，多音字的两个读音仍是两道题。

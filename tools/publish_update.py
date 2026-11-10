@@ -9,14 +9,15 @@
   2. 从 CHANGELOG.md 提取该版本小节作为发版说明
   3. gh release create 上传 APK 资产
 
-发布后无需再手动传服务器：mylinux 上的同步脚本（growquiz-sync.timer，每 3 小时）会自动
-把 release 的 APK 与发版说明同步到 https://updates.invalid:8443/growquiz/，TV 端即可
-检测到新版本并下载安装。
+发布后无需再手动传服务器：更新服务器上的同步脚本（growquiz-sync.timer，每 3 小时）会自动
+把 release 的 APK 与发版说明同步到 `secrets.properties` 里 `updateBase` 指向的目录，TV 端
+即可检测到新版本并下载安装。
 
 发版前记得:
   - app/build.gradle.kts 的 versionName/versionCode 与文件名一致且高于已装版本；
   - 本次改动已提交并推送到 main（release 打在远端最新提交上）；
-  - 本机 gh 已登录（gh auth status）。
+  - 本机 gh 已登录（gh auth status）；
+  - 本机有 secrets.properties（见 secrets.properties.example），否则打出的包不检查更新。
 """
 
 import re

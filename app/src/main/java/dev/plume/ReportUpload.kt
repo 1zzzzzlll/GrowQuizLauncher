@@ -24,11 +24,11 @@ import java.util.UUID
  * report carries them (the on-disk log is trimmed to the newest 1500 lines either way).
  */
 object ReportUpload {
-    /** Sibling of the update directory on the same host; the receiver service lives behind it. */
-    private const val URL = "https://updates.invalid:8443/growquiz-report/"
+    /** Sibling of the update directory on the same host; the receiver service lives behind it. From secrets.properties. */
+    private val URL = BuildConfig.REPORT_URL
 
-    /** Shared secret against casual abuse; not a credential, the APK is public anyway. */
-    private const val TOKEN = "***REMOVED***"
+    /** Shared secret against casual abuse, read by the receiver. From secrets.properties, not the repo. */
+    private val TOKEN = BuildConfig.REPORT_TOKEN
 
     private const val PREFS = "report_upload"
     private const val KEY_LAST = "last_upload_at"
@@ -41,6 +41,7 @@ object ReportUpload {
 
     /** One attempt, if the last one is long enough ago and the network is up. Safe to call often. */
     fun maybeUpload(context: Context) {
+        if (URL.isBlank() || TOKEN.isBlank()) return // built without secrets.properties: no receiver to talk to
         val app = context.applicationContext
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (System.currentTimeMillis() - prefs.getLong(KEY_LAST, 0L) < INTERVAL_MS) return
@@ -62,6 +63,7 @@ object ReportUpload {
 
     /** The report goes out; true when the server took it. Never throws. */
     private fun send(context: Context, prefs: android.content.SharedPreferences): Boolean {
+        if (URL.isBlank() || TOKEN.isBlank()) return false
         val sentAt = System.currentTimeMillis()
         val id = prefs.getString(KEY_ID, null) ?: UUID.randomUUID().toString()
             .also { prefs.edit().putString(KEY_ID, it).apply() }
