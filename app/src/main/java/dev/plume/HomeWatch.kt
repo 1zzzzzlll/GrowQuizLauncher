@@ -16,11 +16,13 @@ fun googleTvHomes(found: List<HomeEntry>): Set<String> =
  * cover work on TVs whose vendor resets or withholds the home role (MIUI TV hands it back to its own launcher
  * on every boot): whatever the system still calls a home screen gets covered. TV players that declare Home
  * are left out, unless the system really resolves Home to them (TCL 85G60E lists com.tcl.tv as a Home, and
- * every input switch would otherwise be taken back).
+ * every input switch would otherwise be taken back). The platform's own boot stub is left out too (see
+ * [HomeWatch.isPlatformStubHome]): it answers Home on every build, and it is no launcher.
  */
 fun stockHomes(found: List<HomeEntry>, resolved: String?): Map<String, Set<String>> =
     found.filter { it.pkg != HomeWatch.PLUME }
         .filter { it.pkg !in HomeWatch.INPUT_PLAYERS || it.pkg == resolved }
+        .filterNot { HomeWatch.isPlatformStubHome(it.pkg, it.cls) }
         .groupBy { it.pkg }
         .mapValues { (_, entries) -> entries.flatMap { listOfNotNull(it.cls, it.target) }.toSet() }
 
@@ -99,6 +101,19 @@ class HomeWatch(
 
         /** Where TV inputs play; they declare Home on some firmwares but are no launcher (see [stockHomes]). */
         internal val INPUT_PLAYERS = setOf("com.tcl.tv", "com.xiaomi.mitv.tvplayer", "com.skyworth.tv", "com.hisilicon.tvui")
+
+        /** Packages whose Settings app carries the platform's boot home (see [isPlatformStubHome]). */
+        private val SETTINGS_PKGS = setOf("com.android.settings", "com.android.tv.settings")
+
+        /**
+         * A Home answer that no user ever picked: Settings' `FallbackHome`. A device shows it as a blank
+         * screen while the real launcher starts, then it finishes itself. It answers Home on most builds,
+         * phones included (Redmi, OnePlus and Samsung all list it next to their launcher). Covering it
+         * would put Plume on screen at every boot of a phone that never made it the home app, and it hid
+         * which package a TV's firmware really starts — the one thing the report's candidate list is for.
+         */
+        internal fun isPlatformStubHome(pkg: String, cls: String?): Boolean =
+            pkg in SETTINGS_PKGS && cls != null && cls.substringAfterLast('.').contains("Fallback", ignoreCase = true)
 
         private const val VENDOR_HOME_PREFIX = "android.intent.category.HOME."
         private const val VENDOR_HOME_SUFFIX = "_HOME"

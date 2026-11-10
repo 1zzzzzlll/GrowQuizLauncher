@@ -50,7 +50,8 @@ object DeviceProbe {
             .put("secureSettings", secureSettings(context))
             .put("deviceOwner", deviceOwner(context))
             .put("defaultHome", defaultHome(context))
-            .put("homeCandidates", homeCandidates(context))
+            .put("homeCandidates", homeCandidates(context).joinToString(","))
+            .put("homeStubs", homeStubs(context).joinToString(","))
             // GrowQuiz: the quiz schedule as the app itself sees it, so the server can compare "when
             // the alarm should have fired" with the events that say when it did. A timezone comes
             // along: a wrong clock is its own class of "the alarm never fired" reports.
@@ -104,16 +105,28 @@ object DeviceProbe {
     }
 
     /**
-     * Every package that answers Home, except ours, comma separated. [defaultHome] answers "android"
-     * when no launcher holds the role (the system's own resolver would show a chooser), and on those
-     * sets — Hisense VIDAA, for one — this list is the only way to learn which launcher the firmware
-     * starts by component, which is what a cover for that brand needs.
+     * Every package that answers Home and could be a launcher, except ours, comma separated.
+     * [defaultHome] answers "android" when no launcher holds the role (the system's own resolver would
+     * show a chooser), and on those sets — Hisense VIDAA, for one — this list is the only way to learn
+     * which launcher the firmware starts by component, which is what a cover for that brand needs.
+     *
+     * The platform's boot stub is not a launcher and is left out (see [HomeWatch.isPlatformStubHome]);
+     * it answers Home on most builds, so without this every device reported the same extra package and
+     * the list stopped telling a real launcher from a stub. [homeStubs] keeps what was left out.
      */
-    private fun homeCandidates(context: Context): String {
-        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-        return context.packageManager.queryIntentActivities(home, 0)
-            .map { it.activityInfo.packageName }
-            .filter { it != context.packageName }
-            .distinct().sorted().joinToString(",")
-    }
+    private fun homeCandidates(context: Context): List<String> = homeAnswers(context)
+        .filterNot { HomeWatch.isPlatformStubHome(it.activityInfo.packageName, it.activityInfo.name) }
+        .map { it.activityInfo.packageName }
+        .distinct().sorted()
+
+    /** The Home answers left out of [homeCandidates], as `package/class`: evidence of the stub itself. */
+    private fun homeStubs(context: Context): List<String> = homeAnswers(context)
+        .filter { HomeWatch.isPlatformStubHome(it.activityInfo.packageName, it.activityInfo.name) }
+        .map { "${it.activityInfo.packageName}/${it.activityInfo.name}" }
+        .distinct().sorted()
+
+    private fun homeAnswers(context: Context) =
+        context.packageManager.queryIntentActivities(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0,
+        ).filter { it.activityInfo.packageName != context.packageName }
 }

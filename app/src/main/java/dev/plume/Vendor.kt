@@ -23,6 +23,7 @@ object Vendor {
     const val KONKA = "konka"
     const val CHANGHONG = "changhong"
     const val HAIER = "haier"
+    const val XGIMI = "xgimi"
     const val FFALCON = "ffalcon"
     const val OTHER = "other"
 
@@ -42,6 +43,7 @@ object Vendor {
             s.contains("konka") -> KONKA
             s.contains("changhong") -> CHANGHONG
             s.contains("haier") -> HAIER
+            s.contains("xgimi") -> XGIMI // projectors; first seen on a DOHKO set
             else -> OTHER
         }
     }

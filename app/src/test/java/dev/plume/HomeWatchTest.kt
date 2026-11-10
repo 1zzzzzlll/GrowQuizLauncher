@@ -177,6 +177,26 @@ class HomeWatchTest {
         assertEquals(mapOf("com.tcl.tv" to setOf("com.tcl.tv.TVActivity")), stockHomes(listOf(player), resolved = "com.tcl.tv"))
     }
 
+    // Redmi, OnePlus and Samsung all list Settings' FallbackHome next to their real launcher.
+    @Test fun theSettingsBootHomeIsNoLauncher() {
+        val found = listOf(
+            entry("com.android.settings", "com.android.settings.FallbackHome"),
+            entry("com.miui.home", "com.miui.home.launcher.Launcher"),
+        )
+        assertEquals(mapOf("com.miui.home" to setOf("com.miui.home.launcher.Launcher")), stockHomes(found, resolved = "com.miui.home"))
+        // A set whose only Home answer is the stub has no launcher to cover at all.
+        assertEquals(emptyMap<String, Set<String>>(), stockHomes(listOf(entry("com.android.settings", "com.android.settings.FallbackHome")), resolved = "android"))
+    }
+
+    @Test fun aBootHomeIsRecognisedByItsClassNotOnlyItsPackage() {
+        assert(HomeWatch.isPlatformStubHome("com.android.settings", "com.android.settings.FallbackHome"))
+        assert(HomeWatch.isPlatformStubHome("com.android.tv.settings", "com.android.tv.settings.FallbackHome"))
+        // The same package can carry a real Home activity; that one stays a candidate.
+        assert(!HomeWatch.isPlatformStubHome("com.android.settings", "com.android.settings.Settings"))
+        assert(!HomeWatch.isPlatformStubHome("com.miui.home", "com.miui.home.launcher.Launcher"))
+        assert(!HomeWatch.isPlatformStubHome("com.android.settings", null))
+    }
+
     @Test fun vendorHomeCategories() {
         assert(HomeWatch.isVendorHomeCategory("android.intent.category.HOME.CC"))
         assert(HomeWatch.isVendorHomeCategory("smartdevice.intent.category.LITE_HOME"))

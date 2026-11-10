@@ -32,6 +32,7 @@ class VendorTest {
         assertEquals(Vendor.KONKA, Vendor.identify("KONKA", null))
         assertEquals(Vendor.CHANGHONG, Vendor.identify("CHANGHONG", null))
         assertEquals(Vendor.HAIER, Vendor.identify("Haier", null))
+        assertEquals(Vendor.XGIMI, Vendor.identify("XGIMI", "XGIMI"))
     }
 
     @Test
