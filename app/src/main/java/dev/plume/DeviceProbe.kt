@@ -26,6 +26,7 @@ object DeviceProbe {
         val quiz = dev.plume.quiz.QuizPrefs(context)
         return JSONObject()
             .put("vendor", Vendor.current)
+            .put("form", deviceForm(context))
             .put("brand", Build.BRAND)
             .put("manufacturer", Build.MANUFACTURER)
             .put("model", Build.MODEL)
@@ -52,6 +53,11 @@ object DeviceProbe {
             .put("defaultHome", defaultHome(context))
             .put("homeCandidates", homeCandidates(context).joinToString(","))
             .put("homeStubs", homeStubs(context).joinToString(","))
+            // GrowQuiz: one apk runs on TVs, phones and tablets. These four fields say which, so a
+            // report from a phone can be read as a phone's report (see [DeviceForm]).
+            .put("leanback", pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK))
+            .put("television", pm.hasSystemFeature("android.hardware.type.television"))
+            .put("touchscreen", pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN))
             // GrowQuiz: the quiz schedule as the app itself sees it, so the server can compare "when
             // the alarm should have fired" with the events that say when it did. A timezone comes
             // along: a wrong clock is its own class of "the alarm never fired" reports.
@@ -102,6 +108,16 @@ object DeviceProbe {
         val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
         return context.packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)
             ?.activityInfo?.packageName ?: ""
+    }
+
+    private fun deviceForm(context: Context): String {
+        val pm = context.packageManager
+        return DeviceForm.of(
+            leanback = pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK),
+            television = pm.hasSystemFeature("android.hardware.type.television"),
+            touchscreen = pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN),
+            smallestWidthDp = context.resources.configuration.smallestScreenWidthDp,
+        )
     }
 
     /**
