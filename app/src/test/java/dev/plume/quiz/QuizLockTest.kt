@@ -89,4 +89,45 @@ class QuizLockTest {
         // The same grant set is enough on a level that cannot ask for the newer switches.
         assertTrue(QuizLock.ready(26, overlay = true, exactAlarm = false, batteryFree = true, notifications = false, fullScreen = false))
     }
+
+    // A scheduled alarm that is still in the future and was set after this boot is healthy: the
+    // watchdog must not touch it, or every run would push the quiz forward.
+    @Test
+    fun `a healthy schedule is left alone`() {
+        assertFalse(QuizLock.alarmLost(now = 1_000_000, bootAt = 900_000, nextTriggerAt = 1_100_000, lastScheduleAt = 950_000))
+    }
+
+    @Test
+    fun `nothing scheduled gets one`() {
+        assertTrue(QuizLock.alarmLost(now = 1_000_000, bootAt = 900_000, nextTriggerAt = 0, lastScheduleAt = 950_000))
+    }
+
+    @Test
+    fun `a due time that never fired is lost`() {
+        assertTrue(QuizLock.alarmLost(now = 1_000_000, bootAt = 900_000, nextTriggerAt = 990_000, lastScheduleAt = 950_000))
+    }
+
+    // The Huawei vision screen, 2026-11-10: the alarm was set at 21:25 the night before, the set
+    // rebooted at 18:18, and no BOOT_COMPLETED arrived. The due time was still in the future, so only
+    // "set before this boot" can tell it is gone.
+    @Test
+    fun `an alarm set before this boot is gone even when its time has not come`() {
+        val bootAt = 1_800_000_000_000L
+        val setLastNight = bootAt - 21 * 3_600_000L
+        assertTrue(
+            QuizLock.alarmLost(
+                now = bootAt + 28 * 60_000L,
+                bootAt = bootAt,
+                nextTriggerAt = bootAt + 60 * 60_000L,
+                lastScheduleAt = setLastNight,
+            ),
+        )
+    }
+
+    // Never stamped (an install upgraded from an older build): unknown counts as lost, and the
+    // re-schedule stamps it so this happens once rather than on every run.
+    @Test
+    fun `an unknown schedule time counts as lost`() {
+        assertTrue(QuizLock.alarmLost(now = 1_000_000, bootAt = 900_000, nextTriggerAt = 1_100_000, lastScheduleAt = 0))
+    }
 }

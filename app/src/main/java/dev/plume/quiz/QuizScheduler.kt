@@ -22,6 +22,7 @@ object QuizScheduler {
         if (!prefs.enabled) {
             alarm.cancel(operation(context))
             prefs.nextTriggerAt = 0L
+            prefs.lastScheduleAt = 0L
             return
         }
         val triggerAt = QuizRules.triggerAt(System.currentTimeMillis(), prefs.intervalMinutes)
@@ -44,6 +45,8 @@ object QuizScheduler {
             alarm.set(AlarmManager.RTC_WAKEUP, triggerAt, op)
         }
         prefs.nextTriggerAt = triggerAt
+        // Stamped so the watchdog can tell a pending alarm from one a reboot cleared (QuizLock.alarmLost).
+        prefs.lastScheduleAt = System.currentTimeMillis()
     }
 
     private fun operation(context: Context): PendingIntent = PendingIntent.getBroadcast(

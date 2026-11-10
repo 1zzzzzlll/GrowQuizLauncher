@@ -383,6 +383,12 @@ class MainActivity : Activity() {
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
+        // The parents exited to the TV's own desktop. Where Plume is still the default home app, Android
+        // opens Plume again at the next Home press: pass the press on, and show nothing of ours.
+        if (intent?.hasCategory(Intent.CATEGORY_HOME) == true && DesktopExit.exited(this) && DesktopExit.forward(this)) {
+            finish()
+            return
+        }
         setContentView(R.layout.activity_main)
         dev.plume.quiz.QuizDeviceOwner.configure(this)
         dev.plume.quiz.QuizScheduler.ensureScheduled(this)
@@ -672,7 +678,7 @@ class MainActivity : Activity() {
      * unless the user turned it off.
      */
     private fun ensureHomeService() {
-        if (homeServiceOn()) return prefs.edit().remove("home_off").apply() // what Android says wins
+        if (homeServiceOn()) return prefs.edit().remove("home_off").remove("home_exited").apply() // what Android says wins
         if (prefs.getBoolean("home_off", false) || checkSelfPermission(WRITE_SECURE) != PackageManager.PERMISSION_GRANTED) return
         val me = ComponentName(this, HomeOverride::class.java).flattenToString()
         val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
@@ -936,9 +942,42 @@ class MainActivity : Activity() {
         renderSettings(R.string.home_button)
     }
 
+    /**
+     * GrowQuiz: the parents want the TV back for themselves. The row works both ways — exited, it takes
+     * the desktop back. Leaving asks first: the desktop is what the child sees.
+     */
+    private fun exitLauncher() {
+        if (DesktopExit.exited(this)) {
+            val back = DesktopExit.resume(this)
+            toast(getString(if (back) R.string.exit_launcher_back else R.string.exit_launcher_back_hint), long = true)
+            if (!back) openHomeServiceSettings() // only the user can switch an accessibility service on
+            renderSettings(R.string.exit_launcher)
+            return
+        }
+        // Leaving is the one setting a child must never reach: without a PIN or a password the panel is
+        // open to anyone with the remote, so ask for the password to be set first instead of exiting.
+        if (!lockOn() && !adminPasswordOn()) {
+            toast(getString(R.string.exit_launcher_need_password), long = true)
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.exit_launcher)
+            .setMessage(R.string.exit_launcher_body)
+            .setPositiveButton(R.string.exit_launcher_ok) { _, _ ->
+                if (DesktopExit.exit(this)) {
+                    toast(getString(R.string.exit_launcher_done), long = true, system = true)
+                } else {
+                    toast(getString(R.string.exit_launcher_fail), long = true, system = true)
+                    openSettings(Settings.ACTION_HOME_SETTINGS) // Android lets apps ask for Home, not take it away
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     /** The Home key service is an accessibility service, which Android only lets the user switch on. */
     private fun turnOnHomeButton() {
-        prefs.edit().remove("home_off").apply()
+        prefs.edit().remove("home_off").remove("home_exited").apply()
         ensureHomeService() // works where the adb permission was granted
         if (homeServiceOn()) {
             // A switch-off just before (disableSelf) can land after this write: check again, and write again if it did.
@@ -984,6 +1023,7 @@ class MainActivity : Activity() {
      */
     private fun makeDefaultHome() {
         returnTo(R.string.default_launcher)
+        prefs.edit().remove("home_exited").remove("home_off").apply() // asking for Home ends an exit
         val roles = if (Build.VERSION.SDK_INT >= 29) getSystemService(RoleManager::class.java) else null
         if (roles != null && roles.isRoleAvailable(RoleManager.ROLE_HOME) && !roles.isRoleHeld(RoleManager.ROLE_HOME)) {
             @Suppress("DEPRECATION")
@@ -1066,7 +1106,7 @@ class MainActivity : Activity() {
     private fun serviceStillOff() = if (sdk() >= 33 && !restrictedTried) restrictedPopup() else adbPopup()
 
     private fun tryHomeService() {
-        prefs.edit().remove("home_off").apply()
+        prefs.edit().remove("home_off").remove("home_exited").apply()
         ensureHomeService() // works where the adb permission was granted
         if (homeServiceOn()) testPopup(2) else servicePopup()
     }
@@ -1285,6 +1325,11 @@ class MainActivity : Activity() {
     /** Home pressed while already home: close whatever is open and go back to the start of the apps row. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // Same as onCreate: after an exit, Home belongs to the TV's own desktop, not to Plume.
+        if (intent.hasCategory(Intent.CATEGORY_HOME) && DesktopExit.exited(this) && DesktopExit.forward(this)) {
+            finish()
+            return
+        }
         // Home pressed in Android's settings means home, not settings; the screensaver's end comes in as Home too.
         if (intent.hasCategory(Intent.CATEGORY_HOME) && !prefs.getBoolean("return_dream", false)) prefs.edit().remove("return_settings").apply()
         if (intent.action == UPDATE_STATUS) return installStatus(intent)
@@ -2937,6 +2982,12 @@ class MainActivity : Activity() {
                 renderSettings(R.string.smooth_volume)
             },
             R.string.default_launcher to Triple(getString(R.string.default_launcher), if (isDefaultHome()) "Plume" else getString(R.string.press_to_set)) { makeDefaultHome() },
+            // GrowQuiz: leave the launcher on purpose. Behind the PIN like the layout lock; the value
+            // says which way the switch goes (see exitLauncher).
+            R.string.exit_launcher to Triple(getString(R.string.exit_launcher),
+                getString(if (DesktopExit.exited(this)) R.string.exit_launcher_off else R.string.exit_launcher_on)) {
+                unlock { exitLauncher() }
+            },
             R.string.updates to Triple(getString(R.string.updates), when {
                 updating -> getString(R.string.updating)
                 checking -> getString(R.string.checking)
@@ -2976,7 +3027,7 @@ class MainActivity : Activity() {
             // Home app is Android TV's own way (Google TV and Fire OS keep their home); Fire OS never passes keys to us, so no smooth volume there.
             Triple(R.string.section_remote_home, if (homeSetUp()) getString(R.string.home_button) else on(false),
                 listOfNotNull(R.string.home_button, R.string.default_launcher.takeIf { !googleTv() && !fireTv() }, R.string.smooth_volume.takeIf { !fireTv() },
-                    R.string.section_keys, R.string.setup_home)),
+                    R.string.section_keys, R.string.setup_home, R.string.exit_launcher)),
         )
         val section = sections.firstOrNull { at in it.third }
         if (section != null) {
@@ -6231,6 +6282,7 @@ class MainActivity : Activity() {
             R.string.home_button to R.string.help_home_button, R.string.smooth_volume to R.string.help_smooth_volume,
             R.string.default_launcher to R.string.help_default_launcher,
             R.string.setup_home to R.string.help_run_setup, R.string.section_keys to R.string.help_remote_keys,
+            R.string.exit_launcher to R.string.help_exit_launcher,
         )
         val ROW_SHOW = linkedMapOf("always" to R.string.always, "down" to R.string.on_down, "never" to R.string.never) // "Show row"
         val CLOCK_SIZES = linkedMapOf(38 to R.string.clock_small, 48 to R.string.clock_medium, 60 to R.string.clock_large) // sp

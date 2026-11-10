@@ -15,6 +15,8 @@ class BootReceiver : BroadcastReceiver() {
             // the background, so the guard is put back here rather than waiting for someone to open
             // the app: see QuizGuardService.
             QuizGuardService.sync(context)
+            // Same reason: register the watchdog on the one boot path this firmware does deliver.
+            QuizWatchdog.ensure(context)
         }
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             // GrowQuiz: some TVs never deliver this broadcast (TCL's boot manager holds it), so this

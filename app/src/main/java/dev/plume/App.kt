@@ -21,5 +21,9 @@ class App : Application() {
         // touched the device. Every process start is a chance to put the guard back; it also takes
         // itself down when the quiz is switched off.
         dev.plume.quiz.QuizGuardService.sync(this)
+        // GrowQuiz: a reboot clears every alarm, and this firmware may never deliver BOOT_COMPLETED
+        // (a Huawei vision screen stayed silent for 21 hours). The watchdog is a persisted job the
+        // system restores by itself, so it is registered from every process start.
+        dev.plume.quiz.QuizWatchdog.ensure(this)
     }
 }

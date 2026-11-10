@@ -267,6 +267,15 @@
       <div id="settingsMsg" class="msg"></div>
 
       <div class="card" style="margin-top:16px">
+        <h3>桌面接管</h3>
+        <div class="set-row">
+          <div class="nm">退出宝贝成长桌面<div class="hint">打开后电视立刻回到自带的桌面，宝贝成长桌面不再自动出现；关掉「定时答题」才会停止到点弹题。改动立即生效，不需要点保存</div></div>
+          <div class="sw"><input id="exitDesktop" type="checkbox"><i></i></div>
+        </div>
+        <div id="exitMsg" class="msg"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
         <h3>工具与账号</h3>
         <div class="set-row linkish" id="ttsRow">
           <div class="nm">🔊 语音朗读测试<div class="hint">在电视上播放一句测试语音</div></div>
@@ -518,6 +527,7 @@
       $('bootQuiz').checked = s.bootQuiz !== false;
       $('restGuard').checked = s.restGuard !== false;
       $('snapBack').checked = s.snapBack !== false;
+      $('exitDesktop').checked = s.exited === true;
       // 总览页状态
       $('stAge').textContent = s.age + ' 岁';
       $('stInterval').textContent = s.interval + ' 分钟';
@@ -712,6 +722,27 @@
         msg($('settingsMsg'), '已保存', true);
         await refresh();
       } catch (e) { msg($('settingsMsg'), e.message, false); }
+    };
+
+    // 桌面接管：勾上即退出（电视立刻回到自带桌面），取消即重新接管。立即生效，不随「保存设置」。
+    let exitBusy = false;
+    $('exitDesktop').onchange = async () => {
+      const want = $('exitDesktop').checked;
+      if (want && !confirm('电视会立刻回到自带的桌面，宝贝成长桌面不再自动出现。确定退出？')) {
+        $('exitDesktop').checked = false;
+        return;
+      }
+      if (exitBusy) return;
+      exitBusy = true;
+      try {
+        const r = await api(want ? '/api/launcher/exit' : '/api/launcher/resume', {});
+        if (!r.ok) throw new Error(r.error || '操作失败');
+        msg($('exitMsg'), want ? '已退出，电视已回到原桌面' : '已重新接管桌面', true);
+        await refresh();
+      } catch (e) {
+        msg($('exitMsg'), e.message, false);
+        $('exitDesktop').checked = !want;
+      } finally { exitBusy = false; }
     };
 
     $('restClearBtn').onclick = async () => {

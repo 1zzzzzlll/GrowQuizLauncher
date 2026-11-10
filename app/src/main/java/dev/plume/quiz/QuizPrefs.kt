@@ -27,6 +27,15 @@ class QuizPrefs(context: Context) {
         get() = prefs.getLong(KEY_NEXT, 0L)
         set(value) = prefs.edit().putLong(KEY_NEXT, value).apply()
 
+    /**
+     * Wall-clock time the alarm was last set. Compared with the boot time to tell "the alarm is still
+     * pending" from "a reboot cleared it" (see [QuizLock.alarmLost]): a value older than this uptime
+     * means the alarm went away with the last power-off.
+     */
+    var lastScheduleAt: Long
+        get() = prefs.getLong(KEY_SCHEDULED_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_SCHEDULED_AT, value).apply()
+
     /** Extra dimension picked by the parents: only these categories are asked. Empty means every category. */
     var categories: Set<String>
         get() = prefs.getStringSet(KEY_CATEGORIES, emptySet())!!.toSet()
@@ -176,5 +185,6 @@ class QuizPrefs(context: Context) {
         private const val KEY_LAST_ALARM_AT = "last_alarm_at"
         private const val KEY_LAST_QUIZ_OPEN_AT = "last_quiz_open_at"
         private const val KEY_POPUP_LOGGED_FOR = "popup_logged_for"
+        private const val KEY_SCHEDULED_AT = "last_schedule_at"
     }
 }

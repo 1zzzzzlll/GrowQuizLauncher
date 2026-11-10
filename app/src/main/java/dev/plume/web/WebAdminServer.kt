@@ -23,6 +23,9 @@ import java.net.URLDecoder
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A small built-in admin console for the LAN: one page, password-protected, no external libraries.
@@ -349,6 +352,9 @@ object WebAdminServer {
                         .put("categories", JSONArray(prefs.categories.toList()))
                         .put("next", prefs.nextTriggerAt)
                         .put("owner", QuizDeviceOwner.isOwner(context))
+                        // The parents exited to the TV's own desktop from here or from the TV: the switch
+                        // on the phone shows it, and takes the desktop back (see DesktopExit).
+                        .put("exited", dev.plume.DesktopExit.exited(context))
                         .put("crash", dev.plume.CrashLog.peek(context) ?: "")
                         .put("tts", dev.plume.quiz.TtsProbe.describe())
                 } else {
@@ -433,6 +439,25 @@ object WebAdminServer {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
                 QuizPrefs(context).clearRest() // ends the enforced rest and wipes the anti-guess counters
                 reply(out, 200, "application/json; charset=utf-8", ok())
+            }
+
+            // Give the TV back to the family from the phone: the same thing as the settings row on the
+            // TV, without walking over to it. The quiz keeps its schedule; the console turns that off.
+            path == "/api/launcher/exit" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val done = onMain { dev.plume.DesktopExit.exit(context) }
+                val json = JSONObject().put("ok", done).put("exited", dev.plume.DesktopExit.exited(context))
+                if (!done) json.put("error", "电视上找不到自带的桌面")
+                reply(out, 200, "application/json; charset=utf-8", json.toString())
+            }
+
+            // Back the other way: Plume takes the Home key again.
+            path == "/api/launcher/resume" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val done = onMain { dev.plume.DesktopExit.resume(context) }
+                val json = JSONObject().put("ok", done).put("exited", dev.plume.DesktopExit.exited(context))
+                if (!done) json.put("error", "需要在电视的「设置 → 无障碍」里开启宝贝成长桌面的服务")
+                reply(out, 200, "application/json; charset=utf-8", json.toString())
             }
 
             path == "/api/categories" && method == "GET" -> {
@@ -746,6 +771,21 @@ object WebAdminServer {
     private fun clearCookie() = "$COOKIE=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
 
     private fun ok() = JSONObject().put("ok", true).toString()
+
+    /**
+     * Runs [block] on the main thread and waits briefly for its answer. Leaving the launcher starts an
+     * activity, which only the main thread may do; the console still needs to say whether it worked.
+     */
+    private fun onMain(block: () -> Boolean): Boolean {
+        val done = CountDownLatch(1)
+        val result = AtomicBoolean(false)
+        main.post {
+            result.set(runCatching(block).getOrDefault(false))
+            done.countDown()
+        }
+        done.await(3, TimeUnit.SECONDS)
+        return result.get()
+    }
 
     private fun error(message: String) = JSONObject().put("ok", false).put("error", message).toString()
 

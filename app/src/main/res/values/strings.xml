@@ -121,6 +121,16 @@
     <string name="home_button">主屏幕键打开宝贝成长桌面</string>
     <string name="smooth_volume">音量平滑调节</string>
     <string name="default_launcher">主屏幕应用</string>
+    <string name="exit_launcher">退出宝贝成长桌面</string>
+    <string name="exit_launcher_on">点击回到电视原桌面</string>
+    <string name="exit_launcher_off">已退出，点击回来</string>
+    <string name="exit_launcher_body">电视回到自带的桌面，宝贝成长桌面不再自动出现。答题提醒仍按「定时开关」执行；想提前关掉，到控制台的「退出桌面」里一并处理。想回来时再点同一行，或在控制端点「重新接管桌面」。</string>
+    <string name="exit_launcher_ok">退出</string>
+    <string name="exit_launcher_done">已退出，电视已回到原桌面</string>
+    <string name="exit_launcher_fail">没有找到电视自带的桌面，请在系统设置里选择主屏幕应用</string>
+    <string name="exit_launcher_back">已重新接管桌面</string>
+    <string name="exit_launcher_back_hint">已接管，但需要在系统「无障碍」里开启本应用的服务才能拦住主屏幕键</string>
+    <string name="exit_launcher_need_password">退出前请先设密码：在控制台设置管理密码，或在「PIN 锁定」里设置 PIN</string>
     <string name="plume_press_change">宝贝成长桌面：按此键更改</string>
     <string name="press_to_set">按此键设置</string>
     <string name="updates">更新</string>
@@ -248,6 +258,7 @@
     <string name="help_home_button">主屏幕键打开宝贝成长桌面。长按主屏幕键可打开电视自带的主屏幕。</string>
     <string name="help_default_launcher">在 Android TV 上，宝贝成长桌面可以作为主屏幕应用。Google TV 会保留自带的：在该设备上请使用“主屏幕键打开宝贝成长桌面”。</string>
     <string name="help_run_setup">重新进行主屏幕键设置。</string>
+    <string name="help_exit_launcher">关掉主屏幕键接管，电视回到自带的桌面。必须先设置 PIN 或管理密码，退出时要输入密码。退出后答题提醒仍按定时设置执行。</string>
     <string name="help_smooth_volume">长按音量键可持续调节音量。主屏幕键打开宝贝成长桌面会慢约一秒。设置了遥控器按键时此功能不可用。</string>
     <string name="help_remote_keys">更改遥控器按键在按下或长按时执行的操作。</string>
     <!-- Season and episode on a Continue Watching card, for example "S1 E3". -->

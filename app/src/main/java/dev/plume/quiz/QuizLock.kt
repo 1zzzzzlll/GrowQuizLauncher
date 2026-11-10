@@ -40,6 +40,24 @@ object QuizLock {
         !solved && pageAlive && screenInteractive && !lockTaskActive
 
     /**
+     * Whether the quiz alarm is gone and must be set again.
+     *
+     * A reboot clears every alarm in the system. The app normally re-schedules from BOOT_COMPLETED, but
+     * some firmwares never deliver that broadcast to a third-party app: a Huawei vision screen stayed
+     * silent for 21 hours after a reboot and only came back when someone opened it by hand. Two cases
+     * need a new alarm:
+     *  - the time it was due has passed (nothing fired), or
+     *  - it was last set before this boot, so the reboot cleared it.
+     *
+     * [bootAt] is now minus elapsed realtime, i.e. when this uptime began.
+     */
+    fun alarmLost(now: Long, bootAt: Long, nextTriggerAt: Long, lastScheduleAt: Long): Boolean {
+        if (nextTriggerAt <= 0L) return true // nothing is due: one has to be scheduled
+        if (nextTriggerAt <= now) return true // due and never fired
+        return lastScheduleAt < bootAt // set before this boot: the reboot cleared it
+    }
+
+    /**
      * The permissions the "answer on time" promise rests on, in the order the console shows them.
      * Each one is granted by the parent on the device; none of them needs a computer.
      */

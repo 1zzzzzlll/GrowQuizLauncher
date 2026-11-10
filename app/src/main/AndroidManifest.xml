@@ -187,6 +187,12 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Holds the process so the parent-set quiz alarm can open the question page at the chosen minute, hours after the device was last used." />
         </service>
+        <!-- Puts the alarm back after a reboot on firmwares that never deliver BOOT_COMPLETED:
+             a persisted job is restored by the system itself. See QuizWatchdog. -->
+        <service
+            android:name=".quiz.QuizWatchdog"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <receiver
             android:name=".quiz.QuizAlarmReceiver"
             android:exported="false" />
