@@ -14,11 +14,6 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
-## Unreleased
-
-- 更新服务器地址与上报口令不再写在源码里。构建时从本机的 `secrets.properties` 读取，该文件不入库，仓库里只留空模板 `secrets.properties.example`。新克隆照常能编译、能安装，只是不检查更新、不上报。
-- 服务器端口令改从 `/root/growquiz/report.env` 读，没配置就拒绝启动。已泄露的旧口令要在服务器与本机同时换掉，见 `server/README.md`。
-
 ## 1.18.0
 
 - **读音题不再泄题，并按年龄换题型。** 旧的「这个字的正确读音是」会被语音朗读直接念出答案。7 岁起改为「下面哪个字读作 X」，选项是四个不同音的汉字；5-6 岁还没学拼音，改为「听音认字」（听读音找汉字），并不再出声母、韵母、整体认读、部首这些没学过的内容。
@@ -27,6 +22,8 @@ Put changes that are not released under `## Unreleased`. Rename that heading to 
 - **PIN 页在手机和平板上显示数字键盘。** PIN 输入框原来只认遥控器按键，触摸设备上无法输入。触摸模式下输入框下方出现 0–9 与「删除」键，输满 4 位自动确认。
 - **系统深色模式变化不再重建桌面。** 应用不读系统深色模式（自动主题按日出日落走），但此前系统深色或省电模式一翻转，Android 就销毁并重建整个桌面，看起来像桌面重新进入了一次。现在此类变化不再触发重建。
 - **桌面重建有记录。** 上报新增「桌面创建」事件与重建原因（回到桌面 / 定时检查 / 壁纸变化），用于确认还有哪些场景让桌面重新进入。
+- **更新与上报的服务器配置不再写在源码里。** 构建时从本机的 `secrets.properties` 读取，该文件不入库，仓库里只留空模板。新克隆照常能编译、能安装，只是不检查更新、不上报。
+- **上报口令整体更换，旧口令作废。** 此前仓库里出现过旧口令，现已轮换；服务器端改从本地文件读口令，没配置就拒绝启动。升级到本版后自动改用新口令。
 
 ## 1.17.0
 
