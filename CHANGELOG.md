@@ -14,6 +14,10 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.18.1
+
+- **退出宝贝成长桌面后按主屏幕键不再闪退。** 退出后下次按 Home，应用先打开再让位给原桌面。这个「让位」的空实例之前照常执行销毁清理，访问了从未初始化的视频壁纸组件，导致闪退。现在空实例直接跳过清理（一加 Android 17 实测复现并修复）。
+
 ## 1.18.0
 
 - **读音题不再泄题，并按年龄换题型。** 旧的「这个字的正确读音是」会被语音朗读直接念出答案。7 岁起改为「下面哪个字读作 X」，选项是四个不同音的汉字；5-6 岁还没学拼音，改为「听音认字」（听读音找汉字），并不再出声母、韵母、整体认读、部首这些没学过的内容。

@@ -345,6 +345,8 @@ class MainActivity : Activity() {
     private lateinit var wifi: ImageView
     private lateinit var glass: GlassLayer // paints the blurred wallpaper under glass tiles
     private lateinit var videoWallpaper: VideoWallpaper
+    /** True when onCreate returned before setContentView (exit-forward shell): nothing was created, so onDestroy must not clean up. */
+    private var earlyExit = false
 
     private var resumed = false
     private val refreshIfDirty = Runnable { if (appsDirty && !editing) refreshApps() } // not while a tile is being moved: onResume catches up
@@ -387,6 +389,7 @@ class MainActivity : Activity() {
         // The parents exited to the TV's own desktop. Where Plume is still the default home app, Android
         // opens Plume again at the next Home press: pass the press on, and show nothing of ours.
         if (intent?.hasCategory(Intent.CATEGORY_HOME) == true && DesktopExit.exited(this) && DesktopExit.forward(this)) {
+            earlyExit = true
             finish()
             return
         }
@@ -669,6 +672,10 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (earlyExit) { // the exit-forward shell: nothing below was ever created (fixes the crash on Home after exit)
+            super.onDestroy()
+            return
+        }
         videoWallpaper.clear()
         if (Bing.onChanged === bingChanged) Bing.onChanged = null
         unregisterReceiver(packageReceiver)
