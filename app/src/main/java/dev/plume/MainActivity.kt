@@ -3088,6 +3088,12 @@ class MainActivity : Activity() {
             group(R.string.group_tv) +
             sectionRow(R.string.section_remote_home) +
             Triple(R.string.lock_layout, rows[R.string.lock_layout]!!, RowStyle(R.drawable.ms_lock, help = getString(R.string.lock_note))) +
+            // GrowQuiz: exit sits on the first settings page, not a level down: a parent who wants
+            // the TV back looks here first, and never finds it inside Remote & Home.
+            Triple(R.string.exit_launcher, page(getString(R.string.exit_launcher),
+                getString(if (DesktopExit.exited(this)) R.string.exit_launcher_off else R.string.exit_launcher_on)) {
+                unlock { exitLauncher() }
+            }, RowStyle(R.drawable.ms_logout, help = getString(R.string.help_exit_launcher))) +
             Triple(R.string.web_admin, page(getString(R.string.web_admin), dev.plume.web.WebAdminServer.url()) {
                 // GrowQuiz: re-show the startup prompt (same Wi-Fi + admin URL), as on every return from background.
                 closeLauncherSettings()

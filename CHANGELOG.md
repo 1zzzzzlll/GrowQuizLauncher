@@ -14,6 +14,10 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.16.1
+
+- **退出宝贝成长桌面移到设置首页。** 1.16.0 把它放在「主屏幕键 & 遥控器」里面，主页面看不到。现在它和「PIN 锁定」并列在设置第一页，打开设置就能看到。管理控制台的开关位置不变。
+
 ## 1.16.0
 
 - **重启后仍会按时弹题。** 部分电视（首见于华为智慧屏）开机后不通知应用「已开机」，而重启会清掉已排的答题时间，此后一直不弹。现在应用注册一个由系统开机时自动恢复的定时任务，每 15 分钟核对一次：答题时间丢了就补回来。此前记录里有一台智慧屏重启后 21 小时一次都没弹。
