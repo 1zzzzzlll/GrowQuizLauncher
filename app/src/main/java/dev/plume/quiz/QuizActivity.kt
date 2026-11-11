@@ -88,6 +88,14 @@ class QuizActivity : Activity() {
     // happens tells us whether a phone's shade is being used to get out.
     private var focusLossNoted = false
 
+    // GrowQuiz: why a page died is not visible from "quiz_abandoned" alone — a swipe out of Recents,
+    // a Home press, a system kill and an update install all end the same way. These three values are
+    // what the event now carries: the page's age, whether the parent left it on purpose, and how long
+    // it had already been in the background when it went (see onDestroy).
+    private var openedAt = 0L
+    private var leftByUser = false
+    private var lastPauseAt = 0L
+
     private val guardLoop: Runnable = object : Runnable {
         override fun run() {
             if (isFinishing || isDestroyed || solved) return
@@ -173,6 +181,7 @@ class QuizActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openedAt = System.currentTimeMillis()
         // Android 13+ routes Back through OnBackInvokedDispatcher; with targetSdk 36 the legacy
         // onBackPressed() override is never called and Back finishes the page (first seen on an
         // Android 17 phone: the quiz task was simply gone, quiz_abandoned with finishing=true).
@@ -257,6 +266,7 @@ class QuizActivity : Activity() {
     override fun onPause() {
         super.onPause()
         inForeground = false
+        lastPauseAt = System.currentTimeMillis()
         // Back at once, without waiting for the next tick of the loop: at this instant the page still has
         // a window on screen, which is the one case Android still allows a start from the background. It
         // beats the loop by up to a second on TVs without "display over other apps".
@@ -670,6 +680,7 @@ class QuizActivity : Activity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        leftByUser = true
         // Best-effort recovery for ordinary installations; Device Owner uses real lock-task enforcement.
         if (!solved && !lockActive) {
             ui.postDelayed({
@@ -719,7 +730,20 @@ class QuizActivity : Activity() {
         // update install — leaves quizActive set, so the page comes back; the report says which.
         // A crash has its own event, and a screen rotation is rare on a TV and counts as neither.
         if (!solved && !justFinished) dev.plume.DiagLog.event("quiz_abandoned",
-            "", mapOf("finishing" to isFinishing.toString()))
+            "",
+            mapOf(
+                "finishing" to isFinishing.toString(),
+                // Seconds since the question appeared: a page that dies two seconds in never got used,
+                // which reads differently from one the child left after a minute.
+                "age" to ((System.currentTimeMillis() - openedAt) / 1000).toString(),
+                // The parent pressed Home/Recents or opened another app: a deliberate way out.
+                "leave" to leftByUser.toString(),
+                // Seconds since it was last paused, or -1 when it never left the front: a page the
+                // system took while it was still on screen reads differently from one swiped out of
+                // Recents a minute after it went to the background.
+                "bg" to if (lastPauseAt == 0L) "-1"
+                else ((System.currentTimeMillis() - lastPauseAt) / 1000).toString(),
+            ))
         // The engine itself stays up: it belongs to the app, and shutting it down here would make the next
         // quiz pay the model load again.
         super.onDestroy()

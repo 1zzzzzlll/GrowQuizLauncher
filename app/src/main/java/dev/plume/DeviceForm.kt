@@ -18,12 +18,21 @@ object DeviceForm {
     const val TABLET_MIN_WIDTH_DP = 600
 
     /**
-     * A set that declares the television hardware or the leanback software says tv. Otherwise a
-     * touch screen tells phone from tablet. Neither flag means unknown: some domestic TV firmwares
-     * declare neither, and calling one of those a phone would let a phone-only rule reach a TV.
+     * A set that declares the television hardware or the leanback software says tv — and so does one
+     * whose running configuration is the television UI mode, which is the third answer a firmware
+     * can give and the only one left when both feature flags are missing (TCL ak30a5, Android 9:
+     * neither flag, yet a 1920x1080 set-top screen). Otherwise a touch screen tells phone from
+     * tablet. None of the three means unknown: calling a domestic TV a phone would let a phone-only
+     * rule reach a TV.
      */
-    fun of(leanback: Boolean, television: Boolean, touchscreen: Boolean, smallestWidthDp: Int): String = when {
-        television || leanback -> TV
+    fun of(
+        leanback: Boolean,
+        television: Boolean,
+        touchscreen: Boolean,
+        smallestWidthDp: Int,
+        uiModeTv: Boolean = false,
+    ): String = when {
+        television || leanback || uiModeTv -> TV
         touchscreen && smallestWidthDp >= TABLET_MIN_WIDTH_DP -> TABLET
         touchscreen -> PHONE
         else -> UNKNOWN

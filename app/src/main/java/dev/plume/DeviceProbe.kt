@@ -58,6 +58,9 @@ object DeviceProbe {
             .put("leanback", pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK))
             .put("television", pm.hasSystemFeature("android.hardware.type.television"))
             .put("touchscreen", pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN))
+            // GrowQuiz: the third television answer, kept as evidence on its own. Some set firmwares
+            // declare neither feature flag and still run in the television UI mode (TCL ak30a5).
+            .put("uiModeTv", uiModeTv(context))
             // GrowQuiz: the quiz schedule as the app itself sees it, so the server can compare "when
             // the alarm should have fired" with the events that say when it did. A timezone comes
             // along: a wrong clock is its own class of "the alarm never fired" reports.
@@ -120,8 +123,14 @@ object DeviceProbe {
             television = pm.hasSystemFeature("android.hardware.type.television"),
             touchscreen = pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN),
             smallestWidthDp = context.resources.configuration.smallestScreenWidthDp,
+            uiModeTv = uiModeTv(context),
         )
     }
+
+    /** Whether the running configuration is the television UI mode, which a feature list may not say. */
+    private fun uiModeTv(context: Context): Boolean =
+        (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
 
     /**
      * Every package that answers Home and could be a launcher, except ours, comma separated.

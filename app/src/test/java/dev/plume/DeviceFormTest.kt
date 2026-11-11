@@ -34,4 +34,24 @@ class DeviceFormTest {
         assertEquals(DeviceForm.PHONE, DeviceForm.of(leanback = false, television = false, touchscreen = true, smallestWidthDp = 384)) // OnePlus PLZ110
         assertEquals(DeviceForm.PHONE, DeviceForm.of(leanback = false, television = false, touchscreen = true, smallestWidthDp = 384)) // samsung SM-S9180
     }
+
+    // TCL ak30a5 (Android 9, 1920x1080, reported 2026-11-11): a set that declares no television
+    // feature at all. The running UI mode is the only thing left that says what it is.
+    @Test
+    fun `the television ui mode says tv when both feature flags are missing`() {
+        assertEquals(DeviceForm.TV, DeviceForm.of(leanback = false, television = false, touchscreen = false, smallestWidthDp = 960, uiModeTv = true))
+    }
+
+    // A touch panel that runs the television UI mode is a television, like a set that declares the
+    // television hardware itself: the television signal outranks the touch screen, as it always has.
+    @Test
+    fun `the television ui mode outranks a touch screen`() {
+        assertEquals(DeviceForm.TV, DeviceForm.of(leanback = false, television = false, touchscreen = true, smallestWidthDp = 960, uiModeTv = true))
+    }
+
+    // Nothing new may turn a set that reports neither into a phone.
+    @Test
+    fun `no signal at all stays unknown`() {
+        assertEquals(DeviceForm.UNKNOWN, DeviceForm.of(leanback = false, television = false, touchscreen = false, smallestWidthDp = 960, uiModeTv = false))
+    }
 }

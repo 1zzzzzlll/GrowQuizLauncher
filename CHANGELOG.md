@@ -14,6 +14,11 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.18.2
+
+- **有的电视现在能识别成电视了。** 部分电视固件不声明电视硬件，也不声明 leanback，报告里这类机型一直记为 unknown（TCL ak30a5，Android 9）。现在同时读系统的电视界面模式，这类电视记为 tv。报告新增 `uiModeTv` 字段，可以单独确认。
+- **答题页被关掉时记录原因。** 未答完就关闭的答题页以前只记一条事件。现在同时记三件事：页面存在多少秒、是否由人按 Home 或最近任务离开、离开前台多久后被关。这样能分清有人主动退出，还是系统把页面杀掉。
+
 ## 1.18.1
 
 - **退出宝贝成长桌面后按主屏幕键不再闪退。** 退出后下次按 Home，应用先打开再让位给原桌面。这个「让位」的空实例之前照常执行销毁清理，访问了从未初始化的视频壁纸组件，导致闪退。现在空实例直接跳过清理（一加 Android 17 实测复现并修复）。
