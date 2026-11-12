@@ -65,6 +65,15 @@
         <intent>
             <action android:name="android.speech.tts.engine.CHECK_TTS_DATA" />
         </intent>
+        <!-- The Settings pages the launcher opens. Android 11 and later hide their handlers from
+             a query unless declared here, and DeviceProbe's settingsApps field is exactly that
+             query: without these a set that has a Settings app could report an empty list. -->
+        <intent>
+            <action android:name="android.settings.SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.WIFI_SETTINGS" />
+        </intent>
         <package android:name="com.google.android.apps.tv.launcherx" />
         <!-- Fire OS's input switch, for the HDMI tiles (Remap.openInput) -->
         <package android:name="com.amazon.tv.inputpreference.service" />

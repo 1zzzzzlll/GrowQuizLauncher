@@ -53,6 +53,10 @@ object DeviceProbe {
             .put("defaultHome", defaultHome(context))
             .put("homeCandidates", homeCandidates(context).joinToString(","))
             .put("homeStubs", homeStubs(context).joinToString(","))
+            // GrowQuiz: which package is this set's Settings app, if any. Three TV firmwares so
+            // far open no Settings page at all (settings_open_fail); this field is the evidence
+            // a vendor-specific fallback would need before it may exist (see [SettingsApps]).
+            .put("settingsApps", settingsApps(context).joinToString(","))
             // GrowQuiz: one apk runs on TVs, phones and tablets. These four fields say which, so a
             // report from a phone can be read as a phone's report (see [DeviceForm]).
             .put("leanback", pm.hasSystemFeature(PackageManager.FEATURE_LEANBACK))
@@ -157,4 +161,21 @@ object DeviceProbe {
         context.packageManager.queryIntentActivities(
             Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0,
         ).filter { it.activityInfo.packageName != context.packageName }
+
+    /**
+     * The packages [SettingsApps.merge] reports: handlers of the two Settings intents the
+     * launcher opens (MainActivity's settings button and its Wi-Fi button), plus every installed
+     * package whose name says "settings". The installed list is what Android 11's package
+     * visibility leaves us — system Settings apps stay visible through the queries declared in
+     * the manifest. Never throws: a probe that broke collection would hide the very report it
+     * rides on.
+     */
+    private fun settingsApps(context: Context): List<String> = runCatching {
+        val pm = context.packageManager
+        val handlers = listOf(Settings.ACTION_SETTINGS, Settings.ACTION_WIFI_SETTINGS)
+            .flatMap { pm.queryIntentActivities(Intent(it), 0) }
+            .map { it.activityInfo.packageName }
+        val installed = pm.getInstalledPackages(0).map { it.packageName }
+        SettingsApps.merge(installed, handlers)
+    }.getOrDefault(emptyList())
 }

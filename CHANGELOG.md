@@ -14,6 +14,10 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.18.3
+
+- **报告现在列出本机的设置应用。** 已有三台电视打不开任何系统设置页（华为智慧屏、极米投影、TCL ak30a5，均已有兜底提示）。报告新增 `settingsApps` 字段：列出应答设置页面的应用，以及名字带 settings 的已安装应用。收集到厂商设置应用的真实包名后，这些机型才能做对应跳转。
+
 ## 1.18.2
 
 - **有的电视现在能识别成电视了。** 部分电视固件不声明电视硬件，也不声明 leanback，报告里这类机型一直记为 unknown（TCL ak30a5，Android 9）。现在同时读系统的电视界面模式，这类电视记为 tv。报告新增 `uiModeTv` 字段，可以单独确认。
