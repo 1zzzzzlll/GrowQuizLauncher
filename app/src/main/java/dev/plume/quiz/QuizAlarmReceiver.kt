@@ -34,59 +34,7 @@ class QuizAlarmReceiver : BroadcastReceiver() {
         val kv = mutableMapOf<String, String>()
         if (due > 0) kv["lateMs"] = (System.currentTimeMillis() - due).toString()
         DiagLog.event("alarm_fired", "", kv)
-        try {
-            context.startActivity(
-                Intent(context, QuizActivity::class.java).addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
-                ),
-            )
-        } catch (e: Exception) {
-            DiagLog.event("quiz_popup_blocked", e.message ?: e.javaClass.simpleName)
-        }
-        // The start above throws nothing when Android silently drops a background start, so it is not
-        // enough on its own. A full-screen intent is the way an alarm is allowed to reach the screen
-        // from the background on Android 10 and newer, whatever the app on screen is doing.
-        notifyFullScreen(context)
-    }
-
-    /**
-     * Shows the question page as an alarm, not as a notification. The system opens the page over
-     * whatever is running, which is the one path the background-start rules do not block.
-     */
-    private fun notifyFullScreen(context: Context) {
-        try {
-            val nm = context.getSystemService(NotificationManager::class.java) ?: return
-            nm.createNotificationChannel(
-                NotificationChannel(CHANNEL, "答题提醒", NotificationManager.IMPORTANCE_HIGH).apply {
-                    description = "到点弹出答题页面"
-                    setSound(null, null)
-                    enableVibration(false)
-                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                },
-            )
-            val open = PendingIntent.getActivity(
-                context, 2,
-                Intent(context, QuizActivity::class.java).addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP,
-                ),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-            val notification = Notification.Builder(context, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-                .setContentTitle("该答题了")
-                .setContentText("答对一题后即可继续")
-                .setCategory(Notification.CATEGORY_ALARM)
-                .setPriority(Notification.PRIORITY_MAX)
-                .setContentIntent(open)
-                .setFullScreenIntent(open, true) // the page opens itself; the notification is the fallback
-                .setAutoCancel(true)
-                .build()
-            nm.notify(NOTIFICATION_ID, notification)
-        } catch (e: Exception) {
-            DiagLog.event("quiz_popup_blocked", "fullscreen:" + (e.message ?: e.javaClass.simpleName))
-        }
+        openQuiz(context)
     }
 
     companion object {
@@ -94,6 +42,59 @@ class QuizAlarmReceiver : BroadcastReceiver() {
 
         /** Shared with QuizActivity, which cancels the alarm notification once the page is on screen. */
         const val NOTIFICATION_ID = 9
+
+        /** Opens a question or a parent-timed rest directly, with the alarm notification as the fallback. */
+        fun openQuiz(context: Context, resting: Boolean = false) {
+            try {
+                context.startActivity(
+                    Intent(context, QuizActivity::class.java).addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
+                    ),
+                )
+            } catch (e: Exception) {
+                DiagLog.event("quiz_popup_blocked", e.message ?: e.javaClass.simpleName)
+            }
+            // A direct start throws nothing when Android silently drops it. The full-screen intent is
+            // the path an alarm (or a parent command) can use from the background on Android 10+.
+            notifyFullScreen(context, resting)
+        }
+
+        private fun notifyFullScreen(context: Context, resting: Boolean) {
+            try {
+                val nm = context.getSystemService(NotificationManager::class.java) ?: return
+                nm.createNotificationChannel(
+                    NotificationChannel(CHANNEL, "答题提醒", NotificationManager.IMPORTANCE_HIGH).apply {
+                        description = "到点弹出答题页面"
+                        setSound(null, null)
+                        enableVibration(false)
+                        lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                    },
+                )
+                val open = PendingIntent.getActivity(
+                    context, 2,
+                    Intent(context, QuizActivity::class.java).addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP,
+                    ),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+                val notification = Notification.Builder(context, CHANNEL)
+                    .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                    .setContentTitle(if (resting) "该休息了" else "该答题了")
+                    .setContentText(if (resting) "休息结束后即可继续" else "答对一题后即可继续")
+                    .setCategory(Notification.CATEGORY_ALARM)
+                    .setPriority(Notification.PRIORITY_MAX)
+                    .setContentIntent(open)
+                    .setFullScreenIntent(open, true)
+                    .setAutoCancel(true)
+                    .build()
+                nm.notify(NOTIFICATION_ID, notification)
+            } catch (e: Exception) {
+                DiagLog.event("quiz_popup_blocked", "fullscreen:" + (e.message ?: e.javaClass.simpleName))
+            }
+        }
+
         /**
          * Writes quiz_popup_blocked("silent") when the last alarm on record never produced a
          * quiz_open. Called from here and from App.onCreate, so a TV whose alarms stop entirely

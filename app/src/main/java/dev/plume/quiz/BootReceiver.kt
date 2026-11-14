@@ -27,8 +27,13 @@ class BootReceiver : BroadcastReceiver() {
             // binds after a boot. On Android 10+ the start is dropped without the "display over
             // other apps" grant — the service-bound path is the primary one.
             val prefs = QuizPrefs(context)
-            val rest = prefs.restGuard && prefs.restUntil > System.currentTimeMillis()
-            if (prefs.enabled && (prefs.quizActive || rest)) {
+            if (QuizLock.sessionActive(
+                    quizActive = prefs.quizActive,
+                    restGuard = prefs.restGuard,
+                    restUntil = prefs.restUntil,
+                    now = System.currentTimeMillis(),
+                    restForced = prefs.restForced,
+                )) {
                 runCatching {
                     context.startActivity(
                         Intent(context, QuizActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),

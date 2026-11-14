@@ -1,11 +1,9 @@
 package dev.plume.web
 
 import android.content.Context
-import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import dev.plume.quiz.QuestionBank
-import dev.plume.quiz.QuizActivity
 import dev.plume.quiz.QuizDeviceOwner
 import dev.plume.quiz.QuizPrefs
 import dev.plume.quiz.QuizScheduler
@@ -330,6 +328,8 @@ object WebAdminServer {
                         .put("voice", prefs.voice)
                         .put("bootQuiz", prefs.bootQuiz)
                         .put("restGuard", prefs.restGuard)
+                        .put("restForced", prefs.restForced)
+                        .put("quizActive", prefs.quizActive)
                         // "A skipped question comes back": the switch, and the evidence it works.
                         .put("snapBack", prefs.snapBack)
                         .put("snapOkAt", prefs.snapOkAt)
@@ -348,7 +348,14 @@ object WebAdminServer {
                         .put("thinkSeconds", prefs.thinkSeconds)
                         .put("wrongStreak", prefs.wrongStreak)
                         .put("restUntil", prefs.restUntil)
-                        .put("restRemainingMs", (prefs.restUntil - System.currentTimeMillis()).coerceAtLeast(0L))
+                        .put(
+                            "restRemainingMs",
+                            if (dev.plume.quiz.QuizLock.restOwed(
+                                    prefs.restGuard, prefs.restForced, prefs.restUntil, System.currentTimeMillis(),
+                                )) {
+                                (prefs.restUntil - System.currentTimeMillis()).coerceAtLeast(0L)
+                            } else 0L,
+                        )
                         .put("categories", JSONArray(prefs.categories.toList()))
                         .put("next", prefs.nextTriggerAt)
                         .put("owner", QuizDeviceOwner.isOwner(context))
@@ -438,12 +445,25 @@ object WebAdminServer {
                 if (json.has("thinkSeconds")) prefs.thinkSeconds = json.optInt("thinkSeconds", prefs.thinkSeconds)
                 QuizScheduler.reschedule(context)
                 QuizDeviceOwner.configure(context)
+                dev.plume.quiz.QuizGuardService.sync(context)
                 reply(out, 200, "application/json; charset=utf-8", ok())
+            }
+
+            path == "/api/rest/start" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val minutes = JSONObject(body.ifEmpty { "{}" }).optInt("minutes", -1)
+                if (minutes !in 1..240) return reply(out, 400, "application/json; charset=utf-8", error("minutes must be in 1..240"))
+                val until = QuizPrefs(context).startForcedRest(minutes)
+                dev.plume.quiz.QuizGuardService.sync(context)
+                dev.plume.DiagLog.event("rest_forced", "$minutes min")
+                main.post { dev.plume.quiz.QuizAlarmReceiver.openQuiz(context, resting = true) }
+                reply(out, 200, "application/json; charset=utf-8", JSONObject().put("ok", true).put("restUntil", until).toString())
             }
 
             path == "/api/rest/clear" && method == "POST" -> {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
                 QuizPrefs(context).clearRest() // ends the enforced rest and wipes the anti-guess counters
+                dev.plume.quiz.QuizGuardService.sync(context)
                 reply(out, 200, "application/json; charset=utf-8", ok())
             }
 
@@ -666,8 +686,11 @@ object WebAdminServer {
 
             path == "/api/start" && method == "POST" -> {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
-                val intent = Intent(context, QuizActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                main.post { context.startActivity(intent) }
+                // A parent-started question also works while timed questions are off. quizActive keeps
+                // Home locked and distinguishes it from the off switch, which clears this same flag.
+                QuizPrefs(context).quizActive = true
+                dev.plume.quiz.QuizGuardService.sync(context)
+                main.post { dev.plume.quiz.QuizAlarmReceiver.openQuiz(context) }
                 reply(out, 200, "application/json; charset=utf-8", ok())
             }
 

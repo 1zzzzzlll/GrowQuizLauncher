@@ -61,6 +61,7 @@ class QuizActivity : Activity() {
 
     // GrowQuiz: too many wrong answers in a row mean a forced rest, so blind guessing never pays off.
     private var restLoop: Runnable? = null
+    private var restSessionForced = false // parent-timed rest ends back at the video, not with a question
 
     // GrowQuiz: while a question or a rest is up, a watchdog brings the quiz back to the front every
     // second if anything else stole it (Netflix-style remote keys, notifications, other apps).
@@ -99,6 +100,17 @@ class QuizActivity : Activity() {
     private val guardLoop: Runnable = object : Runnable {
         override fun run() {
             if (isFinishing || isDestroyed || solved) return
+            val prefs = snapPrefs
+            if (prefs != null && !prefs.enabled && !QuizLock.sessionActive(
+                    quizActive = prefs.quizActive,
+                    restGuard = prefs.restGuard,
+                    restUntil = prefs.restUntil,
+                    now = System.currentTimeMillis(),
+                    restForced = prefs.restForced,
+                )) {
+                closeSession("quiz_cancelled")
+                return
+            }
             if (!inForeground) {
                 comeBack()
                 if (snapPrefs?.snapBack != false && ++snapMisses == 10 && !snapLossNoted) {
@@ -117,10 +129,12 @@ class QuizActivity : Activity() {
      * (the moment it gets covered, see [onPause]) and when the app holds "display over other apps" (see
      * the manifest). Nothing here needs the accessibility service.
      */
+    private fun screenInteractive(): Boolean =
+        getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
+
     private fun comeBack() {
         if (snapPrefs?.snapBack == false) return // the parents turned it off in the web console
-        val interactive = getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
-        if (!interactive) return // the screen is off: the child is not looking at anything
+        if (!screenInteractive()) return // the screen is off: the child is not looking at anything
         // Rate limited: a page the firmware keeps down would otherwise start an activity every second,
         // which drains the battery and never succeeds faster.
         val now = System.currentTimeMillis()
@@ -164,6 +178,8 @@ class QuizActivity : Activity() {
     private var ttsRetries = 0 // short retries while the engine is still loading, capped by TTS_RETRY_LIMIT
     private val speakLoop: Runnable = object : Runnable {
         override fun run() {
+            // A tablet with its screen off must stay silent. onResume restarts the loop when visible.
+            if (!QuizLock.shouldNarrate(screenInteractive(), inForeground)) return
             if (QuizVoice.isUnusable()) {
                 ttsMissing() // no engine on this TV: say so once and stop trying
                 return
@@ -234,6 +250,11 @@ class QuizActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // A parent can start a rest while a question is already open; switch to it immediately.
+        if (restRemaining() > 0L) {
+            showRestScreen()
+            return
+        }
         if (solved) {
             solved = false
             changing = false
@@ -244,6 +265,7 @@ class QuizActivity : Activity() {
     override fun onResume() {
         super.onResume()
         inForeground = true
+        if (!changing && !solved) startReading() // resume narration only on the visible, bright page
         reclaimAttempt = 0 // the page is in front: the next escape gets the quick first retry again
         noteSnapBack() // a comeback that was on its way has arrived: that is the proof the console shows
         ui.removeCallbacks(guardLoop) // one watchdog, started here, re-posted by itself
@@ -267,6 +289,7 @@ class QuizActivity : Activity() {
         super.onPause()
         inForeground = false
         lastPauseAt = System.currentTimeMillis()
+        stopReading() // screen-off and covered pages never keep talking over the family's other audio
         // Back at once, without waiting for the next tick of the loop: at this instant the page still has
         // a window on screen, which is the one case Android still allows a start from the background. It
         // beats the loop by up to a second on TVs without "display over other apps".
@@ -421,12 +444,13 @@ class QuizActivity : Activity() {
     /** Milliseconds of enforced rest still owed; 0 when none. Side effect: clears an expired deadline. */
     private fun restRemaining(): Long {
         val prefs = QuizPrefs(this)
-        if (!prefs.restGuard) return 0L // the parents switched the enforced rest off: never gate on it
+        if (!prefs.restGuard && !prefs.restForced) return 0L // anti-guess rest off, no parent rest either
         val until = prefs.restUntil
         if (until <= 0L) return 0L
         val left = until - System.currentTimeMillis()
         if (left <= 0L) {
             prefs.restUntil = 0L
+            prefs.restForced = false
             return 0L
         }
         return left
@@ -434,23 +458,34 @@ class QuizActivity : Activity() {
 
     /** Full-screen rest: no question, no buttons, a countdown, and no way out except the parents' console. */
     private fun showRestScreen() {
+        solved = false // a rest started during the correct-answer farewell still owns the screen
         changing = true
         stopReading()
+        restLoop?.let { ui.removeCallbacks(it) }
+        restSessionForced = QuizPrefs(this).restForced
         thinkLoop?.let { ui.removeCallbacks(it) }
         answerGrid.visibility = View.GONE
         restPanel?.visibility = View.VISIBLE
         progressText.text = "休息一下"
-        if (QuizPrefs(this).voice) QuizVoice.speak("连续答错啦，休息一会再来答题")
+        if (QuizPrefs(this).voice && screenInteractive()) {
+            QuizVoice.speak(if (restSessionForced) "家长安排了休息，时间到就可以继续" else "连续答错啦，休息一会再来答题")
+        }
         val loop = object : Runnable {
             override fun run() {
                 val left = restRemaining()
                 if (left <= 0L) {
-                    if (!isFinishing) showNextQuestion()
+                    if (!isFinishing) {
+                        if (restSessionForced) closeSession("rest_done") else showNextQuestion()
+                    }
                     return
                 }
                 val totalSec = (left + 999) / 1000
-                questionText.text = "连续答错啦，休息 ${totalSec / 60} 分 ${totalSec % 60} 秒后再答题"
-                feedbackText.text = "休息期间不能作答，休息结束自动回到答题"
+                questionText.text = if (restSessionForced) {
+                    "休息 ${totalSec / 60} 分 ${totalSec % 60} 秒后继续"
+                } else {
+                    "连续答错啦，休息 ${totalSec / 60} 分 ${totalSec % 60} 秒后再答题"
+                }
+                feedbackText.text = if (restSessionForced) "休息期间不能看电视，休息结束自动返回" else "休息期间不能作答，休息结束自动回到答题"
                 feedbackText.setTextColor(Color.rgb(184, 199, 217))
                 ui.postDelayed(this, 1_000L)
             }
@@ -478,6 +513,7 @@ class QuizActivity : Activity() {
 
     private fun speakQuestion() {
         val q = current ?: return
+        if (!QuizLock.shouldNarrate(screenInteractive(), inForeground)) return
         if (!voiceAppliesTo(q)) return
         if (!QuizVoice.isReady()) {
             if (QuizVoice.isUnusable()) ttsMissing()
@@ -558,7 +594,31 @@ class QuizActivity : Activity() {
         }
     }
 
+    /** Ends a parent-cancelled quiz or a parent-timed rest and uncovers the original player. */
+    private fun closeSession(event: String) {
+        solved = true // a deliberate parent action is not an abandoned question
+        justFinished = true // returning to the desktop must not raise the startup admin prompt
+        releaseSound()
+        dev.plume.DiagLog.event(event)
+        QuizPrefs(this).apply {
+            quizActive = false
+            restUntil = 0L
+            restForced = false
+        }
+        QuizGuardService.sync(this) // a manually started session may have enabled=false: stop its guard now
+        if (lockActive) {
+            stopLockTask()
+            lockActive = false
+        }
+        finish()
+    }
+
     private fun finishAfterCorrect() {
+        // A parent rest may have arrived during the farewell delay; the newer command wins.
+        if (restRemaining() > 0L) {
+            showRestScreen()
+            return
+        }
         justFinished = true // MainActivity skips the admin prompt right after a quiz
         releaseSound() // hand the sound back before the video is shown again
         dev.plume.DiagLog.event("quiz_done") // the happy end; anything else is quiz_abandoned below
@@ -568,6 +628,7 @@ class QuizActivity : Activity() {
             verifyPending = false
             quizActive = false // the session ends here; nothing must come back after a power-on
         }
+        QuizGuardService.sync(this)
         if (lockActive) {
             stopLockTask()
             lockActive = false
@@ -768,12 +829,14 @@ class QuizActivity : Activity() {
                 )
                 .build()
         }
-        am.requestAudioFocus(focusRequest!!)
-        if (am.isMusicActive) {
-            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
-            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
-            pausedMedia = true
-        }
+        val focusGranted = am.requestAudioFocus(focusRequest!!) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        val musicActive = am.isMusicActive
+        // isMusicActive is false on some TV players even while they are audible. PAUSE is explicit (not
+        // a play/pause toggle), so sending it with no player is harmless and is safer than skipping it.
+        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
+        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
+        pausedMedia = true
+        android.util.Log.i("GrowQuiz", "quiz audio focus=$focusGranted musicActive=$musicActive; pause sent")
     }
 
     private fun releaseSound() {

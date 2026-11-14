@@ -130,4 +130,30 @@ class QuizLockTest {
     fun `an unknown schedule time counts as lost`() {
         assertTrue(QuizLock.alarmLost(now = 1_000_000, bootAt = 900_000, nextTriggerAt = 1_100_000, lastScheduleAt = 0))
     }
+
+    @Test
+    fun `an unanswered quiz owns Home`() {
+        assertTrue(QuizLock.sessionActive(quizActive = true, restGuard = false, restUntil = 0, now = 1_000))
+        assertFalse(QuizLock.sessionActive(quizActive = false, restGuard = false, restUntil = 0, now = 1_000))
+    }
+
+    @Test
+    fun `only an unexpired enforced rest owns Home`() {
+        assertTrue(QuizLock.sessionActive(quizActive = false, restGuard = true, restUntil = 1_001, now = 1_000))
+        assertFalse(QuizLock.sessionActive(quizActive = false, restGuard = true, restUntil = 1_000, now = 1_000))
+        assertFalse(QuizLock.sessionActive(quizActive = false, restGuard = false, restUntil = 2_000, now = 1_000))
+    }
+
+    @Test
+    fun `a parent rest owns Home even when anti-guess rest is off`() {
+        assertTrue(QuizLock.sessionActive(quizActive = false, restGuard = false, restUntil = 1_001, now = 1_000, restForced = true))
+        assertFalse(QuizLock.sessionActive(quizActive = false, restGuard = false, restUntil = 1_000, now = 1_000, restForced = true))
+    }
+
+    @Test
+    fun `narration needs a bright foreground page`() {
+        assertTrue(QuizLock.shouldNarrate(screenInteractive = true, pageForeground = true))
+        assertFalse(QuizLock.shouldNarrate(screenInteractive = false, pageForeground = true))
+        assertFalse(QuizLock.shouldNarrate(screenInteractive = true, pageForeground = false))
+    }
 }

@@ -194,6 +194,37 @@
         </div>
       </div>
 
+      <div class="card">
+        <h3>家长快捷控制</h3>
+        <div class="set-row">
+          <div class="nm">答题功能<div id="quickState" class="hint">--</div></div>
+          <div class="sw"><input id="quickEnabled" type="checkbox"><i></i></div>
+        </div>
+        <div class="muted" style="font-size:13px">关闭后立即结束当前答题或休息，并停止后续定时答题；大人看完后重新打开即可。</div>
+      </div>
+
+      <div class="card">
+        <h3>立即休息</h3>
+        <div class="row">
+          <div>
+            <label for="restMinutes">休息时长</label>
+            <select id="restMinutes">
+              <option value="5">5 分钟</option>
+              <option value="10" selected>10 分钟</option>
+              <option value="15">15 分钟</option>
+              <option value="30">30 分钟</option>
+              <option value="60">60 分钟</option>
+              <option value="120">120 分钟</option>
+            </select>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button id="restStartBtn" class="danger">开始强制休息</button>
+          </div>
+        </div>
+        <div id="restNowHint" class="muted" style="margin-top:10px;font-size:13px">休息期间不能看电视，时间到自动返回原播放页面。</div>
+      </div>
+
       <div id="restCard" class="card rest-card hidden">
         <h3>⚠️ 宝贝正处于强制休息</h3>
         <button id="restClearBtn" class="danger">立即解除强制休息</button>
@@ -671,6 +702,8 @@
       $('interval').value = s.interval;
       $('thinkSeconds').value = s.thinkSeconds ?? 5;
       $('enabled').checked = s.enabled;
+      $('quickEnabled').checked = s.enabled;
+      $('quickState').textContent = s.enabled ? '已开启，按设定时间答题' : '定时答题已关闭，可按需单独发起';
       $('voice').checked = s.voice !== false;
       $('bootQuiz').checked = s.bootQuiz !== false;
       $('restGuard').checked = s.restGuard !== false;
@@ -684,14 +717,19 @@
       $('stTts').textContent = s.voice === false ? '已关闭' : tts;
       $('stBoot').textContent = s.bootQuiz === false ? '已关闭' : '开启';
       const restMs = s.restRemainingMs || 0;
-      const resting = s.restGuard !== false && restMs > 0;
-      $('stRest').textContent = s.restGuard === false ? '功能已关闭'
+      const resting = (s.restGuard !== false || s.restForced === true) && restMs > 0;
+      $('stRest').textContent = s.restGuard === false && s.restForced !== true ? '防蒙题休息已关闭'
         : resting ? '休息中（剩 ' + Math.ceil(restMs / 60000) + ' 分钟）'
         : '未休息' + ((s.wrongStreak || 0) > 0 ? '（已连错 ' + s.wrongStreak + ' 题）' : '');
+      $('restNowHint').textContent = resting && s.restForced === true
+        ? '家长设置的休息正在进行，剩余约 ' + Math.ceil(restMs / 60000) + ' 分钟。'
+        : '休息期间不能看电视，时间到自动返回原播放页面。';
       // 休息警告卡：只有真的在休息才出现
       $('restCard').classList.toggle('hidden', !resting);
       $('restHint').textContent = resting
-        ? '已连续答错触发休息，点击上方按钮立即解除（连错计数同时清零）'
+        ? (s.restForced === true
+          ? '这是家长设置的休息，点击上方按钮可提前结束并返回视频'
+          : '已连续答错触发休息，点击上方按钮立即解除（连错计数同时清零）')
         : '';
       // 环境检测：明细与操作指引都在右上角「环境检测」弹窗里，这里只留一行汇总。
       // 判定逻辑与电视端 EnvCheck.kt 保持一致；guardMissing 的名称与 quiz/QuizLock.Need 一一对应。
@@ -772,6 +810,25 @@
     };
 
     // ---------- 总览页操作 ----------
+    let quickBusy = false;
+    $('quickEnabled').onchange = async () => {
+      if (quickBusy || !lastStatus) return;
+      const want = $('quickEnabled').checked;
+      quickBusy = true;
+      $('quickEnabled').disabled = true;
+      try {
+        await api('/api/settings', { age: lastStatus.age, interval: lastStatus.interval, enabled: want });
+        msg($('panelMsg'), want ? '答题已开启' : '答题已关闭，当前页面正在退出', true);
+        await refresh();
+      } catch (e) {
+        $('quickEnabled').checked = !want;
+        msg($('panelMsg'), e.message, false);
+      } finally {
+        quickBusy = false;
+        $('quickEnabled').disabled = false;
+      }
+    };
+
     $('saveBtn').onclick = async () => {
       try {
         const categories = [...document.querySelectorAll('#catList input:checked')].map(i => i.value);
@@ -818,6 +875,17 @@
         msg($('panelMsg'), '已解除强制休息', true);
         await refresh();
       } catch (e) { msg($('panelMsg'), e.message, false); }
+    };
+
+    $('restStartBtn').onclick = async () => {
+      const minutes = Number($('restMinutes').value);
+      $('restStartBtn').disabled = true;
+      try {
+        await api('/api/rest/start', { minutes });
+        msg($('panelMsg'), '已开始 ' + minutes + ' 分钟强制休息', true);
+        await refresh();
+      } catch (e) { msg($('panelMsg'), e.message, false); }
+      finally { $('restStartBtn').disabled = false; }
     };
 
     $('startBtn').onclick = async () => {

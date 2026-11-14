@@ -87,6 +87,11 @@ class QuizPrefs(context: Context) {
         get() = prefs.getLong(KEY_REST_UNTIL, 0L)
         set(value) = prefs.edit().putLong(KEY_REST_UNTIL, value).apply()
 
+    /** A parent started this rest from the console. It works even when anti-guess rest is off. */
+    var restForced: Boolean
+        get() = prefs.getBoolean(KEY_REST_FORCED, false)
+        set(value) = prefs.edit().putBoolean(KEY_REST_FORCED, value).apply()
+
     /** Consecutive snap (too-fast) wrong answers, used to catch blind guessing. */
     var snapWrongs: Int
         get() = prefs.getInt(KEY_SNAP_WRONGS, 0)
@@ -144,20 +149,43 @@ class QuizPrefs(context: Context) {
     fun clearRest() {
         prefs.edit()
             .putLong(KEY_REST_UNTIL, 0L)
+            .putBoolean(KEY_REST_FORCED, false)
             .putInt(KEY_WRONG_STREAK, 0)
             .putInt(KEY_SNAP_WRONGS, 0)
             .putBoolean(KEY_VERIFY_PENDING, false)
             .commit()
     }
 
-    fun save(age: Int, interval: Int, enabled: Boolean, categories: Set<String> = this.categories, voice: Boolean = this.voice) {
+    /** Starts a parent-timed rest. The open session flag also lets Home restore it after a reboot. */
+    fun startForcedRest(minutes: Int, now: Long = System.currentTimeMillis()): Long {
+        require(minutes in 1..240) { "rest minutes must be in 1..240" }
+        val until = now + minutes * 60_000L
         prefs.edit()
+            .putLong(KEY_REST_UNTIL, until)
+            .putBoolean(KEY_REST_FORCED, true)
+            .putBoolean(KEY_QUIZ_ACTIVE, true)
+            .commit()
+        return until
+    }
+
+    fun save(age: Int, interval: Int, enabled: Boolean, categories: Set<String> = this.categories, voice: Boolean = this.voice) {
+        val edit = prefs.edit()
             .putInt(KEY_AGE, age.coerceIn(5, 15))
             .putInt(KEY_INTERVAL, interval.coerceIn(1, 1440))
             .putBoolean(KEY_ENABLED, enabled)
             .putStringSet(KEY_CATEGORIES, categories)
             .putBoolean(KEY_VOICE, voice)
-            .commit()
+        if (!enabled) {
+            // The home-page switch is also the parent's "let us watch now" button: close the current
+            // page and clear every lock, not only future alarms. QuizActivity notices this in its loop.
+            edit.putLong(KEY_REST_UNTIL, 0L)
+                .putBoolean(KEY_REST_FORCED, false)
+                .putBoolean(KEY_QUIZ_ACTIVE, false)
+                .putInt(KEY_WRONG_STREAK, 0)
+                .putInt(KEY_SNAP_WRONGS, 0)
+                .putBoolean(KEY_VERIFY_PENDING, false)
+        }
+        edit.commit()
     }
 
     companion object {
@@ -176,6 +204,7 @@ class QuizPrefs(context: Context) {
         private const val KEY_THINK_SECONDS = "think_seconds"
         private const val KEY_WRONG_STREAK = "wrong_streak"
         private const val KEY_REST_UNTIL = "rest_until"
+        private const val KEY_REST_FORCED = "rest_forced"
         private const val KEY_SNAP_WRONGS = "snap_wrongs"
         private const val KEY_VERIFY_PENDING = "verify_pending"
         private const val KEY_QUIZ_ACTIVE = "quiz_active"

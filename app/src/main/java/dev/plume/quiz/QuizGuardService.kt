@@ -32,6 +32,22 @@ class QuizGuardService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        ensureForeground()
+    }
+
+    /**
+     * Retry promotion for every start request. Some firmwares keep the Service object after a failed
+     * first startForeground(), so later requests never run onCreate() again. Returning without a retry
+     * then leaves the original foreground-service timeout armed and kills the whole app minutes later.
+     */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        ensureForeground()
+        if (!started) stopSelf(startId)
+        return if (started) START_STICKY else START_NOT_STICKY
+    }
+
+    private fun ensureForeground() {
+        if (started) return
         try {
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(
@@ -43,21 +59,14 @@ class QuizGuardService : Service() {
             )
             startForeground(NOTIFICATION_ID, build())
             started = true
+            android.util.Log.i("GrowQuiz", "quiz guard entered foreground")
         } catch (e: Exception) {
-            // A firmware that refuses a foreground service of this type would otherwise crash, and
-            // START_STICKY would bring the crash back in a loop. Give up instead: the alarm still
-            // works, only without the protection of a live process.
+            // START_STICKY stays off until the notification is really up. stopSelf(startId) in
+            // onStartCommand cancels this request without cancelling a newer one that may succeed.
+            android.util.Log.e("GrowQuiz", "quiz guard foreground failed", e)
             DiagLog.event("quiz_guard_fail", "start:" + (e.message ?: e.javaClass.simpleName))
-            stopSelf()
         }
     }
-
-    /**
-     * START_STICKY only once the notification is up: if [onCreate] gave up, a sticky restart would
-     * loop the same failure instead of leaving the alarm alone.
-     */
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int =
-        if (started) START_STICKY else START_NOT_STICKY
 
     private fun build(): Notification {
         val open = PendingIntent.getActivity(
@@ -84,7 +93,20 @@ class QuizGuardService : Service() {
          */
         fun sync(context: Context) {
             val app = context.applicationContext
-            if (!QuizPrefs(app).enabled) {
+            val prefs = QuizPrefs(app)
+            val session = QuizLock.sessionActive(
+                quizActive = prefs.quizActive,
+                restGuard = prefs.restGuard,
+                restUntil = prefs.restUntil,
+                now = System.currentTimeMillis(),
+                restForced = prefs.restForced,
+            )
+            if (!prefs.enabled && !session) {
+                // Also remove an older full-screen reminder: tapping it later must not reopen a page
+                // after the parent used the home-page switch to stop the current session.
+                runCatching {
+                    app.getSystemService(NotificationManager::class.java)?.cancel(QuizAlarmReceiver.NOTIFICATION_ID)
+                }
                 runCatching { app.stopService(Intent(app, QuizGuardService::class.java)) }
                 return
             }

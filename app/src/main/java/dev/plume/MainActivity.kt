@@ -556,8 +556,13 @@ class MainActivity : Activity() {
             // restUntil set. Go back to that page before anything else — the quiz lives in its own
             // task, so the desktop below stays as it was. The rest page already shows the console
             // address and QR, which is what the admin prompt would have reminded of.
-            val restOwed = quizPrefs.restGuard && quizPrefs.restUntil > System.currentTimeMillis()
-            if (quizPrefs.enabled && (quizPrefs.quizActive || restOwed)) {
+            if (dev.plume.quiz.QuizLock.sessionActive(
+                    quizActive = quizPrefs.quizActive,
+                    restGuard = quizPrefs.restGuard,
+                    restUntil = quizPrefs.restUntil,
+                    now = System.currentTimeMillis(),
+                    restForced = quizPrefs.restForced,
+                )) {
                 startActivity(Intent(this, dev.plume.quiz.QuizActivity::class.java))
             } else {
                 showWebAdminPrompt(quizAfterOk = quizPrefs.bootQuiz)

@@ -29,6 +29,18 @@ object QuizLock {
         return delay.coerceAtMost(MAX_RETRY_MS)
     }
 
+    /** Narration belongs only to a visible, interactive page; a dark or covered screen stays silent. */
+    fun shouldNarrate(screenInteractive: Boolean, pageForeground: Boolean): Boolean =
+        screenInteractive && pageForeground
+
+    /** Both anti-guess rest and a parent-started rest count; either owns the screen until it expires. */
+    fun restOwed(restGuard: Boolean, restForced: Boolean, restUntil: Long, now: Long): Boolean =
+        (restGuard || restForced) && restUntil > now
+
+    /** An open question or an active rest owns Home. Disabling the quiz clears quizActive in QuizPrefs. */
+    fun sessionActive(quizActive: Boolean, restGuard: Boolean, restUntil: Long, now: Long, restForced: Boolean = false): Boolean =
+        quizActive || restOwed(restGuard, restForced, restUntil, now)
+
     /**
      * Whether a lost foreground is something to take back.
      *

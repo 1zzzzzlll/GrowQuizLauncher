@@ -54,8 +54,13 @@ class HomeOverride : AccessibilityService() {
     private val bootCatchUp = Runnable {
         if (SystemClock.uptimeMillis() > BOOT_WINDOW_MS) return@Runnable
         val prefs = dev.plume.quiz.QuizPrefs(this)
-        val rest = prefs.restGuard && prefs.restUntil > System.currentTimeMillis()
-        if (prefs.enabled && (prefs.quizActive || rest)) {
+        if (dev.plume.quiz.QuizLock.sessionActive(
+                quizActive = prefs.quizActive,
+                restGuard = prefs.restGuard,
+                restUntil = prefs.restUntil,
+                now = System.currentTimeMillis(),
+                restForced = prefs.restForced,
+            )) {
             DiagLog.event("boot_catchup_quiz")
             startActivity(
                 Intent(this, dev.plume.quiz.QuizActivity::class.java).addFlags(
@@ -108,7 +113,9 @@ class HomeOverride : AccessibilityService() {
         if (e.keyCode != KeyEvent.KEYCODE_HOME) return remap(e)
         // Decided on release, by how long it was held: this TV's remote doesn't reliably send key repeats.
         if (e.action == KeyEvent.ACTION_UP && !e.isCanceled) {
-            if (e.eventTime - e.downTime < LONG_PRESS_MS) goHome() else performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+            // A parent-started rest owns Home too; long Home must not open a way out through the shade.
+            if (quizRunning() || e.eventTime - e.downTime < LONG_PRESS_MS) goHome()
+            else performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
         }
         return true
     }
@@ -151,6 +158,12 @@ class HomeOverride : AccessibilityService() {
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
         TvWatch.note(this, pkg) // watch-time tracking sees every foreground change first
+        // The quiz has its own foreground guard. Covering a home window here as well starts a fight:
+        // Home opens MainActivity, the quiz pulls itself back, and the video task ends up below both.
+        if (quizRunning()) {
+            handler.removeCallbacks(jump)
+            return
+        }
         val after = watch.opened(pkg, e.className?.toString(), SystemClock.uptimeMillis())
         if (after == HomeWatch.KEEP) return // the waiting jump stays
         handler.removeCallbacks(jump) // any other window opening means Home wasn't where we were going
@@ -183,8 +196,31 @@ class HomeOverride : AccessibilityService() {
         stock = stockHomes(found + vendor, resolved)
     }
 
+    private fun quizRunning(): Boolean {
+        val prefs = dev.plume.quiz.QuizPrefs(this)
+        return dev.plume.quiz.QuizLock.sessionActive(
+            quizActive = prefs.quizActive,
+            restGuard = prefs.restGuard,
+            restUntil = prefs.restUntil,
+            now = System.currentTimeMillis(),
+            restForced = prefs.restForced,
+        )
+    }
+
     // Marked as Home so the setup check can tell it from Plume being opened from the apps list.
-    private fun goHome() = startActivity(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    private fun goHome() {
+        if (quizRunning()) {
+            // Do not insert the desktop between the quiz and the player: finishing the quiz then
+            // uncovers the player again. This also consumes repeated Home presses without a home flash.
+            startActivity(
+                Intent(this, dev.plume.quiz.QuizActivity::class.java).addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
+                ),
+            )
+            return
+        }
+        startActivity(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
 
     override fun onInterrupt() {}
 
