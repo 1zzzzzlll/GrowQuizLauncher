@@ -156,4 +156,23 @@ class QuizLockTest {
         assertFalse(QuizLock.shouldNarrate(screenInteractive = false, pageForeground = true))
         assertFalse(QuizLock.shouldNarrate(screenInteractive = true, pageForeground = false))
     }
+
+    // A firmware that delivers one alarm twice sends the second a moment after the first. Acting on
+    // it would reschedule, pop the page again and count as a second alarm in the report.
+    @Test
+    fun `a second delivery within seconds is the same alarm`() {
+        assertTrue(QuizLock.duplicateAlarm(lastAlarmAt = 1_000_000, now = 1_000_000))
+        assertTrue(QuizLock.duplicateAlarm(lastAlarmAt = 1_000_000, now = 1_002_999))
+    }
+
+    @Test
+    fun `a delivery a minute later is a new alarm`() {
+        assertFalse(QuizLock.duplicateAlarm(lastAlarmAt = 1_000_000, now = 1_003_000))
+        assertFalse(QuizLock.duplicateAlarm(lastAlarmAt = 1_000_000, now = 1_060_000))
+    }
+
+    @Test
+    fun `the first alarm ever is never a duplicate`() {
+        assertFalse(QuizLock.duplicateAlarm(lastAlarmAt = 0, now = 1_000_000))
+    }
 }

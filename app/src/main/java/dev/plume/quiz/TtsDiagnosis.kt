@@ -22,6 +22,18 @@ object TtsDiagnosis {
     /** The event type for an init failure, decided by what the TV has installed. */
     fun typeFor(engines: List<String>): String = if (engines.isEmpty()) MISSING else INIT_FAILED
 
+    /**
+     * The engine to ask by name after a failed start, or null when asking again would only repeat it.
+     *
+     * A set-top box in the field listed the sherpa engine and still answered -1 on every start: the
+     * engine was installed but none was set as the system default (`tts_default_synth` empty). The
+     * constructor without a package name only consults that default, so naming the installed engine
+     * is the difference between a read-aloud question and a silent screen for a five-year-old. The
+     * second attempt is never retried, or a broken engine would loop.
+     */
+    fun explicitEngine(engineName: String?, engines: List<String>): String? =
+        if (engineName == null) engines.firstOrNull() else null
+
     /** The message that goes with [typeFor]: the status, plus the engines when there are any. */
     fun msg(status: Int, engines: List<String>): String =
         if (engines.isEmpty()) "status=$status" else "status=$status engines=${engines.joinToString(",")}"

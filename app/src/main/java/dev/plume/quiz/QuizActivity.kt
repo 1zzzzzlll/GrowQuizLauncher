@@ -250,6 +250,13 @@ class QuizActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // GrowQuiz: the alarm brings this page back instead of building it again, so onCreate's
+        // quiz_open never runs. Nine hours on a tablet showed the cost: 150 quiz_popup_blocked
+        // lines, each followed by the snapback_ok only a live page writes. The page was up; the
+        // audit had no proof. Stamp the pop-up here as well, and mark it "reuse" so a report can
+        // still tell a rebuilt page from one that came back from memory.
+        QuizPrefs(this).lastQuizOpenAt = System.currentTimeMillis()
+        dev.plume.DiagLog.event("quiz_open", "", mapOf("reuse" to "1"))
         // A parent can start a rest while a question is already open; switch to it immediately.
         if (restRemaining() > 0L) {
             showRestScreen()

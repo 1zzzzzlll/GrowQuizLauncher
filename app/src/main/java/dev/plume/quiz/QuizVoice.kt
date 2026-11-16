@@ -21,25 +21,55 @@ object QuizVoice {
     private var utterance = 0
     private var rate = 0.85f
 
+    /** Counts engine creations, so a callback from a replaced engine is ignored (see [start]). */
+    private var generation = 0
+
     /** Starts the engine, or does nothing when it is already up. Safe to call from every screen. */
     fun warm(context: Context) {
         if (engine != null || starting) return
+        start(context.applicationContext, null)
+    }
+
+    /**
+     * Builds the engine. [engineName] null means "the system default"; a non-null value asks one
+     * engine by package, which is the retry path for a TV that has an engine installed but no
+     * default set (see [TtsDiagnosis.explicitEngine]).
+     *
+     * [generation] makes the retry safe: an engine that answers during its own constructor must not
+     * leave the field pointing at the instance that just failed.
+     */
+    private fun start(app: Context, engineName: String?) {
         starting = true
-        val app = context.applicationContext
-        engine = TextToSpeech(app) { status ->
-            starting = false
-            if (status != TextToSpeech.SUCCESS) {
-                // Most TVs here have no engine at all, and the constructor answers the same -1 for
-                // that as for an engine that is installed but will not start. The list of engines
-                // on board tells the two apart; see TtsDiagnosis.
-                val engines = TtsDiagnosis.names(TtsProbe.engineNames(app))
-                android.util.Log.w("GrowQuiz", "tts init failed: $status engines=${engines.joinToString(",")}")
-                failure = "no-engine"
-                dev.plume.DiagLog.event(TtsDiagnosis.typeFor(engines), TtsDiagnosis.msg(status, engines))
-                return@TextToSpeech
-            }
-            configure()
+        val gen = ++generation
+        val listener = TextToSpeech.OnInitListener { status ->
+            if (gen == generation) onInit(app, engineName, status)
         }
+        val created = if (engineName == null) TextToSpeech(app, listener)
+        else TextToSpeech(app, listener, engineName)
+        if (gen == generation) engine = created else runCatching { created.shutdown() }
+    }
+
+    private fun onInit(app: Context, engineName: String?, status: Int) {
+        starting = false
+        if (status != TextToSpeech.SUCCESS) {
+            // Most TVs here have no engine at all, and the constructor answers the same -1 for
+            // that as for an engine that is installed but will not start. The list of engines
+            // on board tells the two apart; see TtsDiagnosis.
+            val engines = TtsDiagnosis.names(TtsProbe.engineNames(app))
+            val retry = TtsDiagnosis.explicitEngine(engineName, engines)
+            if (retry != null) {
+                android.util.Log.w("GrowQuiz", "tts default engine failed ($status); asking $retry")
+                runCatching { engine?.shutdown() }
+                engine = null
+                start(app, retry)
+                return
+            }
+            android.util.Log.w("GrowQuiz", "tts init failed: $status engines=${engines.joinToString(",")}")
+            failure = "no-engine"
+            dev.plume.DiagLog.event(TtsDiagnosis.typeFor(engines), TtsDiagnosis.msg(status, engines))
+            return
+        }
+        configure()
     }
 
     private fun configure() {

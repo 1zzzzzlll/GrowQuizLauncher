@@ -57,4 +57,16 @@ class PopupAuditTest {
             PopupAudit.swallowed(alarm, 0L, alarm - 60_000L, alarm + PopupAudit.GRACE_MS),
         )
     }
+
+    // The tablet that wrote 150 false blocks in one night: an alarm every 5 minutes, the page
+    // already in memory each time, so only onNewIntent ran. Every round must stay quiet — this
+    // fails again the moment onNewIntent stops stamping the pop-up.
+    @Test
+    fun `a page reused from memory clears every round of alarms`() {
+        for (round in 0 until 12) {
+            val alarmAt = 1_000_000L + round * 300_000L
+            val openedAt = alarmAt + 1_000L
+            assertNull(PopupAudit.swallowed(alarmAt, openedAt, 0L, alarmAt + 300_000L))
+        }
+    }
 }

@@ -42,6 +42,20 @@ object QuizLock {
         quizActive || restOwed(restGuard, restForced, restUntil, now)
 
     /**
+     * Whether this delivery is the same alarm arriving twice.
+     *
+     * Some firmwares hand one alarm broadcast to the app two times in the same second: the TCL test
+     * set wrote two alarm_fired lines per wake-up, the second one carrying a due time already 10
+     * minutes ahead — proof it ran after the first had rescheduled. The shortest parent interval is
+     * one minute, so two deliveries a few seconds apart are never two alarms.
+     */
+    fun duplicateAlarm(lastAlarmAt: Long, now: Long): Boolean =
+        lastAlarmAt > 0L && now - lastAlarmAt in 0 until DUPLICATE_MS
+
+    /** Deliveries closer than this belong to the same alarm; see [duplicateAlarm]. */
+    const val DUPLICATE_MS = 3_000L
+
+    /**
      * Whether a lost foreground is something to take back.
      *
      * A solved question, a finished page and a screen that is off are all reasons to stay put: the

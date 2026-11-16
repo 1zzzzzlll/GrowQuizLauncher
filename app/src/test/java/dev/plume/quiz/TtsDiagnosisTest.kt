@@ -40,4 +40,22 @@ class TtsDiagnosisTest {
             TtsDiagnosis.msg(-1, listOf("com.a.tts", "com.b.tts")),
         )
     }
+
+    @Test
+    fun `an installed engine is asked by name when the default one failed`() {
+        assertEquals(
+            "com.k2fsa.sherpa.onnx.tts.engine",
+            TtsDiagnosis.explicitEngine(null, listOf("com.k2fsa.sherpa.onnx.tts.engine")),
+        )
+    }
+
+    @Test
+    fun `nothing is retried when no engine is installed`() {
+        assertEquals(null, TtsDiagnosis.explicitEngine(null, emptyList()))
+    }
+
+    @Test
+    fun `the named engine is not retried again`() {
+        assertEquals(null, TtsDiagnosis.explicitEngine("com.a.tts", listOf("com.a.tts")))
+    }
 }

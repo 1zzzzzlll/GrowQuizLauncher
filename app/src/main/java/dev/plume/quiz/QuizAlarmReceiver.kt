@@ -16,6 +16,9 @@ class QuizAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val prefs = QuizPrefs(context)
         if (!prefs.enabled) return
+        // GrowQuiz: one alarm, two deliveries on some firmware (see QuizLock.duplicateAlarm). The
+        // second would reschedule, pop the page again and count as a second alarm in the report.
+        if (QuizLock.duplicateAlarm(prefs.lastAlarmAt, System.currentTimeMillis())) return
         // GrowQuiz: read the due time before rescheduling overwrites it, so the event can say how
         // late the alarm really was — the number that tells an inexact fallback from a broken alarm.
         val due = prefs.nextTriggerAt
@@ -115,6 +118,10 @@ class QuizAlarmReceiver : BroadcastReceiver() {
                     "overlay" to Settings.canDrawOverlays(context).toString(),
                     "sdk" to Build.VERSION.SDK_INT.toString(),
                     "ageMin" to ((now - missed) / 60_000L).toString(),
+                    // GrowQuiz: a session flag left open means a page exists somewhere but never came
+                    // to the front; a clear one means the start was dropped outright. Two different
+                    // faults that read the same in a report without this field.
+                    "active" to prefs.quizActive.toString(),
                 ),
             )
         }
