@@ -41,9 +41,36 @@ object WebAdminServer {
     private const val MAX_IMPORT_QUESTIONS = 5000
     private const val MAX_IMPORT_ERRORS = 20
 
-    private val sessions = HashMap<String, Long>()
+    /** Connections served at the same time. More than a phone and a tablet never need. */
+    private const val MAX_CONNECTIONS = 6
+
+    /** How long one request may take before its socket is closed. A question import over slow Wi-Fi fits. */
+    private const val REQUEST_DEADLINE_MS = 60_000L
+
+    /** A client that connects and then says nothing costs at most this long. */
+    private const val READ_TIMEOUT_MS = 15_000
+
+    private val sessions = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val random = SecureRandom()
     private val main = Handler(Looper.getMainLooper())
+
+    /**
+     * One worker per connection and a hard deadline for each.
+     *
+     * A single accept thread used to run one request at a time, and a socket has no write timeout:
+     * a phone that asked for a large answer and then stopped reading (`/api/questions` is megabytes)
+     * blocked that write for good, and with it every later request. The console stayed on "listening"
+     * and answered nothing until the app was restarted — seen on the test TV on 11-22, after which the
+     * only way back was a restart. Now a stuck client costs one worker until its deadline closes the
+     * socket, and the accept loop keeps serving.
+     */
+    private val workers = java.util.concurrent.Executors.newCachedThreadPool { r ->
+        Thread(r, "web-admin-req").apply { isDaemon = true }
+    }
+    private val deadlines = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "web-admin-watch").apply { isDaemon = true }
+    }
+    private val active = java.util.concurrent.atomic.AtomicInteger()
 
     @Volatile private var server: ServerSocket? = null
     @Volatile private var running = false
@@ -93,7 +120,9 @@ object WebAdminServer {
     @Volatile private var unlockToken: String? = null
     @Volatile private var unlockDone: (() -> Unit)? = null
     private var unlockAt = 0L
-    private var unlockFails = 0
+    // Requests run on their own threads now, so the try counter must count atomically — otherwise
+    // two wrong passwords at the same moment can buy a third try.
+    private val unlockFails = java.util.concurrent.atomic.AtomicInteger()
 
     /**
      * Starts a one-off unlock session while the TV's password dialog is up and returns its token.
@@ -105,7 +134,7 @@ object WebAdminServer {
         unlockToken = token
         unlockDone = onUnlock
         unlockAt = System.currentTimeMillis()
-        unlockFails = 0
+        unlockFails.set(0)
         return token
     }
 
@@ -136,8 +165,9 @@ object WebAdminServer {
     @Volatile private var bank: QuestionBank? = null
 
     /** One bank per server run; mutations reload it, and disabled state lives in shared preferences. */
-    private fun bank(context: Context): QuestionBank =
+    private fun bank(context: Context): QuestionBank = synchronized(this) {
         bank ?: QuestionBank(context.applicationContext).also { bank = it }
+    }
 
     private fun serve(context: Context) {
         val socket = server ?: return
@@ -147,14 +177,30 @@ object WebAdminServer {
             } catch (_: IOException) {
                 return
             }
-            try {
-                client.soTimeout = 15_000
-                handle(client, context)
-            } catch (_: Exception) {
-            } finally {
+            if (active.get() >= MAX_CONNECTIONS) {
+                // A phone that opens a dozen tabs must not cost the TV a dozen threads (or the memory
+                // of a dozen question lists). The browser retries; the console is a one-parent page.
+                runCatching { client.close() }
+                continue
+            }
+            active.incrementAndGet()
+            workers.execute {
+                // Closing the socket is the only way to abort a write to a client that stopped
+                // reading: Socket has no write timeout. It also ends the worker, which then frees
+                // its slot.
+                val deadline = deadlines.schedule(
+                    { runCatching { client.close() } },
+                    REQUEST_DEADLINE_MS,
+                    java.util.concurrent.TimeUnit.MILLISECONDS,
+                )
                 try {
-                    client.close()
-                } catch (_: IOException) {
+                    client.soTimeout = READ_TIMEOUT_MS
+                    handle(client, context)
+                } catch (_: Exception) {
+                } finally {
+                    deadline.cancel(false)
+                    runCatching { client.close() }
+                    active.decrementAndGet()
                 }
             }
         }
@@ -306,11 +352,11 @@ object WebAdminServer {
                         reply(out, 200, "application/json; charset=utf-8", ok())
                         main.post(done) // the dialog dismisses itself and the settings open, as if typed on the TV
                     }
-                    ++unlockFails >= UNLOCK_TRIES -> {
+                    unlockFails.incrementAndGet() >= UNLOCK_TRIES -> {
                         endUnlock()
                         reply(out, 429, "application/json; charset=utf-8", """{"ok":false,"error":"too-many"}""")
                     }
-                    else -> reply(out, 401, "application/json; charset=utf-8", """{"ok":false,"error":"wrong","tries":${UNLOCK_TRIES - unlockFails}}""")
+                    else -> reply(out, 401, "application/json; charset=utf-8", """{"ok":false,"error":"wrong","tries":${UNLOCK_TRIES - unlockFails.get()}}""")
                 }
             }
 

@@ -156,6 +156,7 @@ object EmbeddedTts {
                     try {
                         say(say)
                     } catch (e: Throwable) {
+                        android.util.Log.w("GrowQuiz", "voice synth failed", e)
                         DiagLog.event("tts_local_speak_fail", e.message ?: e.javaClass.simpleName)
                     }
                 }
@@ -238,6 +239,7 @@ object EmbeddedTts {
                 Thread.sleep(20)
             }
         } catch (e: Exception) {
+            android.util.Log.w("GrowQuiz", "voice play failed (sr=$sampleRate frames=${pcm.size})", e)
             DiagLog.event("tts_local_play_fail", e.message ?: e.javaClass.simpleName)
         } finally {
             runCatching { track?.stop() }

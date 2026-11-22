@@ -14,6 +14,11 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.20.2
+
+- **管理后台不再卡死。** 以前一个卡住的请求会让整个后台停止响应，只能重启应用。现在每个请求单独处理，超时自动断开，其他页面照常打开。
+- 后台同时最多处理 6 个连接，手机多开几个标签页不会再占满电视内存。
+
 ## 1.20.1
 
 - **答完题视频不再黑屏。** 答题页现在用半透明窗口盖在视频上，系统不再把下层播放器停下来，播放器的画面与硬件解码器都保留着；答完后继续播放，不用退出重进。
