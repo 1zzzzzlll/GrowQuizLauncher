@@ -14,6 +14,14 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.20.3
+
+- **语速调到 1.12。** 1.0 仍偏慢，0.9 更慢；这次按实际听感定。
+- **一道题只合成一次。** 题干和选项合成一段话，不再分两段各等一次，出声时间大约减半。
+- **下一题提前合成。** 当前题还在屏幕上时就算好下一题的语音，第二题起几乎不用等。
+- **试听等到真的出声才报成功。** 以前请求一返回就说「已播放」，家长对着没声音的电视无从判断。
+- 内置语音状态里的体积改成实际的 28 MB。
+
 ## 1.20.2
 
 - **管理后台不再卡死。** 以前一个卡住的请求会让整个后台停止响应，只能重启应用。现在每个请求单独处理，超时自动断开，其他页面照常打开。

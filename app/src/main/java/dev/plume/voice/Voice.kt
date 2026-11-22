@@ -81,6 +81,18 @@ object Voice {
         }
     }
 
+    /**
+     * Prepares a question that is not on screen yet. A sentence takes seconds to synthesise on this
+     * hardware, so the next question is computed while the child is still reading the current one;
+     * by the time it appears its clip is on disk and the voice starts at once. A system engine is
+     * fast enough that there is nothing to prepare.
+     */
+    fun warmParts(first: String, rest: String) {
+        val app = app ?: return
+        if (!usesEmbedded()) return
+        EmbeddedTts.warmClip(app, if (rest.isBlank()) first else "$first。$rest")
+    }
+
     fun stop() {
         QuizVoice.stop()
         EmbeddedTts.stop()

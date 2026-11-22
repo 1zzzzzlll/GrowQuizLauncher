@@ -40,6 +40,9 @@ class QuizActivity : Activity() {
     private lateinit var answerButtons: List<Button>
     private var bank: QuestionBank? = null
     private var current: Question? = null
+
+    /** The next question, drawn while this one is on screen so its voice can be synthesised in time. */
+    private var pending: Question? = null
     private var solved = false
     private var changing = false
     private var lockActive = false
@@ -257,7 +260,7 @@ class QuizActivity : Activity() {
         ttsNoted = true
         dev.plume.DiagLog.event("tts_missing", Voice.describe())
         // The voice can now be loaded from the app itself, so the toast says where instead of only why.
-        Toast.makeText(this, "本机没有可用的语音引擎。请在桌面右上角「环境检测」里加载内置语音，约 31 MB", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "本机没有可用的语音引擎。请在桌面右上角「环境检测」里加载内置语音，约 28 MB", Toast.LENGTH_LONG).show()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -457,7 +460,14 @@ class QuizActivity : Activity() {
         restPanel?.visibility = View.GONE
         if (qrShown) adminQr.visibility = View.VISIBLE
         val prefs = QuizPrefs(this)
-        val next = quiz.next(prefs.age, prefs.categories, current?.id)
+        // The question drawn last time is used only when it still fits the settings a parent may have
+        // changed in between; otherwise it is dropped and one is drawn now.
+        val early = pending?.takeIf {
+            it.id != current?.id && it.age == prefs.age &&
+                (it.custom || prefs.categories.isEmpty() || it.category in prefs.categories)
+        }
+        pending = null
+        val next = early ?: quiz.next(prefs.age, prefs.categories, current?.id)
         current = next
         val tag = if (prefs.verifyPending) "验证题 · " else ""
         progressText.text = "$tag${next.age} 岁 · ${next.category} · 答对后即可返回"
@@ -584,6 +594,26 @@ class QuizActivity : Activity() {
         // still being synthesised, so the question is heard at once. An option of one character, one
         // number or one letter is left out - spoken aloud it hands the answer over.
         Voice.speakParts(SpeechText.forStem(q.prompt), SpeechText.forOptions(q.options))
+        prefetchNext(q)
+    }
+
+    /**
+     * Draws the next question now and synthesises its voice while this one is still on screen.
+     *
+     * The model here needs seconds per sentence: without this the second question would be silent for
+     * as long as the first one, every time. Drawing it early costs one question that may never be
+     * shown (the quiz can end first), which the bank treats as asked — the price of a voice that
+     * starts at once. Only the bundled voice needs it; a system engine speaks immediately.
+     */
+    private fun prefetchNext(current: Question) {
+        if (pending != null) return
+        val bank = bank ?: return
+        if (!QuizPrefs(this).voice) return
+        val prefs = QuizPrefs(this)
+        val next = runCatching { bank.next(prefs.age, prefs.categories, current.id) }.getOrNull() ?: return
+        pending = next
+        if (!voiceAppliesTo(next)) return
+        Voice.warmParts(SpeechText.forStem(next.prompt), SpeechText.forOptions(next.options))
     }
 
     /**

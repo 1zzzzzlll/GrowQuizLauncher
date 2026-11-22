@@ -23,7 +23,7 @@
 | `voice/Voice.kt` | 门面：内置语音优先，本机引擎兜底；`describe()` 给管理台和环境检测用 |
 | `EnvCheck.kt` / `web_admin.html` | 环境检测的「语音朗读引擎」一行；手机端「设置 → 语音朗读」卡片 |
 
-模型**不放进 APK**：32 MB 会被每一台设备在每一次更新时重复付一遍流量。APK 只多出原生库（压缩后约 19 MB，`useLegacyPackaging = true`）。
+模型**不放进 APK**：28 MB 会被每一台设备在每一次更新时重复付一遍流量。APK 只多出原生库（压缩后约 19 MB，`useLegacyPackaging = true`）。
 
 ## 服务器
 
@@ -61,7 +61,7 @@ https://<updateBase>/tts/zh-aishell3-v1.zip
 
 ## 换声音 / 加一个包
 
-1. 从 [sherpa-onnx tts-models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models) 下载一个中文 VITS 模型（`vits-icefall-zh-aishell3` 目前最省，30 MB）。
+1. 从 [sherpa-onnx tts-models](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models) 下载一个中文 VITS 模型。**先用 `vits-icefall-zh-aishell3`**：它只有 8 kHz，但在这类电视上 6 秒音频约 8 秒合成完；22 kHz 的 `vits-zh-aishell3`（int8）实测一句要 160 秒以上，等于没有。
 2. `python tools/make_voice_pack.py --model-dir <解压目录> --id zh-xxx-v1 --name "..." --speaker 0`，脚本会打出 zip 和一段清单 JSON。
 3. 把 zip 和新的 `voice.json` 传到服务器同一目录。
 4. 客户端不需要发版：已经装过语音的设备会继续用旧包，直到删掉重新下载；想强制换音，改 `id` 让老包对不上即可（`PackStore` 装好新包会删掉旧目录）。
@@ -79,5 +79,6 @@ https://<updateBase>/tts/zh-aishell3-v1.zip
 
 - **只有 arm64-v8a 和 armeabi-v7a**：x86 模拟器（比如 `sdk_google_atv64_x86_64`）会走到 `UnsatisfiedLinkError`，上报 `tts_local_fail` 后回退系统引擎。
 - **中文模型**：英文单词和生僻符号可能念不出或跳过，中文题目不受影响。
-- **首次合成 1 秒上下**：A53 级别的电视盒子上，一句短题约 0.5–1.5 秒；已经进缓存的不再等。
-- **语速**：`speed=0.9` 是全局的，改它要连 `voice.json` 一起改（缓存名里带语速，不会串音）。
+- **首次合成要几秒**：A53 级别的电视盒子上，一句 20 字的题约 5～9 秒才出声；命中缓存约 1 秒内。所以答题页在显示当前题时就把下一题合成好（`QuizActivity.prefetchNext` + `Voice.warmParts`），第二题起不用等；控制台的试听按钮会等到真的出声才报成功。
+- **音质**：8 kHz 带宽窄，声音清楚但发闷；换成 22 kHz 会更自然，但这类电视算不动（见上）。
+- **语速**：`EmbeddedTts.SPEED` 目前 1.12（0.9 偏慢、1.0 仍偏慢，按实际听感定的）。缓存名里带语速，改它不会读出旧语速的片段。

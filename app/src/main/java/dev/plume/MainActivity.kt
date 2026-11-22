@@ -5028,7 +5028,7 @@ class MainActivity : Activity() {
         val rows = ArrayList<Triple<String, String, () -> Unit>>()
         when {
             pack == null && packState() != "downloading" && packState() != "unpacking" ->
-                rows += page(getString(R.string.voice_load, "31 MB")) { startVoiceDownload() }
+                rows += page(getString(R.string.voice_load, "28 MB")) { startVoiceDownload() }
             pack != null -> {
                 rows += page(getString(R.string.voice_test)) {
                     Voice.preferEmbedded(this, true)

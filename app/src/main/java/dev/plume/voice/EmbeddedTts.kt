@@ -32,10 +32,10 @@ object EmbeddedTts {
     private const val CHUNK = 2048
 
     /**
-     * Speech rate. A pack may carry its own, but 0.9 sounded sluggish on a real quiz (the parent's
-     * words), and a child reads along faster than that.
+     * Speech rate. A pack may carry its own, but 0.9 sounded sluggish on a real quiz and 1.0 still a
+     * little slow (the parent's words both times); a child reads along faster than either.
      */
-    private const val SPEED = 1.0f
+    private const val SPEED = 1.12f
 
     private class Say(val text: String, val gen: Int, val play: Boolean)
 

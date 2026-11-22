@@ -587,7 +587,7 @@
       if (pack === 'unpacking') return { name: '语音朗读引擎', ok: false, warn: true, st: '正在安装', fix: '内置语音正在解压，马上就好。', adb: [] };
       if (pack === 'ready') return { name: '语音朗读引擎', ok: false, warn: true, st: '内置语音未启用', fix: '在「设置 → 语音朗读」里点一下即可启用。', adb: [] };
       return { name: '语音朗读引擎', ok: false, st: s.tts === 'no-language' ? '缺中文语音' : '未安装',
-        fix: '读题需要中文语音。在「设置 → 语音朗读」里点「内置语音」，下载约 31 MB，不用安装任何软件；也可以用电脑 adb 装一个语音引擎 APP。',
+        fix: '读题需要中文语音。在「设置 → 语音朗读」里点「内置语音」，下载约 28 MB，不用安装任何软件；也可以用电脑 adb 装一个语音引擎 APP。',
         adb: [] };
     }
 
@@ -947,8 +947,8 @@
       if (pack === 'failed') return '上次下载没有完成，点这里重新下载（会接着上次的进度）';
       if (pack === 'ready' && !s.voiceEmbedded && s.tts !== 'initializing') return '内置语音已下载，但这台电视加载不了，暂时用自带引擎；点这里再试一次';
       if (s.tts === 'embedded') return '正在使用内置语音，离线也能朗读；点这里试听';
-      if (s.tts === 'available') return '电视自带引擎可用；点这里可加载内置语音（约 31 MB，声音更统一）';
-      return '这台电视没有可用的中文语音，点这里下载内置语音（约 31 MB，不用装任何软件）';
+      if (s.tts === 'available') return '电视自带引擎可用；点这里可加载内置语音（约 28 MB，声音更统一）';
+      return '这台电视没有可用的中文语音，点这里下载内置语音（约 28 MB，不用装任何软件）';
     }
     function stopVoicePoll() { if (voicePoll) { clearInterval(voicePoll); voicePoll = null; } }
     function startVoicePoll() {
