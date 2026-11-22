@@ -121,4 +121,23 @@ object QuizLock {
         notifications: Boolean,
         fullScreen: Boolean,
     ): Boolean = missing(sdk, overlay, exactAlarm, batteryFree, notifications, fullScreen).isEmpty()
+
+    /** How the answer guard asks the system for a foreground service; see [guardStart]. */
+    enum class GuardStart { SKIP, PLAIN, FOREGROUND }
+
+    /**
+     * Which start the guard may make.
+     *
+     * A foreground-service request is a request the system counts down, and a request that is never
+     * answered ends with the whole process killed — an open quiz page included. One firmware (TCL,
+     * Android 11, seen on tcl_mt5879_cn) does not answer one made from the background at all. So a
+     * visible page uses a plain start, which arms no countdown; the same firmware gets no request at
+     * all while nothing of ours is on screen; every other firmware keeps the background start it
+     * needs to stay alive between questions.
+     */
+    fun guardStart(visible: Boolean, tcl: Boolean): GuardStart = when {
+        visible -> GuardStart.PLAIN
+        tcl -> GuardStart.SKIP
+        else -> GuardStart.FOREGROUND
+    }
 }

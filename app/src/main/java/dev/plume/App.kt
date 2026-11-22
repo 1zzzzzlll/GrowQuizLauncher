@@ -1,6 +1,8 @@
 package dev.plume
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
 
 /** Process-wide setup that must run before any activity or receiver: crash and diagnostics recording. */
 class App : Application() {
@@ -8,6 +10,25 @@ class App : Application() {
         super.onCreate()
         DiagLog.init(this)
         CrashLog.install(this)
+        // GrowQuiz: the guard asks the system for a foreground service, and on some firmwares that
+        // request is only answered while one of our pages is on screen (see QuizGuardService.sync).
+        // One place decides "visible", so the desktop, the quiz page and the phone-side settings all
+        // count the same.
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityResumed(activity: Activity) {
+                dev.plume.quiz.QuizGuardService.uiVisible = true
+            }
+
+            override fun onActivityPaused(activity: Activity) {
+                dev.plume.quiz.QuizGuardService.uiVisible = false
+            }
+
+            override fun onActivityCreated(activity: Activity, state: Bundle?) {}
+            override fun onActivityStarted(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, state: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
         DiagLog.event("app_start", "", mapOf("vendor" to Vendor.current))
         // A process start is a chance to report an alarm whose quiz pop-up never appeared; the
         // audit no-ops when there is nothing overdue (e.g. the alarm that woke this very process).

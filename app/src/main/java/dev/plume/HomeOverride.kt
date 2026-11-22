@@ -158,6 +158,7 @@ class HomeOverride : AccessibilityService() {
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
         TvWatch.note(this, pkg) // watch-time tracking sees every foreground change first
+        QuizReturn.note(this, pkg) // the app a question may have to hand back when it finishes
         // The quiz has its own foreground guard. Covering a home window here as well starts a fight:
         // Home opens MainActivity, the quiz pulls itself back, and the video task ends up below both.
         if (quizRunning()) {

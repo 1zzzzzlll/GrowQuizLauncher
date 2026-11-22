@@ -28,6 +28,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import dev.plume.Qr
+import dev.plume.QuizReturn
 
 /** Full-screen, remote-first quiz. A wrong answer advances to a different question. */
 class QuizActivity : Activity() {
@@ -43,6 +44,12 @@ class QuizActivity : Activity() {
     private var lockActive = false
     private lateinit var answerGrid: GridLayout
     private var restPanel: LinearLayout? = null // admin address + QR, visible only while resting
+
+    // GrowQuiz: the console's address as a QR in the bottom-right corner, always visible while a
+    // question is up. A parent can pick up a phone and change the quiz settings without walking to
+    // the TV. It never takes focus, so the remote still starts on the first answer button.
+    private lateinit var adminQr: ImageView
+    private var qrShown = false
 
     // GrowQuiz: every size below is drawn for a 1280x720 dp canvas. Smaller screens scale the whole
     // page down by the same factor (paddings, text, button heights), so the question, the four answers
@@ -198,6 +205,9 @@ class QuizActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         openedAt = System.currentTimeMillis()
+        // GrowQuiz: remember what this page covers. When the question is over, the desktop hands it
+        // back if the TV's memory manager took the player during a long question (see QuizReturn).
+        QuizReturn.capture(this)
         // Android 13+ routes Back through OnBackInvokedDispatcher; with targetSdk 36 the legacy
         // onBackPressed() override is never called and Back finishes the page (first seen on an
         // Android 17 phone: the quiz task was simply gone, quiz_abandoned with finishing=true).
@@ -272,6 +282,10 @@ class QuizActivity : Activity() {
     override fun onResume() {
         super.onResume()
         inForeground = true
+        // The page is visible: this is the moment a foreground-service start is one the firmware
+        // answers, so the guard is put back here instead of from a background wake-up (see
+        // QuizGuardService.sync). Idempotent: a running guard is left alone.
+        QuizGuardService.sync(this)
         if (!changing && !solved) startReading() // resume narration only on the visible, bright page
         reclaimAttempt = 0 // the page is in front: the next escape gets the quick first retry again
         noteSnapBack() // a comeback that was on its way has arrived: that is the proof the console shows
@@ -389,7 +403,43 @@ class QuizActivity : Activity() {
         content.addView(questionText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 0.85f))
         content.addView(restPanel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         content.addView(answerGrid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.35f))
-        content.addView(feedbackText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        // GrowQuiz: the console QR sits in the bottom-right corner, in its own row so it can never
+        // cover an answer button and never steals focus from the remote. The feedback line keeps the
+        // rest of the row and stays centred in what is left.
+        val bottomRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        bottomRow.addView(feedbackText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        // A size in real pixels, not dp: the QR must stay scannable on a small 720p box, where the
+        // page is scaled down as a whole.
+        val qrPx = (minOf(dm.widthPixels, dm.heightPixels) * 0.155f).toInt().coerceIn(96, 260)
+        val qrPad = dp(5)
+        adminQr = ImageView(this).apply {
+            visibility = View.GONE
+            isFocusable = false
+            isFocusableInTouchMode = false
+            isClickable = false
+            scaleType = ImageView.ScaleType.CENTER
+            contentDescription = "手机扫码打开管理后台"
+            setPadding(qrPad, qrPad, qrPad, qrPad)
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(10).toFloat()
+            }
+            if (dev.plume.web.WebAdminServer.hasLanUrl()) {
+                try {
+                    // One module is drawn on a whole number of pixels, so the code stays sharp:
+                    // a resampled QR is the usual reason a phone camera refuses to read it.
+                    setImageBitmap(Qr.bitmap(dev.plume.web.WebAdminServer.url(), qrPx - qrPad * 2))
+                    qrShown = true
+                } catch (e: Exception) {
+                    dev.plume.DiagLog.event("quiz_qr_fail", e.message ?: e.javaClass.simpleName)
+                }
+            }
+        }
+        bottomRow.addView(adminQr, LinearLayout.LayoutParams(qrPx, qrPx).apply { marginStart = dp(14) })
+        content.addView(bottomRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         return root
     }
@@ -403,6 +453,7 @@ class QuizActivity : Activity() {
         changing = false
         answerGrid.visibility = View.VISIBLE
         restPanel?.visibility = View.GONE
+        if (qrShown) adminQr.visibility = View.VISIBLE
         val prefs = QuizPrefs(this)
         val next = quiz.next(prefs.age, prefs.categories, current?.id)
         current = next
@@ -473,6 +524,7 @@ class QuizActivity : Activity() {
         thinkLoop?.let { ui.removeCallbacks(it) }
         answerGrid.visibility = View.GONE
         restPanel?.visibility = View.VISIBLE
+        adminQr.visibility = View.GONE // the rest panel already shows a bigger QR and the address
         progressText.text = "休息一下"
         if (QuizPrefs(this).voice && screenInteractive()) {
             QuizVoice.speak(if (restSessionForced) "家长安排了休息，时间到就可以继续" else "连续答错啦，休息一会再来答题")

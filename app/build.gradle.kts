@@ -21,8 +21,8 @@ android {
         applicationId = "dev.plume.growquiz"
         minSdk = 26
         targetSdk = 36
-        versionCode = 42
-        versionName = "1.19.1"
+        versionCode = 43
+        versionName = "1.19.2"
         // What's new: only this version's section of CHANGELOG.md ships, one entry per line, ** marks kept for bold.
         // A ### heading ships as a line that starts with #. A fix release (1.7.1) ships its x.y section after its own,
         // so people who update from 1.6 still see what 1.7 brought.

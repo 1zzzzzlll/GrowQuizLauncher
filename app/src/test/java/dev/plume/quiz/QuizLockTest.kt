@@ -175,4 +175,22 @@ class QuizLockTest {
     fun `the first alarm ever is never a duplicate`() {
         assertFalse(QuizLock.duplicateAlarm(lastAlarmAt = 0, now = 1_000_000))
     }
+
+    // The guard is asked for from every page and from background wake-ups. A plain start arms no
+    // countdown; a foreground start from the background does, and the TCL firmware never answers it.
+    @Test
+    fun `a visible page starts the guard without a deadline`() {
+        assertEquals(QuizLock.GuardStart.PLAIN, QuizLock.guardStart(visible = true, tcl = true))
+        assertEquals(QuizLock.GuardStart.PLAIN, QuizLock.guardStart(visible = true, tcl = false))
+    }
+
+    @Test
+    fun `the tcl firmware gets no background request at all`() {
+        assertEquals(QuizLock.GuardStart.SKIP, QuizLock.guardStart(visible = false, tcl = true))
+    }
+
+    @Test
+    fun `other firmwares keep the background foreground start`() {
+        assertEquals(QuizLock.GuardStart.FOREGROUND, QuizLock.guardStart(visible = false, tcl = false))
+    }
 }

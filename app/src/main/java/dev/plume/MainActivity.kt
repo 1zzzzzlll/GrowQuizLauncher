@@ -544,6 +544,15 @@ class MainActivity : Activity() {
         // Coming back from a just-finished quiz: land straight on the desktop, no admin prompt.
         val fromQuiz = dev.plume.quiz.QuizActivity.justFinished
         dev.plume.quiz.QuizActivity.justFinished = false
+        // GrowQuiz: this desktop is only resumed after a quiz when it is what the child sees — the
+        // video task below is gone (the TV's memory manager took it during a long question). Hand
+        // back the video the quiz covered; when the player did come back by itself, nothing runs.
+        if (fromQuiz) ui.post { QuizReturn.resume(this) }
+        // From here on, nothing was interrupted: the quiz that opens later must not hand back an app.
+        QuizReturn.desktopShown(this)
+        // The guard follows the visible page: while the desktop is up, the foreground-service start
+        // is one the firmware answers (see QuizGuardService.sync).
+        dev.plume.quiz.QuizGuardService.sync(this)
         // GrowQuiz: with the boot quiz on, the startup admin prompt's OK button starts one question
         // right away. The old BOOT_COMPLETED gate never fired on some TVs; anchoring the quiz to the
         // prompt — which always shows after power-on — makes the trigger visible and reliable.
@@ -5104,6 +5113,9 @@ class MainActivity : Activity() {
         val source = from?.takeIf { animationsOn() && it.isAttachedToWindow && it.width > 0 }
         val options = source?.let { ActivityOptions.makeScaleUpAnimation(it, 0, 0, it.width, it.height).toBundle() }
         startActivity(intent, options)
+        // GrowQuiz: the last app the desktop opened is also the app a later question interrupts. On a
+        // TV without the accessibility service nothing else reports it, so remember it here too.
+        QuizReturn.note(this, intent.component?.packageName)
         openedFrom = source?.let { WeakReference(it) }
         returnTo = focusKey(from)
     }
