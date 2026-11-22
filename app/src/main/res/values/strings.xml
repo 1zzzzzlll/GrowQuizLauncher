@@ -414,4 +414,14 @@
     <string name="clock_medium">中</string>
     <string name="clock_large">大</string>
     <string name="help_clock_size">主屏幕上时钟的大小。</string>
+    <string name="voice_title">语音朗读</string>
+    <string name="voice_load">加载内置语音（约 %1$s）</string>
+    <string name="voice_test">试听内置语音</string>
+    <string name="voice_use_engine">改用电视自带的语音引擎</string>
+    <string name="voice_use_embedded">改用内置语音</string>
+    <string name="voice_delete">删除内置语音（释放空间）</string>
+    <string name="voice_deleted">已删除内置语音</string>
+    <string name="voice_connecting">正在连接服务器…</string>
+    <string name="voice_offline">连不上服务器，检查电视的网络后再试</string>
+    <string name="voice_ready">内置语音已就绪，以后读题都用它</string>
 </resources>

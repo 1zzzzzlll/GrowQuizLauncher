@@ -29,6 +29,7 @@ import android.widget.TextView
 import android.widget.Toast
 import dev.plume.Qr
 import dev.plume.QuizReturn
+import dev.plume.voice.Voice
 
 /** Full-screen, remote-first quiz. A wrong answer advances to a different question. */
 class QuizActivity : Activity() {
@@ -179,7 +180,7 @@ class QuizActivity : Activity() {
     }
 
     // GrowQuiz: the question is read aloud for children who cannot read yet, then repeated every 20 seconds.
-    // The engine itself lives in QuizVoice and is warmed when the desktop comes up, so a question is
+    // The voice itself lives behind Voice and is warmed when the desktop comes up, so a question is
     // spoken at once instead of waiting for a model to load.
     private var ttsNoted = false // the "no TTS engine" toast shows once
     private var ttsRetries = 0 // short retries while the engine is still loading, capped by TTS_RETRY_LIMIT
@@ -187,11 +188,11 @@ class QuizActivity : Activity() {
         override fun run() {
             // A tablet with its screen off must stay silent. onResume restarts the loop when visible.
             if (!QuizLock.shouldNarrate(screenInteractive(), inForeground)) return
-            if (QuizVoice.isUnusable()) {
+            if (Voice.isUnusable()) {
                 ttsMissing() // no engine on this TV: say so once and stop trying
                 return
             }
-            if (!QuizVoice.isReady()) {
+            if (!Voice.isReady()) {
                 // Still loading: try again shortly. Waiting for the 20 s repeat would leave the first
                 // question silent, which is what "读题有延迟" looked like.
                 if (ttsRetries++ < TTS_RETRY_LIMIT) ui.postDelayed(this, TTS_RETRY_MS)
@@ -217,7 +218,7 @@ class QuizActivity : Activity() {
                 android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
             ) { blockBack() }
         }
-        QuizVoice.warm(this) // already warm from the desktop; a no-op when it is
+        Voice.warm(this) // already warm from the desktop; a no-op when it is
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(createContent())
         immersive()
@@ -249,13 +250,14 @@ class QuizActivity : Activity() {
         }.start()
     }
 
-    /** No TTS engine (or no usable language) on this device: say so once, instead of reading nothing in silence. */
+    /** No voice at all on this device: say so once, instead of reading nothing in silence. */
     private fun ttsMissing() {
         if (isFinishing || ttsNoted) return
         if (!QuizPrefs(this).voice) return // narration is off anyway: no engine toast would only confuse
         ttsNoted = true
-        dev.plume.DiagLog.event("tts_missing", QuizVoice.failureReason() ?: "")
-        Toast.makeText(this, "本机没有可用的语音（TTS）引擎，无法朗读题目", Toast.LENGTH_LONG).show()
+        dev.plume.DiagLog.event("tts_missing", Voice.describe())
+        // The voice can now be loaded from the app itself, so the toast says where instead of only why.
+        Toast.makeText(this, "本机没有可用的语音引擎。请在桌面右上角「环境检测」里加载内置语音，约 31 MB", Toast.LENGTH_LONG).show()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -527,7 +529,7 @@ class QuizActivity : Activity() {
         adminQr.visibility = View.GONE // the rest panel already shows a bigger QR and the address
         progressText.text = "休息一下"
         if (QuizPrefs(this).voice && screenInteractive()) {
-            QuizVoice.speak(if (restSessionForced) "家长安排了休息，时间到就可以继续" else "连续答错啦，休息一会再来答题")
+            Voice.speak(if (restSessionForced) "家长安排了休息，时间到就可以继续" else "连续答错啦，休息一会再来答题")
         }
         val loop = object : Runnable {
             override fun run() {
@@ -567,22 +569,21 @@ class QuizActivity : Activity() {
 
     private fun stopReading() {
         ui.removeCallbacks(speakLoop)
-        QuizVoice.stop()
+        Voice.stop()
     }
 
     private fun speakQuestion() {
         val q = current ?: return
         if (!QuizLock.shouldNarrate(screenInteractive(), inForeground)) return
         if (!voiceAppliesTo(q)) return
-        if (!QuizVoice.isReady()) {
-            if (QuizVoice.isUnusable()) ttsMissing()
+        if (!Voice.isReady()) {
+            if (Voice.isUnusable()) ttsMissing()
             return
         }
         // The stem goes out first, the options are queued behind it: the voice starts while the rest is
         // still being synthesised, so the question is heard at once. An option of one character, one
         // number or one letter is left out - spoken aloud it hands the answer over.
-        QuizVoice.speak(SpeechText.forStem(q.prompt), flush = true)
-        QuizVoice.speak(SpeechText.forOptions(q.options), flush = false)
+        Voice.speakParts(SpeechText.forStem(q.prompt), SpeechText.forOptions(q.options))
     }
 
     /**
@@ -775,7 +776,7 @@ class QuizActivity : Activity() {
         ui.postDelayed({
             (overlay.parent as? ViewGroup)?.removeView(overlay)
         }, 2_600L)
-        if (QuizPrefs(this).voice) QuizVoice.speak("恭喜你，升级到${QuizRules.tierName(tier)}，继续加油！")
+        if (QuizPrefs(this).voice) Voice.speak("恭喜你，升级到${QuizRules.tierName(tier)}，继续加油！")
     }
 
     // GrowQuiz: one "back blocked" event per session. Its presence in a report proves the interception

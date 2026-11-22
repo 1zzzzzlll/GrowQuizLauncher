@@ -53,10 +53,11 @@ object EnvCheck {
      *
      * [form] is a [DeviceForm] value; "unknown" reads as TV, because firmware that declares nothing
      * is a TV that hid it, and a TV's fix must not depend on a settings page that may not exist.
-     * [tts] is TtsProbe.describe() ("available" / "initializing" / "no-engine" / "no-language");
-     * [ttsWanted] is the read-aloud switch — with it off the engine is nobody's problem and the
-     * row stays out. [snapOkCount] is the launcher's count of real take-backs, the evidence that
-     * snap-back works rather than merely being switched on.
+     * [tts] is Voice.describe() ("embedded" / "available" / "initializing" / "no-engine" /
+     * "no-language"); [pack] is the built-in voice download ("", "ready", "failed", "unpacking",
+     * "downloading:42"); [ttsWanted] is the read-aloud switch — with it off the voice is nobody's
+     * problem and the row stays out. [snapOkCount] is the launcher's count of real take-backs, the
+     * evidence that snap-back works rather than merely being switched on.
      */
     fun items(
         sdk: Int,
@@ -72,6 +73,7 @@ object EnvCheck {
         snapOkCount: Int,
         tts: String,
         ttsWanted: Boolean,
+        pack: String = "",
     ): List<Item> {
         val tv = form != DeviceForm.PHONE && form != DeviceForm.TABLET
         // TV: the adb commands are the fix, so every row carries them; phone: the settings page is.
@@ -144,18 +146,38 @@ object EnvCheck {
             else -> Item(Key.SNAP_BACK, "切走弹回", State.PASS, "正常工作，已拦截 $snapOkCount 次", "")
         }
         // No settings page installs an engine on any form, so this row keeps its command everywhere.
+        // The pack is different: it is downloaded and enabled from inside the app, which is the only
+        // route that works on a TV with no settings page and no install permission (see docs/VOICE.md).
         if (ttsWanted) out += when (tts) {
-            "available" -> Item(Key.TTS, "语音朗读引擎", State.PASS, "可用", "")
+            "available" -> Item(Key.TTS, "语音朗读引擎", State.PASS, "电视自带引擎", "")
+            "embedded" -> Item(Key.TTS, "语音朗读引擎", State.PASS, "内置语音", "")
             "initializing" -> Item(
                 Key.TTS, "语音朗读引擎", State.WARN, "加载中",
-                "语音引擎正在加载，稍等片刻再进来看一眼。",
+                "语音正在加载，稍等片刻再进来看一眼。",
             )
-            else -> Item(
-                Key.TTS, "语音朗读引擎", State.FAIL, if (tts == "no-language") "缺中文语音" else "未安装",
-                "读题需要中文语音引擎。安装 sherpa-onnx TTS Engine（安装手册附带安装包，" +
-                    (if (tv) "用电脑 adb install 装上" else "直接下载安装") +
-                    "），装好后在「设置 → 语音 → 文字转语音」里把它设为首选引擎。",
-            )
+            else -> when {
+                pack == "ready" -> Item(
+                    Key.TTS, "语音朗读引擎", State.WARN, "内置语音未启用",
+                    "内置语音已下载但没有启用。点本行启用，读题立刻用它。",
+                )
+                pack.startsWith("downloading:") -> Item(
+                    Key.TTS, "语音朗读引擎", State.WARN, "正在下载 ${pack.removePrefix("downloading:")}%",
+                    "内置语音正在下载，下完自动启用，不用留在这个页面。",
+                )
+                pack == "unpacking" -> Item(
+                    Key.TTS, "语音朗读引擎", State.WARN, "正在安装",
+                    "内置语音正在解压，马上就好。",
+                )
+                pack == "failed" -> Item(
+                    Key.TTS, "语音朗读引擎", State.FAIL, "下载失败",
+                    "上次下载没有完成。点本行重新下载内置语音（约 31 MB）；网络不好时会接着上次的进度继续。",
+                )
+                else -> Item(
+                    Key.TTS, "语音朗读引擎", State.FAIL, if (tts == "no-language") "缺中文语音" else "未安装",
+                    "读题需要中文语音。点本行下载内置语音（约 31 MB），不用安装任何软件，下完自动启用；" +
+                        "也可以继续用电脑 adb 装一个语音引擎 APP。",
+                )
+            }
         }
         return out
     }

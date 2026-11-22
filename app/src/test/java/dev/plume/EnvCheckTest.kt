@@ -23,9 +23,10 @@ class EnvCheckTest {
         snapOkCount: Int = 3,
         tts: String = "available",
         ttsWanted: Boolean = true,
+        pack: String = "",
     ) = EnvCheck.items(
         sdk, form, overlay, exactAlarm, batteryFree, notifications, fullScreen,
-        a11yEnabled, a11yBound, snapBack, snapOkCount, tts, ttsWanted,
+        a11yEnabled, a11yBound, snapBack, snapOkCount, tts, ttsWanted, pack,
     )
 
     @Test fun everythingGrantedPasses() {
@@ -82,5 +83,29 @@ class EnvCheckTest {
         assertFalse(Key.TTS in items(ttsWanted = false).map { it.key })
         assertEquals(State.WARN, items(tts = "initializing").first { it.key == Key.TTS }.state)
         assertEquals(State.FAIL, items(tts = "no-engine").first { it.key == Key.TTS }.state)
+    }
+
+    @Test fun theBundledVoiceCountsAsSpeech() {
+        val row = items(tts = "embedded").first { it.key == Key.TTS }
+        assertEquals(State.PASS, row.state)
+        assertEquals("内置语音", row.detail)
+    }
+
+    @Test fun aMissingVoicePointsAtTheDownloadInsteadOfAdb() {
+        val row = items(tts = "no-engine", pack = "").first { it.key == Key.TTS }
+        assertEquals(State.FAIL, row.state)
+        assertTrue(row.fix.contains("内置语音"))
+        assertTrue(row.adb.isEmpty()) // loaded in the app: no computer, no settings page
+        // A pack that is downloading is not a failure the parent must fix.
+        assertEquals(State.WARN, items(tts = "no-engine", pack = "downloading:42").first { it.key == Key.TTS }.state)
+        assertEquals(State.WARN, items(tts = "no-engine", pack = "unpacking").first { it.key == Key.TTS }.state)
+    }
+
+    @Test fun aFailedDownloadSaysItCanBeResumed() {
+        val row = items(tts = "no-engine", pack = "failed").first { it.key == Key.TTS }
+        assertEquals(State.FAIL, row.state)
+        assertTrue(row.fix.contains("接着上次"))
+        // A working engine keeps the row green even while an unused pack sits on disk.
+        assertEquals(State.PASS, items(tts = "available", pack = "ready").first { it.key == Key.TTS }.state)
     }
 }

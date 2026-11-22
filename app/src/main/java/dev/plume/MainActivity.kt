@@ -92,6 +92,10 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.VideoView
 import android.view.SurfaceView
+
+import dev.plume.voice.EmbeddedTts
+import dev.plume.voice.PackStore
+import dev.plume.voice.Voice
 import java.io.File
 import java.lang.ref.WeakReference
 import java.io.IOException
@@ -397,14 +401,13 @@ class MainActivity : Activity() {
         dev.plume.quiz.QuizDeviceOwner.configure(this)
         dev.plume.quiz.QuizScheduler.ensureScheduled(this)
         dev.plume.web.WebAdminServer.start(this)
-        dev.plume.quiz.TtsProbe.start(this) // the web console reports whether this TV can read aloud
+        // GrowQuiz: start the voice now, while the desktop is idle. On TV hardware a Chinese engine, or the
+        // bundled model, takes seconds to load; doing it here means the quiz page can speak the first
+        // question at once instead of leaving it silent. The console also reports whether the TV can talk.
+        dev.plume.voice.Voice.warm(this)
         // GrowQuiz: the daily compatibility report (device probe + fresh diagnostics) goes home from
         // here; throttled inside, so this costs nothing on most starts.
         ReportUpload.maybeUpload(this)
-        // GrowQuiz: load the speech engine now, while the desktop is idle. On TV hardware a Chinese engine
-        // takes seconds to bring its model up; doing it here means the quiz page can speak the first
-        // question at once instead of leaving it silent while the engine loads.
-        dev.plume.quiz.QuizVoice.warm(this)
         // GrowQuiz: a TV has no logcat in reach — surface the last crash once, then forget it.
         CrashLog.peek(this)?.let { trace ->
             ui.post {
@@ -4880,6 +4883,7 @@ class MainActivity : Activity() {
             snapOkCount = quiz.snapOkCount,
             tts = dev.plume.quiz.TtsProbe.describe(),
             ttsWanted = quiz.voice,
+            pack = packState(),
         )
         val open = EnvCheck.openCount(items)
         popupMenu(anchor, below = true) { dismiss ->
@@ -4965,8 +4969,136 @@ class MainActivity : Activity() {
             EnvCheck.Key.FULL_SCREEN ->
                 if (Build.VERSION.SDK_INT >= 34) openSettings(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$packageName"))
             EnvCheck.Key.HOME_SERVICE -> turnOnHomeButton()
-            EnvCheck.Key.SNAP_BACK, EnvCheck.Key.TTS -> toast(item.fix, long = true)
+            EnvCheck.Key.SNAP_BACK -> toast(item.fix, long = true)
+            EnvCheck.Key.TTS -> showVoicePage()
         }
+    }
+
+    // ---------- the built-in voice: a model from our server, loaded without installing anything ----------
+    // A TV here often has no speech engine at all, and the three grants an installed engine would need
+    // (unknown sources, its confirm box, the default-engine setting) are exactly the ones a set-top box
+    // does not offer. The model is therefore downloaded into the app and runs in this process; see
+    // docs/VOICE.md for why this route was picked and how the pack is built.
+
+    /** The TextView the download percentage is written into while it runs. */
+    private var voiceStatus: TextView? = null
+
+    /** "downloading:42" / "unpacking" / "failed" / "ready" / "" — what the environment check shows. */
+    private fun packState(): String = when (PackStore.state().stage) {
+        PackStore.Stage.DOWNLOADING -> "downloading:${PackStore.state().progress}"
+        PackStore.Stage.UNPACKING -> "unpacking"
+        PackStore.Stage.FAILED -> "failed"
+        PackStore.Stage.READY -> "ready"
+        else -> if (PackStore.ready(this) != null) "ready" else ""
+    }
+
+    /** The sentence above the buttons: what this TV does now, and what the download would change. */
+    private fun voiceStatusText(): String {
+        val state = PackStore.state()
+        val pack = PackStore.ready(this)
+        return when {
+            state.stage == PackStore.Stage.DOWNLOADING ->
+                "正在下载内置语音：${state.progress}%\n下完自动启用，可以离开这个页面。"
+            state.stage == PackStore.Stage.UNPACKING -> "正在安装内置语音，马上就好。"
+            state.stage == PackStore.Stage.FAILED ->
+                "上次下载没有完成。点下面重新下载，会接着上次的进度继续。"
+            pack != null && Voice.usesEmbedded() -> "正在使用内置语音「${pack.name}」，离线也能朗读。"
+            pack != null -> "内置语音已下载但没有启用，现在用的是电视自带的引擎。"
+            dev.plume.quiz.TtsProbe.describe() == "available" ->
+                "这台电视已有可用的语音引擎，可以不下载。内置语音的好处是所有电视听起来一样，不受系统引擎影响。"
+            else -> "这台电视没有可用的中文语音，题目现在不会朗读。下载内置语音即可朗读：" +
+                "不用安装任何软件，也不用改系统设置。"
+        }
+    }
+
+    private fun showVoicePage() {
+        voiceStatus = null
+        val pack = PackStore.ready(this)
+        val using = Voice.usesEmbedded()
+        val status = label(voiceStatusText(), 13f).apply {
+            setTextColor(valueInk())
+            maxLines = 5
+        }
+        voiceStatus = status
+        val top = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(6), dp(16), dp(12))
+            addView(status)
+        }
+        val rows = ArrayList<Triple<String, String, () -> Unit>>()
+        when {
+            pack == null && packState() != "downloading" && packState() != "unpacking" ->
+                rows += page(getString(R.string.voice_load, "31 MB")) { startVoiceDownload() }
+            pack != null -> {
+                rows += page(getString(R.string.voice_test)) {
+                    Voice.preferEmbedded(this, true)
+                    Voice.speak("宝宝你好，我是宝贝成长桌面的朗读声音", flush = true)
+                }
+                rows += if (using) page(getString(R.string.voice_use_engine)) {
+                    Voice.preferEmbedded(this, false)
+                    showVoicePage()
+                } else page(getString(R.string.voice_use_embedded)) {
+                    Voice.preferEmbedded(this, true)
+                    showVoicePage()
+                }
+                rows += page(getString(R.string.voice_delete)) {
+                    Voice.stop()
+                    PackStore.remove(this)
+                    EmbeddedTts.release()
+                    toast(getString(R.string.voice_deleted))
+                    showVoicePage()
+                }
+            }
+        }
+        showPage(getString(R.string.voice_title), rows, top = top, back = { renderSettings() })
+        watchPack()
+    }
+
+    /** Fetches the manifest and starts the download; the percentage is written by [voiceTicker]. */
+    private fun startVoiceDownload() {
+        val stage = PackStore.state().stage
+        if (stage == PackStore.Stage.DOWNLOADING || stage == PackStore.Stage.UNPACKING) return
+        toast(getString(R.string.voice_connecting))
+        io.execute {
+            val pack = PackStore.offered(this).firstOrNull()
+            ui.post {
+                if (isFinishing || isDestroyed) return@post
+                if (pack == null) {
+                    toast(getString(R.string.voice_offline), long = true)
+                    return@post
+                }
+                PackStore.install(this, pack)
+                showVoicePage()
+            }
+        }
+    }
+
+    /** Redraws the percentage while a download runs, and says so once when the new voice lands. */
+    private var voiceReadyTold = false
+
+    private val voiceTicker = object : Runnable {
+        override fun run() {
+            if (isFinishing || isDestroyed) return
+            voiceStatus?.text = voiceStatusText()
+            when (PackStore.state().stage) {
+                PackStore.Stage.READY -> {
+                    if (!voiceReadyTold) {
+                        voiceReadyTold = true
+                        toast(getString(R.string.voice_ready))
+                    }
+                    showVoicePage() // the download row becomes the test row
+                }
+                PackStore.Stage.DOWNLOADING, PackStore.Stage.UNPACKING ->
+                    ui.postDelayed(this, 700)
+                else -> {}
+            }
+        }
+    }
+
+    private fun watchPack() {
+        ui.removeCallbacks(voiceTicker)
+        val stage = PackStore.state().stage
+        if (stage == PackStore.Stage.DOWNLOADING || stage == PackStore.Stage.UNPACKING) ui.postDelayed(voiceTicker, 700)
     }
 
     /** The TV's inputs under the Sources icon, as on any TV: the logo of what is plugged in, its name, no signal if none. */

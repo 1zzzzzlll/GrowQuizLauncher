@@ -39,7 +39,7 @@
 | 🗂 | **分类多选抽题** | 家长可按分类多选抽题范围（如只出数学和英语），不选即为全部；控制台按年龄显示各分类题量，该年龄无题的分类自动置灰不可选 |
 | 📥 | **批量导入题库** | 控制台内置 AI 出题教程与提示词模板，AI 批量生成的题库文件（JSON）上传即入库，逐题校验、重复跳过，与内置题一起随机出现 |
 | 🛠 | **题库维护** | 控制台可按年龄、分类、状态筛选题目，批量禁用/启用；同一道题答对满 5 次自动"退休"，不再出现 |
-| 🔊 | **语音朗读题目** | 只对 10 岁及以下的题目朗读，11 岁起自己看屏幕。符号、括号、分数、单位都会转成可读字词；只有一个字/数字/字母（或一串英文）的选项不朗读——一读就等于送答案。熄屏或退到后台立即停止，亮屏回到答题页后续读 |
+| 🔊 | **语音朗读题目** | 只对 10 岁及以下的题目朗读，11 岁起自己看屏幕。符号、括号、分数、单位都会转成可读字词；只有一个字/数字/字母（或一串英文）的选项不朗读——一读就等于送答案。熄屏或退到后台立即停止，亮屏回到答题页后续读。电视没有语音引擎时，可在「环境检测」里加载内置语音，不装任何软件 |
 | ⏳ | **答题先思考** | 出题后数秒内选项不生效，屏幕显示倒计时，杜绝秒选乱点；默认 5 秒，管理台可调 0–60 秒 |
 | 😮‍💨 | **连续答错与家长定时休息** | 连错 3 题休息 10 分钟，之后每多错一题多休息 10 分钟；管理台也可选择 5–120 分钟立即强制休息（接口支持 1–240 分钟），时间到返回原视频；可提前解除 |
 | 🕵️ | **蒙题验证** | 快速连错后又快速答对，追加一道验证题；验证答错按连错 3 题处理，立即休息 |
@@ -338,14 +338,21 @@ adb shell pm enable com.android.packageinstaller     # 必须执行
 
 `tools/growquiz-install.sh` 已内置这套流程——只在真被拦下时才走这条路，并用 `trap` 保证按 Ctrl-C、报错、终端关闭时都会把安装器恢复回去。TCL 设备用脚本部署时不需要手工敲上面三行。
 
-### 装一个中文语音引擎
+### 语音朗读：加载内置语音
 
-电视出厂不带语音引擎时，题目能显示但不会朗读。装一个系统级 TTS 引擎即可，无需改应用：
+电视出厂不带语音引擎时，题目能显示但不会朗读。**不用装 APP**：应用自带中文神经语音，模型放在更新服务器上，第一次用到时下载到应用里。
 
-- **推荐 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)**（Apache-2.0，离线神经网络合成）。官方提供现成的 TTS Engine APK，内含中文 Piper 模型，按电视 CPU 架构选 `arm64-v8a` 或 `armeabi-v7a` 版本，下载页见 <https://k2-fsa.github.io/sherpa/onnx/tts/apk-engine.html>。装上后在电视「设置 → 无障碍 → 文字转语音」里选它。
-- eSpeak（体积小、完全离线）也能读出中文，但音色机械，只适合临时用。
+- **在哪里加载**：电视上「环境检测 → 语音朗读引擎」，或手机管理后台「设置 → 语音朗读」，点一下即可。电视自己下载（约 31 MB）、解压、启用，手机上能看进度，可以关掉页面。
+- **为什么这样**：装引擎 APP 要先开「安装未知来源应用」，还得有系统设置页；不少电视既没有设置页，也拦侧载（TCL 的签名白名单）。内置语音不走安装，也不用把谁设成默认引擎。
+- **下载之后**：离线可用；同一句话只合成一次，重复读题不再等。同一入口可以切回电视自带引擎，或删除内置语音释放空间。
+- 换声音、自己发布语音包的做法见 [docs/VOICE.md](docs/VOICE.md)。
 
-装完后核对两件事，任何一项不对都会退回无声：
+仍想用系统级引擎（例如电视本来就有、或想给别的应用共用）时：
+
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)（Apache-2.0）官方 TTS Engine APK，内含中文 Piper 模型，按 CPU 架构选 `arm64-v8a` 或 `armeabi-v7a`，下载页 <https://k2-fsa.github.io/sherpa/onnx/tts/apk-engine.html>。
+- eSpeak（体积小、完全离线）也能读中文，但音色机械，只适合临时用。
+
+装引擎后核对两件事，任何一项不对都会退回无声：
 
 ```sh
 adb shell settings get secure tts_default_synth    # 应显示引擎包名，不能是 null
@@ -365,7 +372,7 @@ adb shell cmd package query-services -a android.intent.action.TTS_SERVICE   # �
 | `INSTALL_FAILED_VERIFICATION_FAILURE` | 厂商签名白名单拦截，TCL / 雷鸟常见。见 [TCL / 雷鸟的签名白名单拦截](#tcl--雷鸟的签名白名单拦截)，或直接用 `tools/growquiz-install.sh` |
 | 切到别的应用后答题页不再弹回 | Android 10 起禁止应用在后台启动界面，需「显示在其他应用上层」权限（`SYSTEM_ALERT_WINDOW`）。安装脚本会自动授予；手动装的电视执行 `adb shell appops set dev.plume.growquiz SYSTEM_ALERT_WINDOW allow` |
 | 「遥控器按键 → 添加按键」按了没反应，或设好的按键失效 | 无障碍服务没有在跑。覆盖安装会杀掉进程，部分固件（TCL / 雷鸟实测）之后不再自动绑定，服务处于「已启用但已崩溃」状态。v1.13.1 起启动后会自动重新启用一次；旧版本手动开关一遍无障碍，或执行 `adb shell settings put secure enabled_accessibility_services "$(adb shell settings get secure enabled_accessibility_services \| tr -d '\r'),dev.plume.growquiz/dev.plume.HomeOverride"` |
-| 装完题目不朗读，提示「本机没有可用的语音（TTS）引擎」 | 该电视系统没有预装 TTS 引擎（不少国产电视如此）。装一个离线 TTS 引擎后到系统设置里设为默认即可，做法见[装一个中文语音引擎](#装一个中文语音引擎) |
+| 装完题目不朗读，提示「本机没有可用的语音引擎」 | 该电视系统没有预装语音引擎（不少国产电视如此）。到「环境检测 → 语音朗读引擎」点一下，加载内置语音即可（约 31 MB，不装任何软件），做法见[语音朗读：加载内置语音](#语音朗读加载内置语音) |
 | 点击版本号没反应 | 点得不够快或次数不够，有的电视要 8–10 次 |
 | 装完找不到应用图标 | TV 应用可能不在手机式应用列表里，到「设置 → 应用」里确认已安装 |
 
@@ -386,7 +393,7 @@ adb shell cmd package query-services -a android.intent.action.TTS_SERVICE   # �
 | 局域网管理台 | `web/WebAdminServer.kt` | 纯 JDK `ServerSocket` 单页服务：设置、题库维护、批量导入（`/import` 独立页）、改密码、TTS 测试；SHA-256 加盐口令、24 小时会话 Cookie，无第三方依赖 |
 | 自动更新 | `ApkProvider.kt` + 更新服务器 | 每天检查一次自有更新服务器；服务器每 3 小时从 GitHub Releases 同步最新发版 |
 | 兼容诊断 | `DiagLog.kt` + `DeviceProbe.kt` + `DeviceForm.kt` + `ReportUpload.kt` + `Vendor.kt` + `quiz/PopupAudit.kt` | 崩溃/开机/答题弹出/前台保持/无障碍绑定/语音/更新等关键事件记为 JSONL；每天随设备探针快照匿名上报一次，用于按品牌适配；`Vendor` 在运行时识别品牌，品牌专属修复只在对应设备上运行；`DeviceForm` 区分电视/手机/平板（同一安装包也用于手机与平板；电视硬件、leanback、系统电视界面模式三者任一即记为电视；形态不明时记为未知，不按手机处理；纯 JVM，有单测）；`PopupAudit` 用「上次闹钟时间 vs 上次答题页打开时间」的比对发现被系统静默吞掉的答题弹窗（纯 JVM，有单测）；`HomeWatch.isPlatformStubHome` 把「系统设置」里的开机占位桌面排除在桌面候选与接管范围之外（纯 JVM，有单测）；`SettingsApps` 汇总本机设置应用线索（应答设置 intent 的包 + 名字带 settings 的已装包），为无系统设置页机型的厂商跳转收集证据（纯 JVM，有单测） |
-| 语音 | `quiz/QuizVoice.kt` + `quiz/SpeechText.kt` + `quiz/TtsProbe.kt` + `quiz/TtsDiagnosis.kt` | `QuizVoice` 是全局唯一的 TTS 引擎，桌面启动即预热；`SpeechText` 把题目改写成可朗读的中文（纯 JVM，有单测）；`TtsProbe` 供管理台检测引擎可用性，并列出本机已装引擎；`TtsDiagnosis` 把「没装引擎」与「引擎启动失败」分成两种上报事件（纯 JVM，有单测） |
+| 语音 | `voice/Voice.kt` + `voice/EmbeddedTts.kt` + `voice/PackStore.kt` + `voice/VoicePack.kt` + `quiz/QuizVoice.kt` + `quiz/SpeechText.kt` + `quiz/TtsProbe.kt` + `quiz/TtsDiagnosis.kt` | `Voice` 是唯一入口：内置语音优先，电视自带引擎兜底；`EmbeddedTts` 用 sherpa-onnx 在本进程合成并播放（模型从服务器下发，句子结果按 PCM 缓存）；`PackStore` 负责断点续传、SHA-256 校验与原子替换；`VoicePack` 是纯 JVM 的文件/URL/摘要规则（有单测）；`QuizVoice` 仍是系统引擎那一层，桌面启动即预热；`SpeechText` 把题目改写成可朗读的中文（纯 JVM，有单测）；`TtsProbe` 供管理台检测；`TtsDiagnosis` 把「没装引擎」与「引擎启动失败」分成两种上报事件（纯 JVM，有单测）。设计取舍见 [docs/VOICE.md](docs/VOICE.md) |
 | 桌面本体 | `dev.plume.*` | 上游 Plume 的桌面、壁纸、屏保、按键重映射等 |
 | 退出桌面 | `DesktopExit.kt` | 交还主屏幕键并打开电视自带的桌面；`pickStockHome` 按「系统当前解析的桌面 → 固件桌面 → 已列出的桌面」选目标（纯 JVM，有单测）；退出后主屏幕键仍落到原桌面（默认主屏幕是本应用时由 `MainActivity` 转交），设置页与控制台共用同一开关 |
 
@@ -425,7 +432,7 @@ tools/                               # 安装脚本、题库生成、上游设�
 - **强锁定依赖 Device Owner**：不配置时只是"默认桌面"，无法阻止通过系统设置切走。
 - **遥控器专用键**：Netflix 等一键直达键可绕过桌面；可被本应用拦截的键请按「快速开始」第 6 步设为「无操作」，不经过 Android 按键系统的键则无法拦截。
 - **精确闹钟**：Android 12+ 若未授予「闹钟和提醒」权限，触发时间可能被系统推迟数分钟（首次上报数据显示多数未授权设备被拒）；桌面会提示一次，管理台总览常驻显示该状态。
-- **TTS**：不少国产电视出厂不带语音引擎，此时题目照常显示但不朗读；装一个离线 TTS 引擎并在系统设置里设为默认即可，其余功能不受影响。
+- **语音**：不少国产电视出厂不带语音引擎。加载内置语音后即可朗读，模型常驻约 150 MB 内存；不加载时退回系统引擎，两者都没有就只显示不朗读，其余功能不受影响。内置语音只带 `arm64-v8a` / `armeabi-v7a` 原生库，x86 模拟器上会回退系统引擎。
 - **Fire TV**：Fire OS 不把 Home 键交给第三方应用，首个桌面会先闪现约 5 秒；细节见[上游文档](docs/UPSTREAM-PLUME.md#fire-tv)。
 - **国产电视的桌面还原**：小米 MIUI 每次开机都会把默认桌面还给自带桌面，「设为默认桌面」不能持久；TCL 开机时无视默认桌面设置，直接拉起自带桌面。开启「主屏幕键」无障碍服务后，自带桌面（含 TCL、海信、创维、乐视、腾讯极光等）一出现本应用就自动切回；开机后服务绑定时也会主动检查一次前台，把还停留在厂商桌面的电视切回来。个别固件（海信聚好看、腾讯极光盒子的部分版本）不向无障碍服务报告窗口变化，这类机型暂时无法自动切回。
 - **不做家长端远程监督**：管理台只在同一局域网内可用，且仅在桌面进程存活时开启。

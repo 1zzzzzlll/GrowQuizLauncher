@@ -23,6 +23,15 @@ class QuizPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_VOICE, true)
         set(value) = prefs.edit().putBoolean(KEY_VOICE, value).apply()
 
+    /**
+     * Speak with the voice that came with the app instead of the TV's own speech engine. Set when a
+     * parent loads the built-in voice, because a set-top box either has no engine or one whose Chinese
+     * sounds wrong; without such a pack the setting means nothing and the engine is used as before.
+     */
+    var embeddedVoice: Boolean
+        get() = prefs.getBoolean(KEY_EMBEDDED_VOICE, false)
+        set(value) = prefs.edit().putBoolean(KEY_EMBEDDED_VOICE, value).apply()
+
     var nextTriggerAt: Long
         get() = prefs.getLong(KEY_NEXT, 0L)
         set(value) = prefs.edit().putLong(KEY_NEXT, value).apply()
@@ -196,6 +205,7 @@ class QuizPrefs(context: Context) {
         private const val KEY_NEXT = "next_trigger_at"
         private const val KEY_CATEGORIES = "categories"
         private const val KEY_VOICE = "voice_enabled"
+        private const val KEY_EMBEDDED_VOICE = "voice_embedded"
         private const val KEY_BOOT_QUIZ = "boot_quiz_enabled"
         private const val KEY_REST_GUARD = "rest_guard_enabled"
         private const val KEY_SNAP_BACK = "snap_back_enabled"

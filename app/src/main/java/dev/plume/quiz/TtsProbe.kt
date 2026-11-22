@@ -3,26 +3,23 @@ package dev.plume.quiz
 import android.content.Context
 import android.content.Intent
 import android.speech.tts.TextToSpeech
+import dev.plume.voice.Voice
 
 /**
  * The parents' console asks two things about speech: can this TV read aloud, and does it work right now.
- * The engine itself lives in [QuizVoice], so the TV loads one model instead of two — a second engine
- * would double the memory and the startup cost on a TV.
+ * Which voice answers — the TV's own engine or the one bundled with the app — is decided inside [Voice],
+ * so the console and the quiz page never disagree.
  */
 object TtsProbe {
 
-    /** Starts the shared engine (no-op when [QuizVoice] already started it at desktop start). */
-    fun start(context: Context) = QuizVoice.warm(context)
+    /** Starts the voice (no-op when the desktop already started it at start-up). */
+    fun start(context: Context) = Voice.warm(context)
 
     /** Reads a sentence aloud (the console's test button); false when it could not be spoken. */
-    fun speak(text: String): Boolean = QuizVoice.speak(text, flush = true)
+    fun speak(text: String): Boolean = Voice.speak(text, flush = true)
 
-    /** "available" / "no-engine" / "no-language" / "initializing", the values the console knows. */
-    fun describe(): String = when {
-        QuizVoice.failureReason() != null -> QuizVoice.failureReason()!!
-        QuizVoice.isReady() -> "available"
-        else -> "initializing"
-    }
+    /** "embedded" / "available" / "no-engine" / "no-language" / "initializing", the values the console knows. */
+    fun describe(): String = Voice.describe()
 
     /**
      * The speech engines installed on this TV, by package, empty when there is none. This is the same

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      GrowQuiz: the quiz owns the screen, but it must not stop the video under it.
+
+      A normal opaque activity makes the player invisible, the framework destroys its SurfaceView,
+      and a hardware decoder that is still running dies with it: on the TCL test set the log shows
+      `BufferQueue has no connected producer`, `ACodec signalError -19`, and the player's own
+      `PlayingState-resume() at invalid state` when the question is over — the video comes back black.
+
+      A translucent window leaves the activity below visible (paused, still composed), so its surface
+      and decoder survive the question and playback continues where it stopped. Every pixel of the
+      page is drawn opaque in code, and the window background is the same colour, so nothing of the
+      video shows through even on the first frame.
+    -->
+    <style name="QuizTheme" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@color/quiz_background</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

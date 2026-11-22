@@ -370,6 +370,23 @@ object WebAdminServer {
                         .put("form", dev.plume.DeviceProbe.form(context))
                         .put("crash", dev.plume.CrashLog.peek(context) ?: "")
                         .put("tts", dev.plume.quiz.TtsProbe.describe())
+                        // The built-in voice: which one answers, and how far the download is. The
+                        // console starts it with /api/voice_install and polls this until "ready".
+                        .put("voiceEmbedded", dev.plume.voice.Voice.usesEmbedded())
+                        .put(
+                            "pack",
+                            when (dev.plume.voice.PackStore.state().stage) {
+                                dev.plume.voice.PackStore.Stage.DOWNLOADING -> "downloading"
+                                dev.plume.voice.PackStore.Stage.UNPACKING -> "unpacking"
+                                dev.plume.voice.PackStore.Stage.FAILED -> "failed"
+                                else -> if (dev.plume.voice.PackStore.ready(context) != null) "ready" else "none"
+                            },
+                        )
+                        .put("packPct", dev.plume.voice.PackStore.state().progress)
+                        // The console's test button treats "sent to the engine" as "not yet heard":
+                        // the bundled voice needs seconds before the first sound, so it waits for
+                        // this stamp to move instead of trusting the request's own answer.
+                        .put("ttsPlayedAt", dev.plume.voice.EmbeddedTts.playedAt())
                 } else {
                     JSONObject()
                         .put("initialized", initialized(context))
@@ -698,7 +715,33 @@ object WebAdminServer {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
                 val spoke = dev.plume.quiz.TtsProbe.speak("语音测试：宝贝你好，我是你的答题小助手")
                 val json = JSONObject().put("ok", true).put("spoke", spoke)
+                    .put("engine", dev.plume.voice.Voice.describe())
                 reply(out, 200, "application/json; charset=utf-8", json.toString())
+            }
+
+            // The built-in voice is downloaded onto the TV, so the phone only asks for it and then
+            // watches /api/status: a 28 MB pack must not be held by a browser tab that may close.
+            path == "/api/voice_install" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val stage = dev.plume.voice.PackStore.state().stage
+                if (stage == dev.plume.voice.PackStore.Stage.DOWNLOADING || stage == dev.plume.voice.PackStore.Stage.UNPACKING) {
+                    return reply(out, 200, "application/json; charset=utf-8", JSONObject().put("ok", true).put("started", false).toString())
+                }
+                main.post {
+                    Thread {
+                        val pack = dev.plume.voice.PackStore.offered(context).firstOrNull()
+                        if (pack == null) dev.plume.DiagLog.event("voice_install_fail", "no manifest")
+                        else dev.plume.voice.PackStore.install(context, pack)
+                    }.start()
+                }
+                reply(out, 200, "application/json; charset=utf-8", JSONObject().put("ok", true).put("started", true).toString())
+            }
+
+            path == "/api/voice_use" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val on = JSONObject(body.ifEmpty { "{}" }).optBoolean("on", true)
+                dev.plume.voice.Voice.preferEmbedded(context, on)
+                reply(out, 200, "application/json; charset=utf-8", ok())
             }
 
             else -> reply(out, if (method == "GET" || method == "POST") 404 else 405, "application/json; charset=utf-8", error("not found"))

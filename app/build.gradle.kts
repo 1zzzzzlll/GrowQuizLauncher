@@ -21,8 +21,8 @@ android {
         applicationId = "dev.plume.growquiz"
         minSdk = 26
         targetSdk = 36
-        versionCode = 43
-        versionName = "1.19.2"
+        versionCode = 45
+        versionName = "1.20.1"
         // What's new: only this version's section of CHANGELOG.md ships, one entry per line, ** marks kept for bold.
         // A ### heading ships as a line that starts with #. A fix release (1.7.1) ships its x.y section after its own,
         // so people who update from 1.6 still see what 1.7 brought.
@@ -77,6 +77,12 @@ android {
         resources {
             excludes += setOf("kotlin/**", "**/*.kotlin_builtins", "META-INF/*.kotlin_module", "META-INF/*.version", "DebugProbesKt.bin")
         }
+        jniLibs {
+            // The speech library is 42 MB uncompressed and stored uncompressed it would be the whole APK.
+            // Legacy packaging compresses it, so an update costs about 19 MB on a TV, and the installer
+            // unpacks it once. Nothing else in this app ships native code.
+            useLegacyPackaging = true
+        }
     }
 
     dependenciesInfo {
@@ -96,5 +102,10 @@ android {
 }
 
 dependencies {
+    // The bundled speech engine (sherpa-onnx, Apache-2.0), trimmed to the two ABIs a TV or phone here
+    // uses: arm64-v8a and armeabi-v7a. Built from the official static-link AAR, see docs/VOICE.md.
+    // This is the one exception to "no dependencies on purpose": a neural voice cannot be written
+    // in Kotlin, and it is what lets a TV without any speech engine read the question aloud.
+    implementation(files("libs/sherpa-onnx.aar"))
     testImplementation("junit:junit:4.13.2")
 }

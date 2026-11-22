@@ -190,6 +190,7 @@
             android:screenOrientation="landscape"
             android:showWhenLocked="true"
             android:taskAffinity="dev.plume.growquiz.quiz"
+            android:theme="@style/QuizTheme"
             android:turnScreenOn="true" />
         <!-- Keeps a process alive between questions: see QuizGuardService. -->
         <service
