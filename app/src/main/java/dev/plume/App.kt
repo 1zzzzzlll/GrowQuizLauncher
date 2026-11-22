@@ -40,7 +40,9 @@ class App : Application() {
         dev.plume.web.WebAdminServer.start(this)
         // GrowQuiz: a question must arrive at the minute the parents chose, hours after anyone last
         // touched the device. Every process start is a chance to put the guard back; it also takes
-        // itself down when the quiz is switched off.
+        // itself down when the quiz is switched off. No page is on screen yet, so on the firmware that
+        // only answers a visible-page start this one is deferred to the desktop's first resume
+        // (see QuizGuardService.sync).
         dev.plume.quiz.QuizGuardService.sync(this)
         // GrowQuiz: a reboot clears every alarm, and this firmware may never deliver BOOT_COMPLETED
         // (a Huawei vision screen stayed silent for 21 hours). The watchdog is a persisted job the
