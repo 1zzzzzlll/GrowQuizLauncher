@@ -31,13 +31,24 @@ data class VoicePack(
 
 object VoicePacks {
 
-    /** The three files a pack cannot work without; [LEXICON] is checked too because this model is a lexicon VITS. */
+    /** Required files for VITS or Matcha packs; [LEXICON] and [TOKENS] are common to both. */
     const val MODEL = "model.onnx"
+    const val MATCHA_MODEL = "model-steps-3.onnx"
+    const val VOCODER = "vocoder.onnx"
     const val LEXICON = "lexicon.txt"
     const val TOKENS = "tokens.txt"
 
+    /** Optional polyphone and text-normalization FSTs, applied in order when present in the pack. */
+    val RULE_FSTS = listOf(
+        "phone.fst", "date.fst", "number.fst", "new_heteronym.fst",
+        "phone-zh.fst", "date-zh.fst", "number-zh.fst",
+    )
+
     /** Where the manifest with the packs sits under the update host: a sibling of latest.json. */
     fun manifestUrl(base: String): String = base.trimEnd('/') + "/tts/voice.json"
+
+    /** Where the server-side neural TTS endpoint lives under the update host. */
+    fun cloudSpeakUrl(base: String): String = base.trimEnd('/') + "/tts/speak"
 
     /**
      * The absolute address of a pack. The manifest may hold a full URL (a mirror) or a path relative
@@ -90,18 +101,35 @@ object VoicePacks {
         return true
     }
 
-    /** True when the unpacked files hold everything [VoicePack] promised. */
-    fun complete(files: Set<String>): Boolean =
-        files.contains(MODEL) && files.contains(LEXICON) && files.contains(TOKENS)
+    /** True when the unpacked files hold either a complete VITS pack or a complete Matcha pack. */
+    fun complete(files: Set<String>): Boolean {
+        val hasLexAndTokens = files.contains(LEXICON) && files.contains(TOKENS)
+        val hasVits = files.contains(MODEL)
+        val hasMatcha = files.contains(MATCHA_MODEL) && files.contains(VOCODER)
+        return hasLexAndTokens && (hasVits || hasMatcha)
+    }
+
+    /** True when [dir] holds a complete unpacked voice pack on disk. */
+    fun hasModelOnDisk(dir: File): Boolean {
+        if (!File(dir, LEXICON).isFile || !File(dir, TOKENS).isFile) return false
+        return File(dir, MODEL).isFile || (File(dir, MATCHA_MODEL).isFile && File(dir, VOCODER).isFile)
+    }
 
     /**
-     * The cache file for one spoken sentence. The clip is reused for the same text, so a question
-     * repeated every 20 seconds, or asked again next week, costs nothing after the first synthesis.
+     * The cache file for one spoken sentence. Version-prefixed ("v2|") so pre-normalization quiet
+     * PCM clips are never reused after upgrading.
      */
     fun clipName(text: String, speaker: Int, speed: Float): String {
         val md = MessageDigest.getInstance("SHA-1")
-        md.update("$text|$speaker|$speed".toByteArray(Charsets.UTF_8))
+        md.update("v2|$text|$speaker|$speed".toByteArray(Charsets.UTF_8))
         return md.digest().joinToString("") { "%02x".format(it) } + ".pcm"
+    }
+
+    /** Cache file name for one cloud-synthesised MP3 clip. */
+    fun cloudClipName(text: String, voice: String = "xiaoyi"): String {
+        val md = MessageDigest.getInstance("SHA-1")
+        md.update("cloud_v2|$voice|$text".toByteArray(Charsets.UTF_8))
+        return md.digest().joinToString("") { "%02x".format(it) } + ".mp3"
     }
 
     /** True when the device can run native code of this ABI at all: a pack for a 32-bit phone is useless on a 64-bit-only one. */

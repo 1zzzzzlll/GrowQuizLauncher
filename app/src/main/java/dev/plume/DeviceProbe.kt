@@ -38,7 +38,11 @@ object DeviceProbe {
             .put("release", Build.VERSION.RELEASE)
             .put("abis", Build.SUPPORTED_ABIS.joinToString(","))
             .put("appVersion", info.versionName)
-            .put("appVersionCode", info.longVersionCode)
+            .put(
+                "appVersionCode",
+                if (Build.VERSION.SDK_INT >= 28) info.longVersionCode
+                else @Suppress("DEPRECATION") info.versionCode.toLong(),
+            )
             .put("screen", "${dm.widthPixels}x${dm.heightPixels}")
             .put("densityDpi", dm.densityDpi)
             .put("ttsEngines", ttsEngines(context))

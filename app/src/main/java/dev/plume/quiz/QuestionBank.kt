@@ -7,37 +7,58 @@ import java.io.File
 import kotlin.random.Random
 
 /**
- * Deals the bundled bank plus the parents' custom questions as shuffled, non-repeating decks.
- * Also owns the maintenance state: manually or automatically disabled questions, and how many
- * times each question was answered correctly (a question retires itself once mastered).
+ * Deals the bundled bank, online textbook-aligned shards, and the parents' custom questions as
+ * shuffled, non-repeating decks. Also owns the maintenance state: manually or automatically
+ * disabled questions, and how many times each question was answered correctly (a question retires
+ * itself once answered right [AUTO_DISABLE_AFTER] times).
  */
 class QuestionBank(private val context: Context) {
     private val prefs get() = context.getSharedPreferences(QuizPrefs.NAME, Context.MODE_PRIVATE)
     private val stats get() = context.getSharedPreferences(STATS_NAME, Context.MODE_PRIVATE)
 
-    /** Bundled bank, one shard per age, parsed lazily so a quiz never pays for ages it does not use. */
+    /** Bundled + online bank, one shard per age, parsed lazily so a quiz never pays for ages it does not use. */
     private val builtinShards = HashMap<Int, List<Question>>()
     @Volatile private var overriddenIds: Set<String> = emptySet()
     @Volatile private var overridesCache: Map<String, JSONObject>? = null
     @Volatile private var customCache: List<Question>? = null
     @Volatile private var loaded = false
+    @Volatile private var onlineRevision = -1L
 
     private fun ensureLoaded() {
-        if (loaded) return
+        val rev = OnlineBankStore.revision()
+        if (loaded && onlineRevision == rev) return
         synchronized(this) {
-            if (!loaded) reload()
+            val latestRev = OnlineBankStore.revision()
+            if (!loaded || onlineRevision != latestRev) reload()
         }
     }
 
-    /** Re-reads custom questions and bundled overrides from disk; called after the admin console changes them. */
+    /** Re-reads custom questions, online shards and overrides from disk; called after mutations or syncs. */
     @Synchronized
     fun reload() {
+        migrateAutoDisableThreshold()
         val overrides = loadOverrides()
         overridesCache = overrides
         overriddenIds = overrides.keys
         customCache = loadCustom()
+        onlineRevision = OnlineBankStore.revision()
         synchronized(this) { builtinShards.clear() }
         loaded = true
+    }
+
+    /**
+     * Retires questions that already reached [AUTO_DISABLE_AFTER] correct answers under an older
+     * threshold, once per threshold change, without overriding any later manual re-enable by parents.
+     */
+    private fun migrateAutoDisableThreshold() {
+        if (stats.getInt(KEY_MIGRATED_DISABLE_AT, 0) == AUTO_DISABLE_AFTER) return
+        val mastered = stats.all.entries.mapNotNull { (k, v) ->
+            if (k.startsWith(KEY_CORRECT) && (v as? Int ?: 0) >= AUTO_DISABLE_AFTER) {
+                k.removePrefix(KEY_CORRECT)
+            } else null
+        }
+        if (mastered.isNotEmpty()) setDisabled(mastered, true)
+        stats.edit().putInt(KEY_MIGRATED_DISABLE_AT, AUTO_DISABLE_AFTER).apply()
     }
 
     private fun overrides(): Map<String, JSONObject> {
@@ -51,6 +72,7 @@ class QuestionBank(private val context: Context) {
     }
 
     private fun custom(): List<Question> {
+        ensureLoaded()
         customCache?.let { return it }
         synchronized(this) {
             customCache?.let { return it }
@@ -60,7 +82,7 @@ class QuestionBank(private val context: Context) {
         }
     }
 
-    /** One age's bundled questions with overrides applied; parsed on first use and cached. */
+    /** One age's bundled + online questions with overrides applied; parsed on first use and cached. */
     private fun shard(age: Int): List<Question> {
         ensureLoaded()
         val key = age.coerceIn(5, 15)
@@ -101,9 +123,15 @@ class QuestionBank(private val context: Context) {
         else -> question.category == category
     }
 
-    fun isDisabled(id: String): Boolean = id in disabledIds()
+    fun isDisabled(id: String): Boolean {
+        ensureLoaded()
+        return id in disabledIds()
+    }
 
-    fun disabledIds(): Set<String> = prefs.getStringSet(KEY_DISABLED, emptySet())!!.toSet()
+    fun disabledIds(): Set<String> {
+        ensureLoaded()
+        return prefs.getStringSet(KEY_DISABLED, emptySet())!!.toSet()
+    }
 
     fun correctCount(id: String): Int = stats.getInt(KEY_CORRECT + id, 0)
 
@@ -121,7 +149,7 @@ class QuestionBank(private val context: Context) {
 
     /** Enables ([disabled] = false) or disables the given questions, for the maintenance page. */
     fun setDisabled(ids: Collection<String>, disabled: Boolean) {
-        val current = disabledIds().toMutableSet()
+        val current = prefs.getStringSet(KEY_DISABLED, emptySet())!!.toMutableSet()
         if (disabled) current += ids else current -= ids.toSet()
         prefs.edit().putStringSet(KEY_DISABLED, current).apply()
     }
@@ -221,7 +249,7 @@ class QuestionBank(private val context: Context) {
         return true
     }
 
-    /** Removes a custom question; bundled questions can only be disabled, never deleted. */
+    /** Removes a custom question; bundled and online questions can only be disabled, never deleted. */
     @Synchronized
     fun deleteCustom(id: String): Boolean {
         val custom = loadCustom()
@@ -233,15 +261,15 @@ class QuestionBank(private val context: Context) {
         return true
     }
 
-    /** True while a bundled question is shadowed by a parent-edited override. */
+    /** True while a bundled or online question is shadowed by a parent-edited override. */
     fun isOverridden(id: String): Boolean {
         ensureLoaded()
         return id in overriddenIds
     }
 
     /**
-     * Overrides a bundled question with a parent-edited version. The bundled bank itself is never
-     * touched: the edit lives in builtin_overrides.json under the original id, so the question's
+     * Overrides a bundled or online question with a parent-edited version. The source bank itself is
+     * never touched: the edit lives in builtin_overrides.json under the original id, so the question's
      * stats and disabled state carry over. Returns false for custom or unknown ids.
      */
     @Synchronized
@@ -262,7 +290,7 @@ class QuestionBank(private val context: Context) {
         return true
     }
 
-    /** Drops a bundled question's override, restoring the original text. */
+    /** Drops a question's override, restoring the original text. */
     @Synchronized
     fun removeOverride(id: String): Boolean {
         val overrides = overrides().toMutableMap()
@@ -297,7 +325,12 @@ class QuestionBank(private val context: Context) {
         if (candidates.size > 1 && previousId != null) {
             candidates = candidates.filter { it.id != previousId }
         }
-        val selected = candidates[Random.Default.nextInt(candidates.size)]
+        // Online textbook-progressed and custom questions are far fewer than the 3000 bundled items:
+        // draw from them half the time while unasked ones remain so current-semester knowledge lands regularly.
+        val priority = candidates.filter { it.online || it.custom }
+        val base = candidates.filter { !it.online && !it.custom }
+        val bucket = if (priority.isNotEmpty() && base.isNotEmpty() && Random.Default.nextBoolean()) priority else candidates
+        val selected = bucket[Random.Default.nextInt(bucket.size)]
         asked += selected.id
         prefs.edit().putStringSet(key, asked).apply()
         return selected
@@ -324,23 +357,46 @@ class QuestionBank(private val context: Context) {
     private fun loadShard(age: Int, overrides: Map<String, JSONObject>): List<Question> {
         val text = context.assets.open("questions/age_$age.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
         val array = JSONObject(text).getJSONArray("questions")
-        val result = ArrayList<Question>(array.length())
-        val ids = HashSet<String>(array.length())
+        val result = ArrayList<Question>(array.length() + 256)
+        val indexById = HashMap<String, Int>(array.length() + 256)
+        val prompts = HashSet<String>(array.length() + 256)
         for (index in 0 until array.length()) {
-            var question = parse(array.getJSONObject(index), custom = false)
-            overrides[question.id]?.let { question = applyOverride(question, it) }
-            check(ids.add(question.id)) { "Duplicate question id: ${question.id}" }
+            val question = parse(array.getJSONObject(index), custom = false)
+            check(!indexById.containsKey(question.id)) { "Duplicate question id: ${question.id}" }
+            indexById[question.id] = result.size
+            prompts += question.prompt
             result += question
+        }
+        // Merge background-synced online textbook questions on top of the offline shard.
+        val onlineFile = OnlineBankStore.shardFile(context, age)
+        if (onlineFile.isFile) {
+            val onlineQuestions = runCatching {
+                OnlineBanks.parseShardQuestions(onlineFile.readText(Charsets.UTF_8), age)
+            }.getOrNull().orEmpty()
+            for (oq in onlineQuestions) {
+                val existingIdx = indexById[oq.id]
+                if (existingIdx != null) {
+                    result[existingIdx] = oq
+                    prompts += oq.prompt
+                } else if (prompts.add(oq.prompt)) {
+                    indexById[oq.id] = result.size
+                    result += oq
+                }
+            }
+        }
+        for (i in result.indices) {
+            val q = result[i]
+            overrides[q.id]?.let { result[i] = applyOverride(q, it) }
         }
         check(result.count { it.age == age } >= 800) { "Too few questions for age $age" }
         return result
     }
 
-    /** Bundled ids look like "a7-0123": the shard they live in is derivable from the id itself. */
+    /** Bundled ids look like "a7-0123" and online ids look like "o7-..."; both name their age shard. */
     private fun ageOf(id: String): Int? =
-        Regex("^a(\\d+)-").find(id)?.groupValues?.get(1)?.toIntOrNull()
+        Regex("^[ao](\\d+)-").find(id)?.groupValues?.get(1)?.toIntOrNull()
 
-    /** Applies a parent edit on top of a bundled question; broken fields fall back to the bundled values. */
+    /** Applies a parent edit on top of a bundled or online question; broken fields fall back to the original values. */
     private fun applyOverride(question: Question, override: JSONObject): Question {
         val optionsJson = override.optJSONArray("options")
         val options = if (optionsJson != null && optionsJson.length() == 4) {
@@ -445,11 +501,12 @@ class QuestionBank(private val context: Context) {
 
     companion object {
         /** A question answered correctly this many times retires itself from the deck. */
-        const val AUTO_DISABLE_AFTER = 5
+        const val AUTO_DISABLE_AFTER = 3
         /** Virtual category standing for every parent-written question, in filters and quiz picking. */
         const val CUSTOM_CATEGORY = "自定义"
         private const val STATS_NAME = "grow_quiz_stats"
         private const val KEY_DISABLED = "disabled_ids"
         private const val KEY_CORRECT = "correct_"
+        private const val KEY_MIGRATED_DISABLE_AT = "migrated_auto_disable_after"
     }
 }

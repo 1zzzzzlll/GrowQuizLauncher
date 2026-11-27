@@ -44,7 +44,7 @@ object PackStore {
     fun ready(context: Context): VoicePack? {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val id = prefs.getString(KEY_ID, null) ?: return null
-        if (!File(dir(context, id), VoicePacks.MODEL).isFile) return null
+        if (!VoicePacks.hasModelOnDisk(dir(context, id))) return null
         return VoicePack(
             id = id,
             name = prefs.getString(KEY_NAME, "") ?: "",

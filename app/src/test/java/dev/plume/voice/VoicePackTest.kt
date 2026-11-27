@@ -25,6 +25,8 @@ class VoicePackTest {
     @Test fun theManifestSitsNextToTheApkList() {
         assertEquals("$base/tts/voice.json", VoicePacks.manifestUrl(base))
         assertEquals("$base/tts/voice.json", VoicePacks.manifestUrl("$base/"))
+        assertEquals("$base/tts/speak", VoicePacks.cloudSpeakUrl(base))
+        assertEquals("$base/tts/speak", VoicePacks.cloudSpeakUrl("$base/"))
     }
 
     @Test fun sizesReadTheWayAParentSaysThem() {
@@ -44,6 +46,8 @@ class VoicePackTest {
 
     @Test fun aPackIsOnlyCompleteWithTheThreeModelFiles() {
         assertTrue(VoicePacks.complete(setOf("model.onnx", "lexicon.txt", "tokens.txt")))
+        assertTrue(VoicePacks.complete(setOf("model-steps-3.onnx", "vocoder.onnx", "lexicon.txt", "tokens.txt")))
+        assertFalse(VoicePacks.complete(setOf("model-steps-3.onnx", "lexicon.txt", "tokens.txt")))
         assertFalse(VoicePacks.complete(setOf("model.onnx", "tokens.txt")))
         assertFalse(VoicePacks.complete(emptySet()))
     }
@@ -64,5 +68,19 @@ class VoicePackTest {
         }
         // SHA-256 of 01 02 03 04 05, computed by sha256sum(1).
         assertEquals("74f81fe167d99b4cb41d6d0ccda82278caee9f3e2f25d5e5a3936ff3dcec60d0", VoicePacks.sha256(file))
+    }
+
+    @Test fun quietWaveformsAreBoostedAndSoftLimitedWithoutClipping() {
+        // Simulate a quiet AISHELL-3 waveform peaking around 0.12 (about -18 dBFS).
+        val quiet = FloatArray(400) { i -> if (i % 2 == 0) 0.10f else -0.10f }
+        val boosted = EmbeddedTts.normalizeToPcm(quiet)
+        val peakAfter = boosted.maxOf { kotlin.math.abs(it.toInt()) }
+        assertTrue("expected boosted peak > 6000, got $peakAfter", peakAfter > 6000)
+        assertTrue("expected soft-limited peak <= 32767, got $peakAfter", peakAfter <= 32767)
+
+        // Extreme transient spikes must soft-limit below full-scale clipping.
+        val loud = FloatArray(400) { i -> if (i == 10) 1.5f else 0.08f }
+        val limited = EmbeddedTts.normalizeToPcm(loud)
+        assertTrue(limited.all { it.toInt() in -32767..32767 })
     }
 }

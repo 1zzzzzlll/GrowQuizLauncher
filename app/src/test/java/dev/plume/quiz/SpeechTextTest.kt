@@ -159,4 +159,43 @@ class SpeechTextTest {
             SpeechText.forQuestion("苹果是什么颜色？", listOf("红色", "蓝色", "绿色", "紫色")),
         )
     }
+
+    /** Bilingual cloud speech keeps real option letters A..D instead of rising "诶 (éi)". */
+    @Test fun bilingualModeKeepsOptionLettersClean() {
+        assertEquals(
+            "苹果是什么颜色？选项 A，红色。选项 B，蓝色",
+            SpeechText.forQuestion("苹果是什么颜色？", listOf("红色", "蓝色", "1", "2"), bilingual = true),
+        )
+        // Standalone algebra letters still read clearly in Chinese math phrasing.
+        assertEquals("艾克斯 小于负三", SpeechText.forTts("x < -3", bilingual = true))
+    }
+
+    /** Character-recognition stems with tone-marked pinyin map to unambiguous homophones. */
+    @Test fun toneMarkedPinyinInStemsIsSpoken() {
+        assertEquals("下面哪个字读作掌？", SpeechText.forStem("下面哪个字读作「zhǎng」？"))
+        assertEquals("下面哪个字读屋，是乌鸦的乌？", SpeechText.forStem("下面哪个字读「wū」，是乌鸦的乌？"))
+        assertEquals("下面哪个字读作月？", SpeechText.forStem("下面哪个字读作「yuè」？"))
+        // Pinyin-choice options stay unspoken so the answer is never given away.
+        assertFalse(SpeechText.isSpeakableOption("píng guǒ"))
+    }
+
+    /** Standalone "2" before a classifier reads "两", while ordinals and multi-digit numbers keep "二". */
+    @Test fun twoBeforeClassifierReadsAsLiang() {
+        assertEquals("小明有两个苹果，又得到四个", SpeechText.forTts("小明有2个苹果，又得到4个"))
+        assertEquals("长方形有两条长边", SpeechText.forTts("长方形有2条长边"))
+        assertEquals("十二个苹果", SpeechText.forTts("12个苹果"))
+        assertEquals("排在第二位", SpeechText.forTts("排在第2位"))
+    }
+
+    /** Prose parentheticals turn into natural pauses instead of "括号…括号"; algebra keeps "括号". */
+    @Test fun proseParentheticalsBecomePausesWhileAlgebraKeepsBrackets() {
+        assertEquals("我们吃的土豆，马铃薯，是植物的哪个部分？", SpeechText.forTts("我们吃的土豆（马铃薯）是植物的哪个部分？"))
+        assertEquals("斑马线，人行横道", SpeechText.forTts("斑马线（人行横道）"))
+        assertEquals("括号二加三括号乘二等于？", SpeechText.forTts("(2 + 3) × 2 = ?"))
+    }
+
+    /** Fill-in-the-blank runs of underscores are spoken once, not repeated per character. */
+    @Test fun repeatedUnderscoresSpeakOnce() {
+        assertEquals("上学前，我要自己整理横线。", SpeechText.forTts("上学前，我要自己整理___。"))
+    }
 }

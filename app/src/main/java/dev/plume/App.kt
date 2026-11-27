@@ -48,5 +48,7 @@ class App : Application() {
         // (a Huawei vision screen stayed silent for 21 hours). The watchdog is a persisted job the
         // system restores by itself, so it is registered from every process start.
         dev.plume.quiz.QuizWatchdog.ensure(this)
+        // GrowQuiz: pull online textbook-progressed question shards in the background at random intervals.
+        dev.plume.quiz.OnlineBankStore.ensureStarted(this)
     }
 }

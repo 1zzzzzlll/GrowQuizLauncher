@@ -21,8 +21,8 @@ android {
         applicationId = "dev.plume.growquiz"
         minSdk = 26
         targetSdk = 36
-        versionCode = 48
-        versionName = "1.20.4"
+        versionCode = 49
+        versionName = "1.21.0"
         // What's new: only this version's section of CHANGELOG.md ships, one entry per line, ** marks kept for bold.
         // A ### heading ships as a line that starts with #. A fix release (1.7.1) ships its x.y section after its own,
         // so people who update from 1.6 still see what 1.7 brought.
@@ -108,4 +108,5 @@ dependencies {
     // in Kotlin, and it is what lets a TV without any speech engine read the question aloud.
     implementation(files("libs/sherpa-onnx.aar"))
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

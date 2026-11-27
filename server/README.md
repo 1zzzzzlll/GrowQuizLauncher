@@ -23,11 +23,14 @@ ssh mylinux 'printf "GROWQUIZ_REPORT_TOKEN=%s,%s\n" "<新口令>" "<旧口令>" 
 # 设备都升级完之后，再单独保留新口令重启一次
 ```
 
-## growquiz-sync：更新同步
+## growquiz-sync：版本与在线题库定时同步
 
-- `growquiz-sync.py`：把 GitHub 仓库最新 Release 的 APK 与发版说明拉到 `/root/nginx/web/growquiz/`（`latest.json` + APK），Caddy `:8443/growquiz/*` 反代到 nginx `:8088` 静态站点。
+- `growquiz-sync.py`：
+  1. 把 GitHub 仓库最新 Release 的 APK 与发版说明拉到 `/root/nginx/web/growquiz/`（`latest.json` + APK）；
+  2. 从 GitHub 仓库 `question-bank/` 目录拉取各年级全学年教材题库池（`pool/`）与补充题（`manual/`），按当前校历日期自动推算所处学期与教学周（共 18 周），过滤并写出 `/root/nginx/web/growquiz/questions/manifest.json` 与 `age_<7..15>.json`（附 SHA-256 校验）。
+  Caddy `:8443/growquiz/*` 反代到 nginx `:8088` 静态站点。
 - `growquiz-sync.timer`：每 3 小时触发一次；手动：`systemctl start growquiz-sync`。
-- 客户端每天检查一次 `<updateBase>/latest.json`，发现新版本自动下载安装。
+- 客户端每天检查一次 `<updateBase>/latest.json`，并在软件运行期间按 3–8 小时随机间隔在后台拉取 `<updateBase>/questions/manifest.json`，发现分片 SHA-256 变化即静默增量更新本地在线题库。
 
 ## growquiz-report：兼容性报告接收（v1.14.0 起）
 
@@ -36,6 +39,12 @@ ssh mylinux 'printf "GROWQUIZ_REPORT_TOKEN=%s,%s\n" "<新口令>" "<旧口令>" 
 - 落盘：`/root/growquiz-reports/<设备ID>/<时间>.json`，另维护 `latest/<设备ID>.json` 便于速查。
 - `growquiz-report.service`：常驻，`systemctl enable --now growquiz-report`。
 - 报告内容：设备探针快照（品牌/固件/权限/TTS）、诊断事件（JSONL 字符串）、上次崩溃栈。设备以随机 UUID 标识。
+
+## growquiz-tts：云端神经语音合成与缓存（v1.21.0 起）
+
+- `growquiz-tts.py`：HTTP 服务监听 `127.0.0.1:8093`，Caddy `:8443/growquiz/tts/speak` 反代进来。共用 `/root/growquiz/report.env` 的 `X-Report-Token` 鉴权，无口令拒绝启动。
+- 音频与缓存：调用 `/root/growquiz/venv` 中的 `edge-tts`（默认 `zh-CN-XiaoyiNeural` 24 kHz 少儿亲切女声），经 `ffmpeg` 做整句响度归一化与软限幅后落盘 `/root/growquiz-tts-cache/`（上限 1.5 GiB，命中缓存几十毫秒返回）。
+- `growquiz-tts.service`：常驻，`systemctl enable --now growquiz-tts`。
 
 ## 部署
 

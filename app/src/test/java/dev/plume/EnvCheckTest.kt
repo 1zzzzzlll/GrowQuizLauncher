@@ -89,6 +89,9 @@ class EnvCheckTest {
         val row = items(tts = "embedded").first { it.key == Key.TTS }
         assertEquals(State.PASS, row.state)
         assertEquals("内置语音", row.detail)
+        val cloudRow = items(tts = "cloud").first { it.key == Key.TTS }
+        assertEquals(State.PASS, cloudRow.state)
+        assertEquals("云端语音", cloudRow.detail)
     }
 
     @Test fun aMissingVoicePointsAtTheDownloadInsteadOfAdb() {

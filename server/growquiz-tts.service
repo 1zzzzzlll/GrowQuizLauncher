@@ -1,0 +1,14 @@
+[Unit]
+Description=GrowQuiz neural TTS proxy & cache service (edge-tts + ffmpeg normalization)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# 与 growquiz-report 共用 /root/growquiz/report.env 中的 GROWQUIZ_REPORT_TOKEN，缺少口令拒绝启动。
+EnvironmentFile=-/root/growquiz/report.env
+ExecStart=/root/growquiz/venv/bin/python /root/growquiz/growquiz-tts.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

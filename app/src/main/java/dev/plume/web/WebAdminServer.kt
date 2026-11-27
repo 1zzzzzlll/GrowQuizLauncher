@@ -419,6 +419,7 @@ object WebAdminServer {
                         .put("tts", dev.plume.quiz.TtsProbe.describe())
                         // The built-in voice: which one answers, and how far the download is. The
                         // console starts it with /api/voice_install and polls this until "ready".
+                        .put("voiceCloud", dev.plume.voice.Voice.usesCloud())
                         .put("voiceEmbedded", dev.plume.voice.Voice.usesEmbedded())
                         .put(
                             "pack",
@@ -431,9 +432,9 @@ object WebAdminServer {
                         )
                         .put("packPct", dev.plume.voice.PackStore.state().progress)
                         // The console's test button treats "sent to the engine" as "not yet heard":
-                        // the bundled voice needs seconds before the first sound, so it waits for
-                        // this stamp to move instead of trusting the request's own answer.
-                        .put("ttsPlayedAt", dev.plume.voice.EmbeddedTts.playedAt())
+                        // wait for this stamp to move so both cloud and bundled voices confirm real playback.
+                        .put("ttsPlayedAt", dev.plume.voice.Voice.playedAt())
+                        .put("onlineBank", onlineBankJson(context, prefs.age))
                 } else {
                     JSONObject()
                         .put("initialized", initialized(context))
@@ -613,6 +614,7 @@ object WebAdminServer {
                             .put("answerIndex", q.answerIndex)
                             .put("explanation", q.explanation)
                             .put("custom", q.custom)
+                            .put("online", q.online)
                             .put("overridden", b.isOverridden(q.id))
                             .put("correct", b.correctCount(q.id))
                             .put("enabled", q.id !in disabled),
@@ -748,6 +750,13 @@ object WebAdminServer {
                 reply(out, 200, "application/json; charset=utf-8", ok())
             }
 
+            path == "/api/questions/sync" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val started = dev.plume.quiz.OnlineBankStore.syncNow(context)
+                val st = onlineBankJson(context, QuizPrefs(context).age)
+                reply(out, 200, "application/json; charset=utf-8", JSONObject().put("ok", true).put("started", started).put("onlineBank", st).toString())
+            }
+
             path == "/api/start" && method == "POST" -> {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
                 // A parent-started question also works while timed questions are off. quizActive keeps
@@ -789,8 +798,9 @@ object WebAdminServer {
 
             path == "/api/voice_use" && method == "POST" -> {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
-                val on = JSONObject(body.ifEmpty { "{}" }).optBoolean("on", true)
-                dev.plume.voice.Voice.preferEmbedded(context, on)
+                val json = JSONObject(body.ifEmpty { "{}" })
+                if (json.has("cloud")) dev.plume.voice.Voice.preferCloud(context, json.optBoolean("cloud", true))
+                if (json.has("on")) dev.plume.voice.Voice.preferEmbedded(context, json.optBoolean("on", true))
                 reply(out, 200, "application/json; charset=utf-8", ok())
             }
 
@@ -799,6 +809,20 @@ object WebAdminServer {
     }
 
     private fun initialized(context: Context): Boolean = hasPassword(context)
+
+    private fun onlineBankJson(context: Context, age: Int): JSONObject {
+        val st = dev.plume.quiz.OnlineBankStore.status(context, age)
+        return JSONObject()
+            .put("syncing", st.syncing)
+            .put("lastSyncAt", st.lastSyncAt)
+            .put("version", st.version)
+            .put("semester", st.semester)
+            .put("teachingWeek", st.teachingWeek)
+            .put("progressPct", st.progressPct)
+            .put("totalCount", st.totalCount)
+            .put("ageCount", st.ageCount)
+            .put("lastError", st.lastError)
+    }
 
     /** Validated question fields used by the update endpoint. */
     private data class QuestionDraft(

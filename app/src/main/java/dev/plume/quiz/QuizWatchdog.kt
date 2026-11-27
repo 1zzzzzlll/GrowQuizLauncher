@@ -68,6 +68,7 @@ class QuizWatchdog : JobService() {
                 // The guard is what keeps the process alive until the next question; after a reboot
                 // nothing else has started it (see QuizGuardService).
                 QuizGuardService.sync(ctx)
+                OnlineBankStore.ensureStarted(ctx)
             }
         } catch (e: Exception) {
             DiagLog.event("alarm_restore_fail", e.message ?: e.javaClass.simpleName)

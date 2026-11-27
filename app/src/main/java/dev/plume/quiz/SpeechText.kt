@@ -86,6 +86,13 @@ object SpeechText {
     )
 
     private val DASH = Regex("[—–]{1,2}")
+    /** Fill-in-the-blank underscores ("___") must be spoken once, not "横线横线横线". */
+    private val MULTI_UNDERSCORE = Regex("[＿_]{2,}")
+    /**
+     * Character-reading stems quote a tone-marked pinyin syllable, e.g. 下面哪个字读作「zhǎng」？
+     * Replaced with a monophonic homophone character so engines never drop or spell out the pinyin.
+     */
+    private val TONE_SYLLABLE = Regex("(?<![A-Za-z])[A-Za-z]*[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ][A-Za-zǖǘǚǜü]*(?![A-Za-z])")
     /** "100%" must be 百分之一百, not 一百百分之. Runs before the digits change into words. */
     private val PERCENT = Regex("([0-9]+(?:\\.[0-9]+)?)\\s*%")
     /** "10^5" is 十的五次方; the digits inside are read by the number rule below. */
@@ -103,6 +110,14 @@ object SpeechText {
     private val ROOT_INDEX = Regex("([²³])\\s*(?=√)")
     /** A pair of brackets with nothing inside is a blank to fill in, and must be heard as one word. */
     private val BLANK_PAIR = Regex("[（(【\\[〈][\\s\\u3000]*[）)】\\]〉]")
+    /**
+     * Explanatory parentheticals in prose — e.g. 土豆（马铃薯）, 一尺（约33厘米）, (sheep) — contain
+     * words and no math operators; speaking "括号马铃薯括号" sounds robotic, so turn them into pauses.
+     * Algebra like (x - 3) or (2 + 3) carries operators and stays on the 括号 path below.
+     */
+    private val PROSE_BRACKET = Regex("[（(]([^）)()]+)[）)]")
+    private val MATH_OP_IN_BRACKET = Regex("[+＋\\-−－×✕*÷/=＝<>≤≥≈≠^√]")
+    private val HAS_WORD_IN_BRACKET = Regex("[\\u4e00-\\u9fff]|[A-Za-z]{2,}")
     private val OPEN_BRACKET = Regex("[（(【\\[〈]")
     private val CLOSE_BRACKET = Regex("[）)】\\]〉]")
     /** "(x-3)(x-4)" turns both brackets into 括号: said twice in a row it reads as a stutter. */
@@ -122,6 +137,7 @@ object SpeechText {
     // The stem keeps its own ？ or ！, and the next segment follows right after: "是偶数？。选项A" would
     // give the engine an empty sentence to read out.
     private val PERIOD_AFTER_STOP = Regex("([？!！])。")
+    private val COMMA_AFTER_STOP = Regex("([？!！。])，+")
     private val SPACE_BEFORE_PUNCT = Regex(" +([，。？！、])")
     private val SPACE_AFTER_PUNCT = Regex("(?<=[，。？！、]) +")
     /** "20 加 9" reads with a pause on each space; a spoken operator is not a word gap. */
@@ -134,6 +150,13 @@ object SpeechText {
     private val LEADING_MINUS = Regex("(?<![0-9A-Za-z）)】])[-−－](?=[0-9])")
     private val REMAINING_MINUS = Regex("[-−－]")
     /**
+     * Before common classifiers, Mandarin speaks standalone "2" as "两" (两个苹果, 两条边), never "二个".
+     * Ordinals and weekdays (第2名, 周2) and multi-digit/decimal numbers (12个, 0.2个) stay "二".
+     */
+    private val TWO_BEFORE_MEASURE = Regex(
+        "(?<![0-9.第初老周])2\\s*(?=小时|分钟|个|只|条|张|本|颗|块|次|天|岁|双|支|把|座|朵|辆|架|艘|棵|片|道|名|位|家|头|匹|顶|件)",
+    )
+    /**
      * A Chinese model reads "24" as a number only when it is spelled in Chinese: fed as digits it can
      * drop the token and leave a hole in the sentence ("减  等于"). Four digits is the range a question
      * uses; longer runs are dates and stay as they are.
@@ -143,11 +166,13 @@ object SpeechText {
     private val DECIMAL = Regex("([0-9]+)[.．]([0-9]+)")
     private val DIGITS = "零一二三四五六七八九"
     /**
-     * A lone Latin letter has no sound in a Chinese model: "x - 3" comes out as "减 三" and the child
+     * A lone Latin letter has no sound in a Chinese-only model: "x - 3" comes out as "减 三" and the child
      * cannot tell what is being subtracted. Each letter is read the way a Chinese speaker names it.
-     * Only a letter standing on its own changes - "TV" and "HIV" keep their letters.
+     * In [bilingual] mode (neural cloud TTS), "选项A".."选项D" keep their real English letters so "A" is
+     * spoken with standard first-tone ēi instead of rising "诶 (éi)".
      */
     private val LONE_LETTER = Regex("(?<![A-Za-z])[A-Za-z](?![A-Za-z])")
+    private val LONE_LETTER_BILINGUAL = Regex("(?<![A-Za-z])(?<!选项)[A-Za-z](?![A-Za-z])")
     private val LETTER_SOUND = mapOf(
         'A' to "诶", 'B' to "必", 'C' to "西", 'D' to "迪", 'E' to "伊", 'F' to "艾弗",
         'G' to "吉", 'H' to "艾尺", 'I' to "艾", 'J' to "杰", 'K' to "开", 'L' to "艾勒",
@@ -183,41 +208,52 @@ object SpeechText {
     }
 
     /** The stem alone, ready to be spoken the moment it appears. */
-    fun forStem(prompt: String): String = forTts(prompt)
+    fun forStem(prompt: String, bilingual: Boolean = false): String = forTts(prompt, bilingual)
 
     /** The options worth hearing, ready to be queued behind the stem; empty when none is. */
-    fun forOptions(options: List<String>): String {
+    fun forOptions(options: List<String>, bilingual: Boolean = false): String {
         val parts = options.mapIndexedNotNull { i, option ->
             if (isSpeakableOption(option)) "选项" + ('A' + i) + "：" + option else null
         }
-        return if (parts.isEmpty()) "" else forTts(parts.joinToString("。"))
+        return if (parts.isEmpty()) "" else forTts(parts.joinToString("。"), bilingual)
     }
+
+    /** Joins an already-formatted stem and options without leaving a double stop ("？。"). */
+    fun joinParts(first: String, rest: String): String =
+        if (rest.isBlank()) first else PERIOD_AFTER_STOP.replace("$first。$rest", "$1")
 
     /** The whole question in one string, for tests and for anywhere without chunked playback. */
-    fun forQuestion(prompt: String, options: List<String>): String {
-        val stem = forStem(prompt)
-        val rest = forOptions(options)
-        return if (rest.isEmpty()) stem else PERIOD_AFTER_STOP.replace("$stem。$rest", "$1")
-    }
+    fun forQuestion(prompt: String, options: List<String>, bilingual: Boolean = false): String =
+        joinParts(forStem(prompt, bilingual), forOptions(options, bilingual))
 
-    fun forTts(raw: String): String {
+    fun forTts(raw: String, bilingual: Boolean = false): String {
         var s = raw
         // A long dash is a pause, not a minus: settle it before the sign table runs.
         s = DASH.replace(s, "，")
+        s = MULTI_UNDERSCORE.replace(s, "_")
+        s = TONE_SYLLABLE.replace(s) { m -> PinyinSyllables.toHanzi(m.value) ?: m.value }
         for ((from, to) in PHRASES) s = s.replace(from, to)
         s = PERCENT.replace(s) { "百分之" + it.groupValues[1] }
         s = POWER.replace(s) { "的" + it.groupValues[1] + "次方" }
         s = FRACTION.replace(s) { m -> m.groupValues[2] + "分之" + m.groupValues[1] }
         s = RATIO.replace(s) { m -> m.groupValues[1] + "比" + m.groupValues[2] }
         s = ROOT_INDEX.replace(s) { m -> if (m.value.startsWith("²")) "二次" else "三次" }
+        // Blank pairs and prose parentheticals are settled before minus/bracket rules so "(x-3)" stays algebra.
+        s = BLANK_PAIR.replace(s, "空白")
+        s = PROSE_BRACKET.replace(s) { m ->
+            val inner = m.groupValues[1]
+            if (HAS_WORD_IN_BRACKET.containsMatchIn(inner) && !MATH_OP_IN_BRACKET.containsMatchIn(inner)) {
+                "，$inner，"
+            } else {
+                m.value
+            }
+        }
         // Signs are settled while the operands are still digits and letters: after the bracket rule they
         // would sit next to 括号, and after the number rule next to 十, and neither reads as a minus.
         s = MINUS_BETWEEN.replace(s, "减")
         s = LEADING_MINUS.replace(s, "负")
         s = REMAINING_MINUS.replace(s, "")
-        // Brackets carry meaning in algebra and mark a blank in a fill-in question: say 括号 or 空白
-        // instead of dropping them, which used to glue both sides of "(x-3)(x-4)" into one word.
-        s = BLANK_PAIR.replace(s, "空白")
+        // Remaining brackets carry meaning in algebra: say 括号 instead of dropping them.
         s = OPEN_BRACKET.replace(s, "括号")
         s = CLOSE_BRACKET.replace(s, "括号")
         s = DOUBLE_BRACKET.replace(s, "括号")
@@ -237,6 +273,7 @@ object SpeechText {
         s = REPEATED_COMMA.replace(s, "，")
         s = REPEATED_PERIOD.replace(s, "。")
         s = PERIOD_AFTER_STOP.replace(s, "$1")
+        s = COMMA_AFTER_STOP.replace(s, "$1")
         s = SPACE_BEFORE_PUNCT.replace(s, "$1")
         s = SPACE_AFTER_PUNCT.replace(s, "")
         s = SPACE_AROUND_OPERATOR.replace(s, "")
@@ -246,14 +283,16 @@ object SpeechText {
             else whole.map { DIGITS[it - '0'] }.joinToString("")
             head + "点" + m.groupValues[2].map { DIGITS[it - '0'] }.joinToString("")
         }
+        s = TWO_BEFORE_MEASURE.replace(s, "两")
         s = SHORT_NUMBER.replace(s) { m -> numberToChinese(m.value.toInt()) }
-        s = LONE_LETTER.replace(s) { m -> LETTER_SOUND[m.value.uppercase()[0]] ?: m.value }
+        val letterPattern = if (bilingual) LONE_LETTER_BILINGUAL else LONE_LETTER
+        s = letterPattern.replace(s) { m -> LETTER_SOUND[m.value.uppercase()[0]] ?: m.value }
         s = SUBSCRIPT.entries.fold(s) { acc, (from, to) -> acc.replace(from.toString(), to) }
         // Latin gets a space on each side: engines otherwise glue "选项A" into one unknown word and skip it.
         // The spacing is invisible on screen; it only exists in the spoken string.
         s = CJK_THEN_LATIN.replace(s, "$1 $2")
         s = LATIN_THEN_CJK.replace(s, "$1 $2")
-        return s.trim().trimStart('，', '。', '、', ' ')
+        return s.trim().trimStart('，', '。', '、', ' ').trimEnd('，', '、')
     }
 
     /** 0..9999 the way a Chinese speaker says it: 24 → 二十四, 105 → 一百零五, 2026 → 二千零二十六. */

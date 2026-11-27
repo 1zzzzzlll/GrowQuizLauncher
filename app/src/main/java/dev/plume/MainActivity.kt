@@ -5023,6 +5023,10 @@ class MainActivity : Activity() {
             state.stage == PackStore.Stage.UNPACKING -> "正在安装内置语音，马上就好。"
             state.stage == PackStore.Stage.FAILED ->
                 "上次下载没有完成。点下面重新下载，会接着上次的进度继续。"
+            Voice.usesCloud() && pack != null ->
+                "正在使用云端高清语音，并已安装离线语音包「${pack.name}」，断网也能照常朗读。"
+            Voice.usesCloud() ->
+                "正在使用云端高清语音，联网即可清晰朗读；也可下载离线语音包（约 28 MB），断网时自动兜底。"
             pack != null && Voice.usesEmbedded() -> "正在使用内置语音「${pack.name}」，离线也能朗读。"
             pack != null -> "内置语音已下载但没有启用，现在用的是电视自带的引擎。"
             dev.plume.quiz.TtsProbe.describe() == "available" ->

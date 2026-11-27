@@ -151,6 +151,7 @@ object EnvCheck {
         // The pack is different: it is downloaded and enabled from inside the app, which is the only
         // route that works on a TV with no settings page and no install permission (see docs/VOICE.md).
         if (ttsWanted) out += when (tts) {
+            "cloud" -> Item(Key.TTS, "语音朗读引擎", State.PASS, "云端语音", "")
             "available" -> Item(Key.TTS, "语音朗读引擎", State.PASS, "电视自带引擎", "")
             "embedded" -> Item(Key.TTS, "语音朗读引擎", State.PASS, "内置语音", "")
             "initializing" -> Item(

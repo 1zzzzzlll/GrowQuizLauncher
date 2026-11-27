@@ -612,7 +612,8 @@ class QuizActivity : Activity() {
         // The stem goes out first, the options are queued behind it: the voice starts while the rest is
         // still being synthesised, so the question is heard at once. An option of one character, one
         // number or one letter is left out - spoken aloud it hands the answer over.
-        Voice.speakParts(SpeechText.forStem(q.prompt), SpeechText.forOptions(q.options))
+        val bilingual = Voice.isBilingual()
+        Voice.speakParts(SpeechText.forStem(q.prompt, bilingual), SpeechText.forOptions(q.options, bilingual))
         prefetchNext(q)
     }
 
@@ -632,7 +633,8 @@ class QuizActivity : Activity() {
         val next = runCatching { bank.next(prefs.age, prefs.categories, current.id) }.getOrNull() ?: return
         pending = next
         if (!voiceAppliesTo(next)) return
-        Voice.warmParts(SpeechText.forStem(next.prompt), SpeechText.forOptions(next.options))
+        val bilingual = Voice.isBilingual()
+        Voice.warmParts(SpeechText.forStem(next.prompt, bilingual), SpeechText.forOptions(next.options, bilingual))
     }
 
     /**

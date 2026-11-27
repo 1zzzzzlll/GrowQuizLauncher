@@ -16,11 +16,12 @@
 
 | 位置 | 职责 |
 | --- | --- |
-| `app/libs/sherpa-onnx.aar` | 官方 sherpa-onnx 2.0.2 静态链接 AAR，裁到 `arm64-v8a` + `armeabi-v7a` 两个 ABI（Apache-2.0） |
-| `voice/VoicePack.kt` | 纯 JVM：清单解析、URL 解析、大小文案、SHA-256、zip 条目校验、片段缓存名 |
+| `voice/CloudTts.kt` | 24 kHz 云端神经语音（服务端 `edge-tts` + 响度归一化 + 双端缓存），题干先播、选项并行预取，断网 45 秒熔断回退离线语音 |
+| `app/libs/sherpa-onnx.aar` | 官方 sherpa-onnx 2.0.2 静态链接 AAR，裁到 `arm64-v8a` + `armeabi-v7a` 两个 ABI（Apache-2.0），负责离线兜底 |
+| `voice/VoicePack.kt` | 纯 JVM：清单解析、URL 解析、大小文案、SHA-256、zip 条目校验、片段缓存名（支持 VITS 与 Matcha） |
 | `voice/PackStore.kt` | 下载（断点续传）、校验、解压、原子替换、删除；`state()` 供界面轮询 |
-| `voice/EmbeddedTts.kt` | 加载模型、合成 PCM、AudioTrack 播放、句子缓存、音频焦点 |
-| `voice/Voice.kt` | 门面：内置语音优先，本机引擎兜底；`describe()` 给管理台和环境检测用 |
+| `voice/EmbeddedTts.kt` | 离线模型加载、`generateWithCallback` 流式合成、整句响度归一化 + 软限幅、AudioTrack 播放、句子缓存 |
+| `voice/Voice.kt` | 门面：云端语音优先 → 离线语音包兜底 → 本机系统引擎兜底；`describe()` 给管理台和环境检测用 |
 | `EnvCheck.kt` / `web_admin.html` | 环境检测的「语音朗读引擎」一行；手机端「设置 → 语音朗读」卡片 |
 
 模型**不放进 APK**：28 MB 会被每一台设备在每一次更新时重复付一遍流量。APK 只多出原生库（压缩后约 19 MB，`useLegacyPackaging = true`）。

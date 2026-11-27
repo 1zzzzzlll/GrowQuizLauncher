@@ -24,6 +24,14 @@ class QuizPrefs(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_VOICE, value).apply()
 
     /**
+     * Speak with the cloud neural voice (24 kHz, server-cached) when reachable, falling back to
+     * the offline pack or system TTS when offline. On by default whenever a server is configured.
+     */
+    var cloudVoice: Boolean
+        get() = prefs.getBoolean(KEY_CLOUD_VOICE, true)
+        set(value) = prefs.edit().putBoolean(KEY_CLOUD_VOICE, value).apply()
+
+    /**
      * Speak with the voice that came with the app instead of the TV's own speech engine. Set when a
      * parent loads the built-in voice, because a set-top box either has no engine or one whose Chinese
      * sounds wrong; without such a pack the setting means nothing and the engine is used as before.
@@ -205,6 +213,7 @@ class QuizPrefs(context: Context) {
         private const val KEY_NEXT = "next_trigger_at"
         private const val KEY_CATEGORIES = "categories"
         private const val KEY_VOICE = "voice_enabled"
+        private const val KEY_CLOUD_VOICE = "voice_cloud"
         private const val KEY_EMBEDDED_VOICE = "voice_embedded"
         private const val KEY_BOOT_QUIZ = "boot_quiz_enabled"
         private const val KEY_REST_GUARD = "rest_guard_enabled"

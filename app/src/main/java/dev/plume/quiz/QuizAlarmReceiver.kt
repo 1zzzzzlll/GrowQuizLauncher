@@ -27,6 +27,7 @@ class QuizAlarmReceiver : BroadcastReceiver() {
         // GrowQuiz: the alarm wakes this process anyway, so a TV nobody opens still reports on
         // schedule — day-one data showed most devices only ever started once.
         dev.plume.ReportUpload.maybeUpload(context)
+        OnlineBankStore.ensureStarted(context)
         // GrowQuiz: judge the previous alarm before this one overwrites its timestamp — a fired
         // alarm that never produced a quiz_open was swallowed silently (background-start rules
         // throw nothing), and only this look-back can see it.

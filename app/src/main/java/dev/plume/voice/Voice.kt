@@ -3,70 +3,96 @@ package dev.plume.voice
 import android.content.Context
 import dev.plume.quiz.QuizPrefs
 import dev.plume.quiz.QuizVoice
+import dev.plume.quiz.SpeechText
 
 /**
  * The one place a page asks for a sentence to be spoken.
  *
- * Two voices can answer. The TV's own engine ([QuizVoice]) needs nothing installed but is missing on
- * many set-top boxes, and on others its Chinese is poor. The bundled voice ([EmbeddedTts]) sounds the
- * same everywhere and needs no permission, but costs a 32 MB model, so it only speaks after a parent
- * loads it. This object decides which one answers, once per sentence: a loaded pack wins on the TV
- * that has one, and it takes over by itself on a TV whose engine turns out to be unusable — a child
- * should never sit in front of a silent question because a setting was left alone.
- *
- * Kept thin on purpose: the pages keep calling one speak/stop pair, and the difference between the two
- * voices does not leak into the quiz.
+ * Three tiers answer in order:
+ * 1. [CloudTts] — 24 kHz studio neural voice cached on our server and locally on disk (~0.3 s,
+ *    bilingual, natural prosody). Active whenever the server is configured and reachable.
+ * 2. [EmbeddedTts] — the downloaded on-device neural pack, taking over automatically when offline
+ *    or when cloud speech is disabled.
+ * 3. [QuizVoice] — the TV's own Android speech engine, when neither neural voice is available.
  */
 object Voice {
     @Volatile private var app: Context? = null
 
-    /** Called when a page comes up: start the chosen voice (skip system TTS when bundled voice is active). */
+    /** Called when a page comes up: warm offline fallback if installed; skip system TTS when neural voice is active. */
     fun warm(context: Context) {
         val app = context.applicationContext
         this.app = app
-        // A TV with a bundled voice pack enabled has no reason to initialize Android's missing
-        // system TTS on every cold start — doing so logged false tts_missing(status=-1) every boot.
-        if (!usesEmbedded()) QuizVoice.warm(app)
+        // If an offline pack is already on disk, keep it warm in RAM so an internet drop falls back with zero wait.
+        val pack = PackStore.ready(app)
+        if (pack != null && EmbeddedTts.reason() == null && (QuizPrefs(app).embeddedVoice || usesCloud())) {
+            EmbeddedTts.prepare(app, pack)
+        }
+        if (!usesCloud() && !usesEmbedded()) QuizVoice.warm(app)
     }
 
+    /** Whether the next sentence goes through the 24 kHz cloud neural voice. */
+    fun usesCloud(): Boolean {
+        val app = app ?: return false
+        return CloudTts.isConfigured() && QuizPrefs(app).cloudVoice && !CloudTts.isCoolingDown()
+    }
+
+    /** True when the active engine pronounces English words and option letters A..D natively. */
+    fun isBilingual(): Boolean = usesCloud()
+
     /**
-     * Whether the next sentence goes through the bundled voice. Also starts that voice when it is the
-     * one that should answer, so a pack loaded while the app runs needs no restart.
+     * Whether the next offline sentence goes through the bundled voice pack. Also starts that voice
+     * when it is the one that should answer, so a pack loaded while the app runs needs no restart.
      */
     fun usesEmbedded(): Boolean {
+        if (usesCloud()) return false
+        return canFallbackEmbedded()
+    }
+
+    private fun canFallbackEmbedded(): Boolean {
         val app = app ?: return false
         val pack = PackStore.ready(app) ?: return false
-        if (EmbeddedTts.reason() != null) return false // this device could not load it: engine only
-        if (QuizPrefs(app).embeddedVoice) {
+        if (EmbeddedTts.reason() != null) return false
+        if (QuizPrefs(app).embeddedVoice || CloudTts.isCoolingDown() || QuizVoice.isUnusable()) {
             EmbeddedTts.prepare(app, pack)
             return true
         }
-        // No engine, or one without Chinese: the pack already on disk is better than silence.
-        if (!QuizVoice.isUnusable()) return false
-        EmbeddedTts.prepare(app, pack)
-        return true
+        return false
     }
 
-    /** True once the chosen voice can speak; false while the model is still loading. */
-    fun isReady(): Boolean = if (usesEmbedded()) EmbeddedTts.isReady() else QuizVoice.isReady()
+    /** True once the chosen voice can speak; false while an offline model is still loading. */
+    fun isReady(): Boolean = when {
+        usesCloud() -> true
+        usesEmbedded() -> EmbeddedTts.isReady()
+        else -> QuizVoice.isReady()
+    }
 
     /** No voice at all: the caller says so once instead of reading nothing. Never true while a pack loads. */
-    fun isUnusable(): Boolean = if (usesEmbedded()) false else QuizVoice.isUnusable()
+    fun isUnusable(): Boolean = when {
+        usesCloud() -> false
+        usesEmbedded() -> false
+        else -> QuizVoice.isUnusable()
+    }
+
+    /** When a sentence last started playing out of the speaker (cloud or bundled offline). */
+    fun playedAt(): Long = maxOf(CloudTts.playedAt(), EmbeddedTts.playedAt())
 
     /**
-     * Speaks [text]. With [flush] the current sentence stops and this one starts at once, which is what a
-     * new question needs; without it the text queues behind what is being said.
+     * Speaks [text]. When [CloudTts] fails mid-request (e.g. Wi-Fi dropped), falls back immediately
+     * to [EmbeddedTts] or [QuizVoice] so the child still hears the sentence.
      */
     fun speak(text: String, flush: Boolean = true): Boolean {
         val app = app ?: return QuizVoice.speak(text, flush)
-        return if (usesEmbedded()) EmbeddedTts.speak(app, text, flush) else QuizVoice.speak(text, flush)
+        if (usesCloud()) {
+            val ok = CloudTts.speak(app, text, flush) { speakOfflineFallback(app, text, flush = true) }
+            if (ok) return true
+        }
+        return speakOfflineFallback(app, text, flush)
     }
 
     /**
-     * Speaks a question: [first] is the stem, [rest] the options. The bundled voice takes both as one
-     * text — it synthesises everything before the first sound anyway, so two calls would only double
-     * the wait and put an unnatural pause in the middle. A system engine streams: there the options
-     * queue behind the stem and the voice starts earlier.
+     * Speaks a question: [first] is the stem, [rest] the options.
+     * Cloud TTS fetches [first] and [rest] in parallel so the stem plays within ~0.3–1.0 s;
+     * Embedded TTS joins them cleanly and streams clause-by-clause via callback.
      */
     fun speakParts(first: String, rest: String) {
         val app = app ?: run {
@@ -74,36 +100,57 @@ object Voice {
             if (rest.isNotBlank()) QuizVoice.speak(rest, flush = false)
             return
         }
+        if (usesCloud()) {
+            val ok = CloudTts.speakParts(app, first, rest) {
+                speakPartsOfflineFallback(app, first, rest)
+            }
+            if (ok) return
+        }
+        speakPartsOfflineFallback(app, first, rest)
+    }
+
+    private fun speakOfflineFallback(app: Context, text: String, flush: Boolean): Boolean {
+        if (canFallbackEmbedded() && EmbeddedTts.isReady()) {
+            return EmbeddedTts.speak(app, text, flush)
+        }
+        QuizVoice.warm(app)
+        return QuizVoice.speak(text, flush)
+    }
+
+    private fun speakPartsOfflineFallback(app: Context, first: String, rest: String) {
+        if (canFallbackEmbedded() && EmbeddedTts.isReady()) {
+            EmbeddedTts.speak(app, SpeechText.joinParts(first, rest), flush = true)
+            return
+        }
+        QuizVoice.warm(app)
+        QuizVoice.speak(first, flush = true)
+        if (rest.isNotBlank()) QuizVoice.speak(rest, flush = false)
+    }
+
+    /** Pre-fetches or pre-synthesises a question that is not on screen yet. */
+    fun warmParts(first: String, rest: String) {
+        val app = app ?: return
+        if (usesCloud()) {
+            CloudTts.warmParts(app, first, rest)
+            return
+        }
         if (usesEmbedded()) {
-            EmbeddedTts.speak(app, if (rest.isBlank()) first else "$first。$rest", flush = true)
-        } else {
-            QuizVoice.speak(first, flush = true)
-            if (rest.isNotBlank()) QuizVoice.speak(rest, flush = false)
+            EmbeddedTts.warmClip(app, SpeechText.joinParts(first, rest))
         }
     }
 
-    /**
-     * Prepares a question that is not on screen yet. A sentence takes seconds to synthesise on this
-     * hardware, so the next question is computed while the child is still reading the current one;
-     * by the time it appears its clip is on disk and the voice starts at once. A system engine is
-     * fast enough that there is nothing to prepare.
-     */
-    fun warmParts(first: String, rest: String) {
-        val app = app ?: return
-        if (!usesEmbedded()) return
-        EmbeddedTts.warmClip(app, if (rest.isBlank()) first else "$first。$rest")
-    }
-
     fun stop() {
+        CloudTts.stop()
         QuizVoice.stop()
         EmbeddedTts.stop()
     }
 
     /**
-     * What the parents' console shows: "embedded" (bundled voice), "available" (the TV's engine),
-     * "initializing" while either is still starting, or why there is nothing.
+     * What the parents' console shows: "cloud" (server neural voice), "embedded" (offline pack),
+     * "available" (the TV's engine), "initializing" while starting, or why there is nothing.
      */
     fun describe(): String = when {
+        usesCloud() -> "cloud"
         usesEmbedded() && EmbeddedTts.isReady() -> "embedded"
         usesEmbedded() -> "initializing"
         else -> QuizVoice.failureReason() ?: if (QuizVoice.isReady()) "available" else "initializing"
@@ -111,6 +158,7 @@ object Voice {
 
     /** A one-line state for the environment check, in words a parent reads on the TV. */
     fun detail(): String = when (describe()) {
+        "cloud" -> "云端语音"
         "embedded" -> "内置语音"
         "available" -> "电视自带引擎"
         "initializing" -> "加载中"
@@ -118,16 +166,27 @@ object Voice {
         else -> "未安装"
     }
 
-    /** Switches the voice, e.g. from the console, and starts it at once. */
+    /** Switches the offline voice preference from the console or TV settings. */
     fun preferEmbedded(context: Context, on: Boolean) {
-        QuizPrefs(context.applicationContext).embeddedVoice = on
         val app = context.applicationContext
         this.app = app
+        QuizPrefs(app).embeddedVoice = on
         if (on) {
             PackStore.ready(app)?.let { EmbeddedTts.prepare(app, it) }
         } else {
             EmbeddedTts.stop()
-            QuizVoice.warm(app)
+            if (!usesCloud()) QuizVoice.warm(app)
+        }
+    }
+
+    /** Enables or disables the cloud neural voice (e.g. from the console). */
+    fun preferCloud(context: Context, on: Boolean) {
+        val app = context.applicationContext
+        this.app = app
+        QuizPrefs(app).cloudVoice = on
+        if (!on) {
+            CloudTts.stop()
+            if (!usesEmbedded()) QuizVoice.warm(app)
         }
     }
 }

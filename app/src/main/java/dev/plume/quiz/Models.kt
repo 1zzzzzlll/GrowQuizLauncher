@@ -9,6 +9,8 @@ data class Question(
     val options: List<String>,
     val answerIndex: Int,
     val explanation: String,
-    /** True for questions written by parents through the admin console, false for the bundled bank. */
+    /** True for questions written by parents through the admin console, false for bundled/online banks. */
     val custom: Boolean = false,
+    /** True for textbook-aligned questions pulled in the background from the online bank. */
+    val online: Boolean = false,
 )
