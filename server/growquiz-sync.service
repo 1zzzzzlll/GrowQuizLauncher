@@ -1,5 +1,5 @@
 [Unit]
-Description=Sync the latest GrowQuiz release (APK + notes) from GitHub to the update directory
+Description=Sync GrowQuiz latest release and semester-progressed online question bank from GitHub
 
 [Service]
 Type=oneshot

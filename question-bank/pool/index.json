@@ -1,0 +1,63 @@
+{
+  "catalogCrawledAt": "2026-11-27T12:06:19Z",
+  "bookCount": 99,
+  "manualFiles": [
+    "manual/custom_questions.json"
+  ],
+  "pools": [
+    {
+      "age": 7,
+      "grade": 1,
+      "file": "pool/age_7.json",
+      "count": 205
+    },
+    {
+      "age": 8,
+      "grade": 2,
+      "file": "pool/age_8.json",
+      "count": 154
+    },
+    {
+      "age": 9,
+      "grade": 3,
+      "file": "pool/age_9.json",
+      "count": 144
+    },
+    {
+      "age": 10,
+      "grade": 4,
+      "file": "pool/age_10.json",
+      "count": 123
+    },
+    {
+      "age": 11,
+      "grade": 5,
+      "file": "pool/age_11.json",
+      "count": 109
+    },
+    {
+      "age": 12,
+      "grade": 6,
+      "file": "pool/age_12.json",
+      "count": 87
+    },
+    {
+      "age": 13,
+      "grade": 7,
+      "file": "pool/age_13.json",
+      "count": 113
+    },
+    {
+      "age": 14,
+      "grade": 8,
+      "file": "pool/age_14.json",
+      "count": 93
+    },
+    {
+      "age": 15,
+      "grade": 9,
+      "file": "pool/age_15.json",
+      "count": 110
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "version": "2026-fall-w12-080e67a2",
+  "updatedAt": "2026-11-27T12:21:58Z",
+  "semester": "2026-2027学年第一学期（上册）",
+  "teachingWeek": 12,
+  "totalWeeks": 18,
+  "progressPct": 67,
+  "shards": [
+    {
+      "age": 7,
+      "grade": 1,
+      "url": "questions/age_7.json",
+      "count": 89,
+      "bytes": 33374,
+      "sha256": "e568d7ace033e2d56d994e76d93e95be344b6c34cb0e1e8f53e33c6cdc251c4f"
+    },
+    {
+      "age": 8,
+      "grade": 2,
+      "url": "questions/age_8.json",
+      "count": 63,
+      "bytes": 23937,
+      "sha256": "38d5a7f6a25192e1b4e00083f72d2b4e442a52f737b2626a0ea4054f17a17ee1"
+    },
+    {
+      "age": 9,
+      "grade": 3,
+      "url": "questions/age_9.json",
+      "count": 53,
+      "bytes": 20876,
+      "sha256": "97ddc8366c977a6905829c901c7c934d4ec7893571bab33357bc84a9021d4030"
+    },
+    {
+      "age": 10,
+      "grade": 4,
+      "url": "questions/age_10.json",
+      "count": 46,
+      "bytes": 18972,
+      "sha256": "b12986370389719f0d2fc737ac1d8b05a2c088c9806a68941076f40bb182c007"
+    },
+    {
+      "age": 11,
+      "grade": 5,
+      "url": "questions/age_11.json",
+      "count": 41,
+      "bytes": 16008,
+      "sha256": "bb09940aaccb588c4dd18569cccc2d93eeaf84af5bbbdb2a432d7f681f9823e0"
+    },
+    {
+      "age": 12,
+      "grade": 6,
+      "url": "questions/age_12.json",
+      "count": 27,
+      "bytes": 11449,
+      "sha256": "b05f582fb26d702f458990717949f269dfde88fdb2dd270ace496fbde9613b7e"
+    },
+    {
+      "age": 13,
+      "grade": 7,
+      "url": "questions/age_13.json",
+      "count": 46,
+      "bytes": 19051,
+      "sha256": "17648620520b9a6c864808f00cde6c0b00d614923812cda403bf8384421d4c1b"
+    },
+    {
+      "age": 14,
+      "grade": 8,
+      "url": "questions/age_14.json",
+      "count": 40,
+      "bytes": 16546,
+      "sha256": "0ad4075ff0130cb4787e139ba0eca3c04ae54dcd4633735b4fd27cb8184d4058"
+    },
+    {
+      "age": 15,
+      "grade": 9,
+      "url": "questions/age_15.json",
+      "count": 44,
+      "bytes": 18959,
+      "sha256": "b8fe6be21d3feaa1d3d713c290012867d31df00caeca35c0c152da6f34cdc852"
+    }
+  ]
+}
