@@ -358,7 +358,11 @@ class MainActivity : Activity() {
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             appsDirty = true
-            i.data?.schemeSpecificPart?.let { GLYPHS.remove(it); ACCENTS.remove(it) } // an update may bring a new icon
+            i.data?.schemeSpecificPart?.let {
+                GLYPHS.remove(it)
+                ACCENTS.remove(it)
+                dev.plume.quiz.AppBlock.invalidateIcon(it)
+            } // an update may bring a new icon
             // GrowQuiz: a newly installed app joins All apps only; the desktop stays exactly as the parent set it.
             if (i.action == Intent.ACTION_PACKAGE_ADDED && !i.getBooleanExtra(Intent.EXTRA_REPLACING, false)) {
                 i.data?.schemeSpecificPart?.let { pkg ->
@@ -544,9 +548,12 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        // Coming back from a just-finished quiz: land straight on the desktop, no admin prompt.
+        // Coming back from a just-finished quiz or blocked-app reminder: land straight on the desktop, no admin prompt.
         val fromQuiz = dev.plume.quiz.QuizActivity.justFinished
         dev.plume.quiz.QuizActivity.justFinished = false
+        val fromBlocked = dev.plume.quiz.BlockedAppActivity.justClosed
+        dev.plume.quiz.BlockedAppActivity.justClosed = false
+        dev.plume.quiz.AppBlock.noteHomeShown()
         // GrowQuiz: this desktop is only resumed after a quiz when it is what the child sees — the
         // video task below is gone (the TV's memory manager took it during a long question). Hand
         // back the video the quiz covered; when the player did come back by itself, nothing runs.
@@ -563,7 +570,7 @@ class MainActivity : Activity() {
         // so it gets recreated often (memory pressure, another app stealing the screen) and an
         // every-recreation prompt would land on the child again and again.
         val quizPrefs = dev.plume.quiz.QuizPrefs(this)
-        if (!resumed && !fromQuiz && !promptDismissedThisBoot()) {
+        if (!resumed && !fromQuiz && !fromBlocked && !promptDismissedThisBoot()) {
             // GrowQuiz: a power cut in the middle of a question or a forced rest keeps quizActive /
             // restUntil set. Go back to that page before anything else — the quiz lives in its own
             // task, so the desktop below stays as it was. The rest page already shows the console
@@ -4679,8 +4686,12 @@ class MainActivity : Activity() {
             if (!locked()) null else getString(R.string.unlock_to_edit) to { unlock { v.requestFocus(); watchMenu(v, p) } },
             p.pkg?.let { pkg ->
                 getString(R.string.open_app) to {
-                    (packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg))
-                        ?.let { startActivity(it) }
+                    if (dev.plume.quiz.AppBlock.isBlocked(this, pkg)) {
+                        dev.plume.quiz.AppBlock.intercept(this, pkg, wasRunning = false)
+                    } else {
+                        (packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg))
+                            ?.let { startActivity(it) }
+                    }
                     Unit
                 }
             },
@@ -5267,6 +5278,13 @@ class MainActivity : Activity() {
 
     /** Starts an app. With [from] and the animations on, the app opens out of that tile and the row settles on return. */
     private fun startApp(intent: Intent, from: View?) {
+        val targetPkg = intent.component?.packageName
+            ?: intent.`package`
+            ?: runCatching { packageManager.resolveActivity(intent, 0)?.activityInfo?.packageName }.getOrNull()
+        if (targetPkg != null && dev.plume.quiz.AppBlock.isBlocked(this, targetPkg)) {
+            dev.plume.quiz.AppBlock.intercept(this, targetPkg, wasRunning = false)
+            return
+        }
         val source = from?.takeIf { animationsOn() && it.isAttachedToWindow && it.width > 0 }
         val options = source?.let { ActivityOptions.makeScaleUpAnimation(it, 0, 0, it.width, it.height).toBundle() }
         startActivity(intent, options)

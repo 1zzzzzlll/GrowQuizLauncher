@@ -28,8 +28,8 @@ import java.util.concurrent.CountDownLatch
 object CloudTts {
     private const val CLIP_CACHE_BYTES = 40L * 1024 * 1024
     private const val CONNECT_TIMEOUT_MS = 3_000
-    private const val READ_TIMEOUT_MS = 7_500
-    private const val COOLDOWN_MS = 45_000L
+    private const val READ_TIMEOUT_MS = 10_000
+    private const val COOLDOWN_MS = 20_000L
     private const val VOICE_NAME = "xiaoyi"
     private const val PREFS = "voice_cloud_meta"
     private const val KEY_PROFILE = "profile"
@@ -38,6 +38,7 @@ object CloudTts {
         val text: String,
         val gen: Int,
         val onFallback: (() -> Unit)?,
+        val onDone: (() -> Unit)? = null,
     )
 
     private val queue = LinkedBlockingQueue<Say>()
@@ -62,13 +63,19 @@ object CloudTts {
 
     fun playedAt(): Long = playedAt
 
-    fun speak(context: Context, text: String, flush: Boolean, onFallback: (() -> Unit)? = null): Boolean {
+    fun speak(
+        context: Context,
+        text: String,
+        flush: Boolean,
+        onFallback: (() -> Unit)? = null,
+        onDone: (() -> Unit)? = null,
+    ): Boolean {
         if (text.isBlank() || !isConfigured()) return false
         val appCtx = context.applicationContext
         app = appCtx
         startWorker()
         if (flush) stop()
-        queue.offer(Say(text, gen, onFallback))
+        queue.offer(Say(text, gen, onFallback, onDone))
         return true
     }
 
@@ -127,6 +134,7 @@ object CloudTts {
                         process(say)
                     } catch (e: Throwable) {
                         android.util.Log.w("GrowQuiz", "cloud tts worker error", e)
+                        if (say.gen == gen) say.onDone?.invoke()
                     }
                 }
             }.apply {
@@ -138,7 +146,10 @@ object CloudTts {
     }
 
     private fun process(say: Say) {
-        val context = app ?: return
+        val context = app ?: run {
+            if (say.gen == gen) say.onDone?.invoke()
+            return
+        }
         if (say.gen != gen) return
         val mp3 = ensureCached(context, say.text)
         if (mp3 == null) {
@@ -146,12 +157,14 @@ object CloudTts {
                 // Drop any queued second half of this question and hand the whole reading to offline fallback.
                 gen++
                 queue.clear()
-                say.onFallback?.invoke()
+                if (say.onFallback != null) say.onFallback.invoke() else say.onDone?.invoke()
             }
             return
         }
         if (say.gen != gen) return
-        playMp3(context, mp3, say.gen, say.onFallback)
+        if (playMp3(context, mp3, say.gen, say.onFallback) && say.gen == gen) {
+            say.onDone?.invoke()
+        }
     }
 
     private fun ensureCached(context: Context, text: String): File? {
@@ -215,8 +228,9 @@ object CloudTts {
         }
     }
 
-    private fun playMp3(context: Context, file: File, mine: Int, onFallback: (() -> Unit)?) {
-        val manager = context.getSystemService(AudioManager::class.java) ?: return
+    /** Returns true when playback finished on its own; false when cancelled or handed to [onFallback]. */
+    private fun playMp3(context: Context, file: File, mine: Int, onFallback: (() -> Unit)?): Boolean {
+        val manager = context.getSystemService(AudioManager::class.java)
         val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -225,7 +239,7 @@ object CloudTts {
                     .build(),
             )
             .build()
-        runCatching { manager.requestAudioFocus(focus) }
+        manager?.let { runCatching { it.requestAudioFocus(focus) } }
         val done = CountDownLatch(1)
         val player = MediaPlayer()
         var failed = false
@@ -247,7 +261,7 @@ object CloudTts {
                 true
             }
             player.prepare()
-            if (mine != gen) return
+            if (mine != gen) return false
             activePlayer = player
             player.start()
             playedAt = SystemClock.elapsedRealtime()
@@ -256,19 +270,28 @@ object CloudTts {
             while (mine == gen && SystemClock.elapsedRealtime() < deadline) {
                 if (done.await(40, TimeUnit.MILLISECONDS)) break
             }
-            if (failed && mine == gen) {
+            if (mine != gen) return false
+            if (failed) {
                 runCatching { file.delete() } // corrupted file: evict and fall back
-                onFallback?.invoke()
+                if (onFallback != null) {
+                    onFallback.invoke()
+                    return false
+                }
             }
+            return true
         } catch (e: Exception) {
             android.util.Log.w("GrowQuiz", "cloud mp3 play failed", e)
             DiagLog.event("tts_cloud_play_fail", e.message ?: e.javaClass.simpleName)
-            if (mine == gen) onFallback?.invoke()
+            if (mine == gen && onFallback != null) {
+                onFallback.invoke()
+                return false
+            }
+            return mine == gen
         } finally {
             if (activePlayer === player) activePlayer = null
             runCatching { player.stop() }
             runCatching { player.release() }
-            runCatching { manager.abandonAudioFocusRequest(focus) }
+            manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
         }
     }
 

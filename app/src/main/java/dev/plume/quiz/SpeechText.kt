@@ -149,6 +149,8 @@ object SpeechText {
     private val MINUS_BETWEEN = Regex("(?<=[0-9A-Za-z）)】])\\s*[-−－]\\s*(?=[0-9A-Za-z（(【□▢■])")
     private val LEADING_MINUS = Regex("(?<![0-9A-Za-z）)】])[-−－](?=[0-9])")
     private val REMAINING_MINUS = Regex("[-−－]")
+    /** "|-12|" is 负十二的绝对值; settled after minus signs so the inner sign is already a word. */
+    private val ABS_VALUE = Regex("\\|([^|]+)\\|")
     /**
      * Before common classifiers, Mandarin speaks standalone "2" as "两" (两个苹果, 两条边), never "二个".
      * Ordinals and weekdays (第2名, 周2) and multi-digit/decimal numbers (12个, 0.2个) stay "二".
@@ -226,6 +228,27 @@ object SpeechText {
     fun forQuestion(prompt: String, options: List<String>, bilingual: Boolean = false): String =
         joinParts(forStem(prompt, bilingual), forOptions(options, bilingual))
 
+    /**
+     * Spoken explanation after a wrong answer: names the right option when the explanation text does
+     * not already state it, then runs the explanation through the pronunciation rules.
+     */
+    fun forExplanation(question: Question, bilingual: Boolean = false): String {
+        val label = ('A' + question.answerIndex.coerceIn(0, 3))
+        val option = question.options.getOrNull(question.answerIndex)?.trim().orEmpty()
+        val raw = question.explanation.trim()
+        if (raw.isEmpty()) {
+            val canReadOption = option.isNotEmpty() &&
+                (isSpeakableOption(option) || option.all { it.isDigit() || it in ".-/%" })
+            val fallback = if (canReadOption) "回答错误，正确答案是选项$label，$option。"
+            else "回答错误，正确答案是选项$label。"
+            return forTts(fallback, bilingual)
+        }
+        val mentionsAnswer = raw.contains("正确答案") ||
+            (option.length >= 2 && Regex("(?<![0-9A-Za-z])${Regex.escape(option)}(?![0-9A-Za-z])").containsMatchIn(raw))
+        val text = if (mentionsAnswer) "回答错误。$raw" else "回答错误，正确答案是选项$label。$raw"
+        return forTts(text, bilingual)
+    }
+
     fun forTts(raw: String, bilingual: Boolean = false): String {
         var s = raw
         // A long dash is a pause, not a minus: settle it before the sign table runs.
@@ -253,6 +276,7 @@ object SpeechText {
         s = MINUS_BETWEEN.replace(s, "减")
         s = LEADING_MINUS.replace(s, "负")
         s = REMAINING_MINUS.replace(s, "")
+        s = ABS_VALUE.replace(s) { m -> m.groupValues[1] + "的绝对值" }
         // Remaining brackets carry meaning in algebra: say 括号 instead of dropping them.
         s = OPEN_BRACKET.replace(s, "括号")
         s = CLOSE_BRACKET.replace(s, "括号")

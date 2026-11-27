@@ -118,4 +118,37 @@ class QuizRulesTest {
         assertEquals(40_000, score)
         assertEquals(27, QuizRules.tierIndex(score))
     }
+
+    @Test
+    fun wrongFeedbackShowsExplanationAndRestNoticeWhenApplicable() {
+        assertEquals(
+            "回答错误！1和1合起来是2。",
+            QuizRules.wrongFeedback(question, wrongStreak = 1, restMinutes = 0),
+        )
+        assertEquals(
+            "回答错误！1和1合起来是2。（连续答错 3 题，听完解析休息 10 分钟）",
+            QuizRules.wrongFeedback(question, wrongStreak = 3, restMinutes = 10),
+        )
+        val noExplain = Question("u-1", 7, "数学", "2 + 2 = ?", listOf("3", "4", "5", "6"), 1, "", custom = true)
+        assertEquals(
+            "回答错误！正确答案是 B：4。",
+            QuizRules.wrongFeedback(noExplain, wrongStreak = 1, restMinutes = 0),
+        )
+    }
+
+    @Test
+    fun delayAfterExplanationSpeechAdvancesPromptlyAfterRealAudioAndHoldsOnInstantFailure() {
+        // Real spoken explanation (>= 800 ms) advances after the short post-speech pause.
+        assertEquals(
+            QuizRules.POST_EXPLAIN_PAUSE_MS,
+            QuizRules.delayAfterExplanationSpeech(elapsedMs = 2_400L, explanation = "1和1合起来是2。"),
+        )
+        // Instant callback (< 800 ms, e.g. TTS error) keeps the explanation readable on screen.
+        val silent = QuizRules.silentExplanationDelayMs("1和1合起来是2。")
+        assertTrue(silent >= QuizRules.SILENT_EXPLAIN_BASE_MS)
+        assertEquals(
+            silent - 50L,
+            QuizRules.delayAfterExplanationSpeech(elapsedMs = 50L, explanation = "1和1合起来是2。"),
+        )
+    }
 }

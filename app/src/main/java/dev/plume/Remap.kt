@@ -145,8 +145,12 @@ object Remap {
         val arg = action.substringAfter(':', "")
         try {
             when (action.substringBefore(':')) {
-                "app" -> (s.packageManager.getLeanbackLaunchIntentForPackage(arg) ?: s.packageManager.getLaunchIntentForPackage(arg))
-                    ?.let { s.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                "app" -> if (dev.plume.quiz.AppBlock.isBlocked(s, arg)) {
+                    dev.plume.quiz.AppBlock.intercept(s, arg, wasRunning = false)
+                } else {
+                    (s.packageManager.getLeanbackLaunchIntentForPackage(arg) ?: s.packageManager.getLaunchIntentForPackage(arg))
+                        ?.let { s.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
                 "hdmi" -> openInput(s, arg)
                 "media" -> MEDIA[arg]?.let { (code, _) ->
                     val audio = s.getSystemService(Context.AUDIO_SERVICE) as AudioManager

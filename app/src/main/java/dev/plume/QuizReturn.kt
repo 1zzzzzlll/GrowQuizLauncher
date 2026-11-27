@@ -52,6 +52,7 @@ object QuizReturn {
     fun note(context: Context, pkg: String?) {
         if (pkg.isNullOrBlank()) return
         if (pkg == context.packageName || pkg in NOT_A_PLAYER) return
+        if (dev.plume.quiz.AppBlock.isBlocked(context, pkg)) return
         prefs(context).edit()
             .putString(KEY_PKG, pkg)
             .putLong(KEY_AT, SystemClock.elapsedRealtime())
@@ -81,7 +82,12 @@ object QuizReturn {
         val desktopBoot = p.getInt(KEY_DESKTOP_BOOT, -1)
         val desktopAt = p.getLong(KEY_DESKTOP_AT, 0L)
         val target = pick(last, lastAt, lastBoot, desktopAt, desktopBoot, now, boot, MAX_AGE_MS)
-            ?.takeIf { it != context.packageName && launchIntent(context, it) != null && !isHome(context, it) }
+            ?.takeIf {
+                it != context.packageName &&
+                    !dev.plume.quiz.AppBlock.isBlocked(context, it) &&
+                    launchIntent(context, it) != null &&
+                    !isHome(context, it)
+            }
         p.edit().apply {
             if (target == null) remove(KEY_TARGET) else putString(KEY_TARGET, target)
         }.apply()
@@ -107,6 +113,7 @@ object QuizReturn {
 
     /** Brings [pkg] back as it was: an app that is still alive keeps its task, and its video. */
     fun launch(context: Context, pkg: String): Boolean {
+        if (dev.plume.quiz.AppBlock.isBlocked(context, pkg)) return false
         val intent = launchIntent(context, pkg) ?: return false
         // NEW_TASK only: no CLEAR_TOP and no RESET_TASK_IF_NEEDED, so a player that is still in
         // memory is brought forward where it stopped instead of being rebuilt from its start page.

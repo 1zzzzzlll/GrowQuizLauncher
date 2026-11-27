@@ -135,6 +135,14 @@ object QuizLock {
         resting || !quizForeground
 
     /**
+     * Whether a newIntent with an active rest deadline should interrupt the current screen immediately.
+     * A parent-forced rest always wins at once; an anti-guess rest waits while the triggering wrong
+     * answer's explanation is still being spoken, then takes over when showNextQuestion() runs.
+     */
+    fun shouldInterruptForRest(resting: Boolean, explaining: Boolean, restForced: Boolean): Boolean =
+        resting && (!explaining || restForced)
+
+    /**
      * Whether an onPause was caused by our own internal intent to QuizActivity (e.g. a parent rest
      * or HomeOverride bringing the quiz forward), rather than the child escaping to another app.
      */

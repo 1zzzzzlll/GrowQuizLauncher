@@ -416,6 +416,7 @@ object WebAdminServer {
                         .put("sdk", android.os.Build.VERSION.SDK_INT)
                         .put("form", dev.plume.DeviceProbe.form(context))
                         .put("crash", dev.plume.CrashLog.peek(context) ?: "")
+                        .also { dev.plume.voice.Voice.warm(context) }
                         .put("tts", dev.plume.quiz.TtsProbe.describe())
                         // The built-in voice: which one answers, and how far the download is. The
                         // console starts it with /api/voice_install and polls this until "ready".
@@ -435,6 +436,10 @@ object WebAdminServer {
                         // wait for this stamp to move so both cloud and bundled voices confirm real playback.
                         .put("ttsPlayedAt", dev.plume.voice.Voice.playedAt())
                         .put("onlineBank", onlineBankJson(context, prefs.age))
+                        .put("blockedAppCount", dev.plume.quiz.AppBlock.blockedPackages(context).size)
+                        .put("appBlockHits", dev.plume.quiz.AppBlock.hitCount(context))
+                        .put("appBlockLastAt", dev.plume.quiz.AppBlock.lastHitAt(context))
+                        .put("appBlockLastName", dev.plume.quiz.AppBlock.lastHitName(context))
                 } else {
                     JSONObject()
                         .put("initialized", initialized(context))
@@ -757,6 +762,71 @@ object WebAdminServer {
                 reply(out, 200, "application/json; charset=utf-8", JSONObject().put("ok", true).put("started", started).put("onlineBank", st).toString())
             }
 
+            path == "/api/apps" && method == "GET" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val apps = dev.plume.quiz.AppBlock.listNonSystemApps(context)
+                val arr = JSONArray()
+                for (item in apps) {
+                    arr.put(
+                        JSONObject()
+                            .put("pkg", item.pkg)
+                            .put("name", item.label)
+                            .put("version", item.version)
+                            .put("blocked", item.blocked),
+                    )
+                }
+                val json = JSONObject()
+                    .put("ok", true)
+                    .put("total", apps.size)
+                    .put("blockedCount", apps.count { it.blocked })
+                    .put("hitCount", dev.plume.quiz.AppBlock.hitCount(context))
+                    .put("lastHitAt", dev.plume.quiz.AppBlock.lastHitAt(context))
+                    .put("lastHitName", dev.plume.quiz.AppBlock.lastHitName(context))
+                    .put("a11y", dev.plume.HomeOverride.running != null)
+                    .put("a11yEnabled", dev.plume.DeviceProbe.a11yEnabled(context))
+                    .put("overlay", android.provider.Settings.canDrawOverlays(context))
+                    .put("apps", arr)
+                reply(out, 200, "application/json; charset=utf-8", json.toString())
+            }
+
+            path == "/api/apps/icon" && method == "GET" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val pkg = query["pkg"]?.trim().orEmpty()
+                val png = if (pkg.isNotEmpty()) dev.plume.quiz.AppBlock.iconPng(context, pkg) else null
+                if (png == null || png.isEmpty()) {
+                    return reply(out, 404, "application/json; charset=utf-8", error("icon not found"))
+                }
+                replyBytes(out, 200, "image/png", png, extraHeader = "Cache-Control: private, max-age=3600")
+            }
+
+            path == "/api/apps/state" && method == "POST" -> {
+                if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                val json = JSONObject(body.ifEmpty { "{}" })
+                val blocked = json.optBoolean("blocked", true)
+                val pkgs = ArrayList<String>()
+                json.optJSONArray("pkgs")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        arr.optString(i).trim().takeIf { it.isNotEmpty() }?.let { pkgs += it }
+                    }
+                }
+                json.optString("pkg").trim().takeIf { it.isNotEmpty() }?.let { pkgs += it }
+                if (pkgs.isEmpty()) return reply(out, 400, "application/json; charset=utf-8", error("pkgs required"))
+                val updated = dev.plume.quiz.AppBlock.setBlocked(context, pkgs, blocked)
+                if (blocked) {
+                    main.post { dev.plume.quiz.AppBlock.enforceIfForeground(context) }
+                }
+                reply(
+                    out,
+                    200,
+                    "application/json; charset=utf-8",
+                    JSONObject()
+                        .put("ok", true)
+                        .put("count", pkgs.size)
+                        .put("blockedCount", updated.size)
+                        .toString(),
+                )
+            }
+
             path == "/api/start" && method == "POST" -> {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
                 // A parent-started question also works while timed questions are off. quizActive keeps
@@ -769,6 +839,7 @@ object WebAdminServer {
 
             path == "/api/tts_test" && method == "POST" -> {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
+                dev.plume.voice.Voice.warm(context)
                 val spoke = dev.plume.quiz.TtsProbe.speak("语音测试：宝贝你好，我是你的答题小助手")
                 val json = JSONObject().put("ok", true).put("spoke", spoke)
                     .put("engine", dev.plume.voice.Voice.describe())
@@ -985,13 +1056,24 @@ object WebAdminServer {
     }
 
     private fun reply(out: OutputStream, status: Int, type: String, body: String, cookie: String? = null) {
-        val bytes = body.toByteArray(Charsets.UTF_8)
+        replyBytes(out, status, type, body.toByteArray(Charsets.UTF_8), cookie = cookie)
+    }
+
+    private fun replyBytes(
+        out: OutputStream,
+        status: Int,
+        type: String,
+        bytes: ByteArray,
+        cookie: String? = null,
+        extraHeader: String? = null,
+    ) {
         val head = StringBuilder()
             .append("HTTP/1.1 $status ${if (status == 200) "OK" else "Error"}\r\n")
             .append("Content-Type: $type\r\n")
             .append("Content-Length: ${bytes.size}\r\n")
             .append("Connection: close\r\n")
         cookie?.let { head.append("Set-Cookie: $it\r\n") }
+        extraHeader?.let { head.append("$it\r\n") }
         head.append("\r\n")
         out.write(head.toString().toByteArray(Charsets.UTF_8))
         out.write(bytes)

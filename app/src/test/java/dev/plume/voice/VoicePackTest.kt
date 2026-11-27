@@ -83,4 +83,11 @@ class VoicePackTest {
         val limited = EmbeddedTts.normalizeToPcm(loud)
         assertTrue(limited.all { it.toInt() in -32767..32767 })
     }
+
+    @Test fun sherpaCallbackExposesExactBoxedInvokeSignatureRequiredByJni() {
+        val method = SherpaCallback::class.java.getMethod("invoke", FloatArray::class.java)
+        assertEquals(java.lang.Integer::class.java, method.returnType)
+        val cb = SherpaCallback { samples -> samples.size }
+        assertEquals(3, cb.invoke(floatArrayOf(0.1f, 0.2f, 0.3f)))
+    }
 }

@@ -198,4 +198,31 @@ class SpeechTextTest {
     @Test fun repeatedUnderscoresSpeakOnce() {
         assertEquals("上学前，我要自己整理横线。", SpeechText.forTts("上学前，我要自己整理___。"))
     }
+
+    @Test fun absoluteValueBarsAreSpoken() {
+        assertEquals("负十二的绝对值等于？", SpeechText.forTts("|-12| = ?"))
+        assertEquals("艾克斯减三的绝对值", SpeechText.forTts("|x - 3|"))
+    }
+
+    @Test fun wrongAnswerExplanationAvoidsRepeatingAnswerWhenAlreadyPresent() {
+        val direct = Question("a7-1", 7, "数学", "14 + 13 - 12 = ?", listOf("13", "17", "5", "15"), 3, "正确答案是15。")
+        assertEquals("回答错误。正确答案是十五。", SpeechText.forExplanation(direct))
+
+        val namedInProse = Question("o7-1", 7, "应用", "一共有多少人？", listOf("11人", "10人", "6人", "8人"), 3, "把两部分人数合起来：6 + 2 = 8人。")
+        assertEquals("回答错误。把两部分人数合起来，六加二等于八人。", SpeechText.forExplanation(namedInProse))
+    }
+
+    @Test fun wrongAnswerExplanationNamesCorrectOptionLetterWhenExplanationOmitsIt() {
+        val unitRule = Question("a10-1", 10, "数学", "2千克等于多少克？", listOf("2000", "200", "20", "1000"), 0, "1千克=1000克。")
+        assertEquals("回答错误，正确答案是选项诶。一千克等于一千克。", SpeechText.forExplanation(unitRule, bilingual = false))
+        assertEquals("回答错误，正确答案是选项 A。一千克等于一千克。", SpeechText.forExplanation(unitRule, bilingual = true))
+    }
+
+    @Test fun wrongAnswerExplanationFallsBackCleanlyWhenBlank() {
+        val customMath = Question("u-1", 7, "数学", "1 + 2 = ?", listOf("2", "3", "4", "5"), 1, "", custom = true)
+        assertEquals("回答错误，正确答案是选项必，三。", SpeechText.forExplanation(customMath))
+
+        val customEnglish = Question("u-2", 9, "英语", "苹果英文？", listOf("apple", "book", "cat", "dog"), 0, "", custom = true)
+        assertEquals("回答错误，正确答案是选项诶。", SpeechText.forExplanation(customEnglish))
+    }
 }

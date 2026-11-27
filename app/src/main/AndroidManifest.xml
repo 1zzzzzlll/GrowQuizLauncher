@@ -198,6 +198,15 @@
             android:taskAffinity="dev.plume.growquiz.quiz"
             android:theme="@style/QuizTheme"
             android:turnScreenOn="true" />
+        <!-- Opaque reminder modal when a parent-disabled app runs: opaque window stops the app below. -->
+        <activity
+            android:name=".quiz.BlockedAppActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:resizeableActivity="false"
+            android:taskAffinity="dev.plume.growquiz.blocked" />
         <!-- Keeps a process alive between questions: see QuizGuardService. -->
         <service
             android:name=".quiz.QuizGuardService"

@@ -73,20 +73,36 @@ object Voice {
         else -> QuizVoice.isUnusable()
     }
 
-    /** When a sentence last started playing out of the speaker (cloud or bundled offline). */
-    fun playedAt(): Long = maxOf(CloudTts.playedAt(), EmbeddedTts.playedAt())
+    /** When a sentence last started playing out of the speaker (cloud, bundled offline, or system TTS). */
+    fun playedAt(): Long = maxOf(CloudTts.playedAt(), EmbeddedTts.playedAt(), QuizVoice.playedAt())
 
     /**
      * Speaks [text]. When [CloudTts] fails mid-request (e.g. Wi-Fi dropped), falls back immediately
-     * to [EmbeddedTts] or [QuizVoice] so the child still hears the sentence.
+     * to [EmbeddedTts] or [QuizVoice] so the child still hears the sentence. [onDone] runs once on a
+     * background thread after playback completes (or fails after being queued), and is dropped if
+     * [stop] or a later flushing utterance cancels playback first.
      */
-    fun speak(text: String, flush: Boolean = true): Boolean {
-        val app = app ?: return QuizVoice.speak(text, flush)
+    fun speak(text: String, flush: Boolean = true, onDone: (() -> Unit)? = null): Boolean {
+        val doneOnce = onDone?.let { cb ->
+            val called = java.util.concurrent.atomic.AtomicBoolean(false)
+            ({ if (called.compareAndSet(false, true)) cb() })
+        }
+        val app = app ?: return QuizVoice.speak(text, flush, doneOnce)
         if (usesCloud()) {
-            val ok = CloudTts.speak(app, text, flush) { speakOfflineFallback(app, text, flush = true) }
+            val ok = CloudTts.speak(
+                context = app,
+                text = text,
+                flush = flush,
+                onFallback = {
+                    if (!speakOfflineFallback(app, text, flush = true, onDone = doneOnce)) {
+                        doneOnce?.invoke()
+                    }
+                },
+                onDone = doneOnce,
+            )
             if (ok) return true
         }
-        return speakOfflineFallback(app, text, flush)
+        return speakOfflineFallback(app, text, flush, doneOnce)
     }
 
     /**
@@ -109,12 +125,17 @@ object Voice {
         speakPartsOfflineFallback(app, first, rest)
     }
 
-    private fun speakOfflineFallback(app: Context, text: String, flush: Boolean): Boolean {
+    private fun speakOfflineFallback(
+        app: Context,
+        text: String,
+        flush: Boolean,
+        onDone: (() -> Unit)? = null,
+    ): Boolean {
         if (canFallbackEmbedded() && EmbeddedTts.isReady()) {
-            return EmbeddedTts.speak(app, text, flush)
+            return EmbeddedTts.speak(app, text, flush, onDone)
         }
         QuizVoice.warm(app)
-        return QuizVoice.speak(text, flush)
+        return QuizVoice.speak(text, flush, onDone)
     }
 
     private fun speakPartsOfflineFallback(app: Context, first: String, rest: String) {
@@ -136,6 +157,19 @@ object Voice {
         }
         if (usesEmbedded()) {
             EmbeddedTts.warmClip(app, SpeechText.joinParts(first, rest))
+        }
+    }
+
+    /** Pre-caches a single sentence (such as the current question's explanation) in the background. */
+    fun warmClip(text: String, offlineWhenIdle: Boolean = false) {
+        if (text.isBlank()) return
+        val app = app ?: return
+        if (usesCloud()) {
+            CloudTts.warmParts(app, text, "")
+            return
+        }
+        if (offlineWhenIdle && usesEmbedded()) {
+            EmbeddedTts.warmClip(app, text)
         }
     }
 

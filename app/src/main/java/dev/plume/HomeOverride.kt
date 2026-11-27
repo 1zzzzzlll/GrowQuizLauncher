@@ -71,6 +71,10 @@ class HomeOverride : AccessibilityService() {
             return@Runnable
         }
         val front = rootInActiveWindow?.packageName?.toString() ?: return@Runnable
+        if (dev.plume.quiz.AppBlock.isBlocked(this, front)) {
+            dev.plume.quiz.AppBlock.intercept(this, front, wasRunning = true)
+            return@Runnable
+        }
         if (front != packageName && watch.coversPackage(front)) {
             DiagLog.event("boot_catchup_home", "", mapOf("front" to front))
             goHome()
@@ -112,6 +116,8 @@ class HomeOverride : AccessibilityService() {
 
     override fun onKeyEvent(e: KeyEvent): Boolean {
         if (e.keyCode != KeyEvent.KEYCODE_HOME) return remap(e)
+        // While the blocked-app reminder is on screen, only its OK button dismisses it.
+        if (dev.plume.quiz.BlockedAppActivity.isForeground) return true
         // Decided on release, by how long it was held: this TV's remote doesn't reliably send key repeats.
         if (e.action == KeyEvent.ACTION_UP && !e.isCanceled) {
             // A parent-started rest owns Home too; long Home must not open a way out through the shade.
@@ -151,13 +157,22 @@ class HomeOverride : AccessibilityService() {
     private var stock = emptyMap<String, Set<String>>()
     private var listening = false
     private val packageReceiver = object : BroadcastReceiver() {
-        override fun onReceive(c: Context, i: Intent) = loadHomes()
+        override fun onReceive(c: Context, i: Intent) {
+            dev.plume.quiz.AppBlock.invalidateIcon(i.data?.schemeSpecificPart)
+            loadHomes()
+        }
     }
     private val jump = Runnable { watch.jumped(); goHome() }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
+        dev.plume.quiz.AppBlock.noteForeground(this, pkg)
+        if (dev.plume.quiz.AppBlock.isBlocked(this, pkg)) {
+            handler.removeCallbacks(jump)
+            dev.plume.quiz.AppBlock.intercept(this, pkg, wasRunning = true)
+            return
+        }
         TvWatch.note(this, pkg) // watch-time tracking sees every foreground change first
         QuizReturn.note(this, pkg) // the app a question may have to hand back when it finishes
         // The quiz has its own foreground guard. Covering a home window here as well starts a fight:

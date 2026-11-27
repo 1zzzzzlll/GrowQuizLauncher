@@ -33,6 +33,10 @@ class App : Application() {
         // A process start is a chance to report an alarm whose quiz pop-up never appeared; the
         // audit no-ops when there is nothing overdue (e.g. the alarm that woke this very process).
         dev.plume.quiz.QuizAlarmReceiver.auditSwallowed(this)
+        // GrowQuiz: initialise the speech router with the application context on every process start
+        // (including background accessibility or watchdog restarts), so console status/test and offline
+        // pack pre-warming never see a null context before an activity opens.
+        dev.plume.voice.Voice.warm(this)
         // The console must live with the process, not the activity: aggressive firmwares (a Huawei
         // vision screen) destroy the launcher as soon as another app opens, and the parents would
         // lose the console until someone walks to the TV again. Every process start — the

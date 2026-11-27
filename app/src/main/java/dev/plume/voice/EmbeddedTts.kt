@@ -28,12 +28,24 @@ import kotlin.math.tanh
  * the stem starts playing before the options finish computing and returning 0 aborts synthesis as soon
  * as the child answers. Every generated waveform is RMS-normalised and soft-limited before playback.
  */
+/**
+ * sherpa-onnx's JNI (`generateWithCallbackImpl`) looks up `invoke([F)Ljava/lang/Integer;` via
+ * `GetMethodID` on the callback's runtime class. Kotlin 2.x indy lambdas only emit
+ * `invoke(Object)Object`, and a non-null `Int` return type emits primitive `invoke([F)I` — both
+ * abort the process with `NoSuchMethodError` in JNI. Boxed `Int?` produces the exact signature.
+ */
+internal class SherpaCallback(
+    private val onSamples: (FloatArray) -> Int,
+) : Function1<FloatArray, Int?> {
+    override fun invoke(samples: FloatArray): Int? = onSamples(samples)
+}
+
 object EmbeddedTts {
     private const val CLIP_CACHE_BYTES = 40L * 1024 * 1024
     private const val CHUNK = 2048
     private const val SPEED = 1.08f
 
-    private class Say(val text: String, val gen: Int, val play: Boolean)
+    private class Say(val text: String, val gen: Int, val play: Boolean, val onDone: (() -> Unit)? = null)
 
     private val queue = LinkedBlockingQueue<Say>()
 
@@ -131,14 +143,14 @@ object EmbeddedTts {
         }.start()
     }
 
-    fun speak(context: Context, text: String, flush: Boolean): Boolean {
+    fun speak(context: Context, text: String, flush: Boolean, onDone: (() -> Unit)? = null): Boolean {
         if (text.isBlank() || engine == null) return false
         app = context.applicationContext
         if (flush) {
             gen++
             queue.clear()
         }
-        queue.offer(Say(text, gen, play = true))
+        queue.offer(Say(text, gen, play = true, onDone = onDone))
         return true
     }
 
@@ -170,6 +182,7 @@ object EmbeddedTts {
                     } catch (e: Throwable) {
                         android.util.Log.w("GrowQuiz", "voice synth failed", e)
                         DiagLog.event("tts_local_speak_fail", e.message ?: e.javaClass.simpleName)
+                        if (say.play && say.gen == gen) say.onDone?.invoke()
                     }
                 }
             }.apply {
@@ -182,12 +195,19 @@ object EmbeddedTts {
     }
 
     private fun say(say: Say) {
-        val context = app ?: return
-        val engine = engine ?: return
+        val context = app
+        val engine = engine
+        if (context == null || engine == null) {
+            if (say.play && say.gen == gen) say.onDone?.invoke()
+            return
+        }
         if (say.gen != gen) return
         val cached = cachedClip(context, say.text)
         if (cached != null) {
-            if (say.play && say.gen == gen) playBuffer(context, cached, say.gen)
+            if (say.play && say.gen == gen) {
+                playBuffer(context, cached, say.gen)
+                if (say.gen == gen) say.onDone?.invoke()
+            }
             return
         }
         if (!say.play) {
@@ -198,6 +218,7 @@ object EmbeddedTts {
             return
         }
         streamAndCache(context, engine, say.text, say.gen)
+        if (say.gen == gen) say.onDone?.invoke()
     }
 
     /**
@@ -205,9 +226,9 @@ object EmbeddedTts {
      * to [AudioTrack] immediately so the child hears the stem while the options are still computing.
      */
     private fun streamAndCache(context: Context, engine: OfflineTts, text: String, mine: Int) {
-        val manager = context.getSystemService(AudioManager::class.java) ?: return
+        val manager = context.getSystemService(AudioManager::class.java)
         val focus = focusRequest()
-        runCatching { manager.requestAudioFocus(focus) }
+        manager?.let { runCatching { it.requestAudioFocus(focus) } }
         var track: AudioTrack? = null
         val collected = ArrayList<ShortArray>(4)
         var totalFrames = 0
@@ -217,13 +238,14 @@ object EmbeddedTts {
         try {
             track = openTrack()
             track.play()
-            engine.generateWithCallback(text, speaker, SPEED) { chunk ->
+            @Suppress("UNCHECKED_CAST")
+            val callback = SherpaCallback { chunk ->
                 if (mine != gen) {
                     interrupted = true
-                    return@generateWithCallback 0
+                    return@SherpaCallback 0
                 }
                 val pcm = normalizeToPcm(chunk)
-                if (pcm.isEmpty()) return@generateWithCallback 1
+                if (pcm.isEmpty()) return@SherpaCallback 1
                 collected += pcm
                 if (firstSoundMs < 0L) {
                     firstSoundMs = SystemClock.elapsedRealtime() - began
@@ -242,7 +264,8 @@ object EmbeddedTts {
                 } else {
                     1
                 }
-            }
+            } as (FloatArray) -> Int
+            engine.generateWithCallback(text, speaker, SPEED, callback)
             if (firstSoundMs > 2500) DiagLog.event("tts_local_slow", "chars=${text.length} ms=$firstSoundMs")
             if (!interrupted && totalFrames > 0) {
                 val full = ShortArray(collected.sumOf { it.size })
@@ -260,14 +283,14 @@ object EmbeddedTts {
         } finally {
             runCatching { track?.stop() }
             runCatching { track?.release() }
-            runCatching { manager.abandonAudioFocusRequest(focus) }
+            manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
         }
     }
 
     private fun playBuffer(context: Context, pcm: ShortArray, mine: Int) {
-        val manager = context.getSystemService(AudioManager::class.java) ?: return
+        val manager = context.getSystemService(AudioManager::class.java)
         val focus = focusRequest()
-        runCatching { manager.requestAudioFocus(focus) }
+        manager?.let { runCatching { it.requestAudioFocus(focus) } }
         var track: AudioTrack? = null
         try {
             track = openTrack()
@@ -286,7 +309,7 @@ object EmbeddedTts {
         } finally {
             runCatching { track?.stop() }
             runCatching { track?.release() }
-            runCatching { manager.abandonAudioFocusRequest(focus) }
+            manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
         }
     }
 

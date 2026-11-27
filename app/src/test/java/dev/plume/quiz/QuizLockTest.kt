@@ -251,4 +251,12 @@ class QuizLockTest {
     fun `other firmwares keep the background foreground start`() {
         assertEquals(QuizLock.GuardStart.FOREGROUND, QuizLock.guardStart(visible = false, tcl = false))
     }
+
+    @Test
+    fun `forced rest interrupts wrong-answer explanation while anti-guess rest waits for it to finish`() {
+        assertFalse(QuizLock.shouldInterruptForRest(resting = false, explaining = false, restForced = false))
+        assertTrue(QuizLock.shouldInterruptForRest(resting = true, explaining = false, restForced = false))
+        assertFalse(QuizLock.shouldInterruptForRest(resting = true, explaining = true, restForced = false))
+        assertTrue(QuizLock.shouldInterruptForRest(resting = true, explaining = true, restForced = true))
+    }
 }

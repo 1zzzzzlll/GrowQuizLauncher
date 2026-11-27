@@ -5,4 +5,6 @@
 # method names are part of the ABI). `-repackageclasses` above would move them out of their package and
 # every model load would fail with "Invalid OfflineTtsConfig". Keep the whole package untouched.
 -keep class com.k2fsa.sherpa.onnx.** { *; }
+-keep interface kotlin.jvm.functions.Function1 { *; }
+-keep class dev.plume.voice.SherpaCallback { *; }
 -keepclasseswithmembernames,includedescriptorclasses class * { native <methods>; }

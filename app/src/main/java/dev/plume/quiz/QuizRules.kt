@@ -106,4 +106,47 @@ object QuizRules {
         repeatWrong -> POINTS_WRONG + POINTS_REPEAT_WRONG_EXTRA
         else -> POINTS_WRONG
     }
+
+    // ---- wrong-answer explanation timing & on-screen feedback ----
+
+    /** Short pause after the spoken explanation finishes so the last syllable is never clipped. */
+    const val POST_EXPLAIN_PAUSE_MS = 350L
+
+    /** An utterance finishing faster than this did not actually speak an explanation (e.g. engine error). */
+    const val MIN_SPOKEN_EXPLAIN_MS = 800L
+
+    const val SILENT_EXPLAIN_BASE_MS = 2_200L
+    const val SILENT_EXPLAIN_PER_CHAR_MS = 70L
+    const val SILENT_EXPLAIN_MAX_MS = 5_500L
+
+    /** Reading time when voice narration is disabled or no TTS engine is usable on this device. */
+    fun silentExplanationDelayMs(explanation: String): Long =
+        (SILENT_EXPLAIN_BASE_MS + explanation.trim().length * SILENT_EXPLAIN_PER_CHAR_MS)
+            .coerceIn(SILENT_EXPLAIN_BASE_MS, SILENT_EXPLAIN_MAX_MS)
+
+    /**
+     * How long to wait before advancing once the TTS completion callback fires. Real speech only
+     * needs [POST_EXPLAIN_PAUSE_MS]; an instant error callback falls back to readable screen time.
+     */
+    fun delayAfterExplanationSpeech(elapsedMs: Long, explanation: String): Long =
+        if (elapsedMs >= MIN_SPOKEN_EXPLAIN_MS) {
+            POST_EXPLAIN_PAUSE_MS
+        } else {
+            (silentExplanationDelayMs(explanation) - elapsedMs.coerceAtLeast(0L))
+                .coerceAtLeast(POST_EXPLAIN_PAUSE_MS)
+        }
+
+    /** On-screen feedback shown while a wrong answer's explanation is read out. */
+    fun wrongFeedback(question: Question, wrongStreak: Int, restMinutes: Int): String {
+        val label = ('A' + question.answerIndex.coerceIn(0, 3))
+        val option = question.options.getOrNull(question.answerIndex)?.trim().orEmpty()
+        val detail = question.explanation.trim().ifEmpty {
+            if (option.isNotEmpty()) "正确答案是 $label：$option。" else "正确答案是 $label。"
+        }
+        return if (restMinutes > 0) {
+            "回答错误！$detail（连续答错 $wrongStreak 题，听完解析休息 $restMinutes 分钟）"
+        } else {
+            "回答错误！$detail"
+        }
+    }
 }

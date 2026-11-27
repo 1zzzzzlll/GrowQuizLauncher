@@ -25,6 +25,8 @@ object QuizVoice {
     private var lastFailElapsedMs = 0L
     private var utterance = 0
     private var rate = 0.85f
+    @Volatile private var playedAt = 0L
+    private val callbacks = java.util.concurrent.ConcurrentHashMap<String, () -> Unit>()
 
     /** Counts engine creations, so a callback from a replaced engine is ignored (see [start]). */
     private var generation = 0
@@ -130,19 +132,30 @@ object QuizVoice {
     /** "no-engine" / "no-language" for the parents' console, null while the engine is fine. */
     fun failureReason(): String? = failure
 
+    fun playedAt(): Long = playedAt
+
     /**
      * Speaks [text]. With [flush] the current sentence stops and this one starts at once, which is what a
      * new question needs; without it the text waits behind what is already being said, so the stem and
      * the options can be sent together and the voice begins before the rest is synthesised.
      */
-    fun speak(text: String, flush: Boolean = true): Boolean {
+    fun speak(text: String, flush: Boolean = true, onDone: (() -> Unit)? = null): Boolean {
         if (text.isBlank() || !isReady()) return false
         val queue = if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        val id = "quiz_${utterance++}"
+        if (flush) callbacks.clear()
+        if (onDone != null) callbacks[id] = onDone
         return try {
-            val ok = engine?.speak(text, queue, null, "quiz_${utterance++}") == TextToSpeech.SUCCESS
-            if (!ok) dev.plume.DiagLog.event("tts_speak_fail", "queue rejected")
+            val ok = engine?.speak(text, queue, null, id) == TextToSpeech.SUCCESS
+            if (ok) {
+                playedAt = SystemClock.elapsedRealtime()
+            } else {
+                callbacks.remove(id)
+                dev.plume.DiagLog.event("tts_speak_fail", "queue rejected")
+            }
             ok
         } catch (e: Exception) {
+            callbacks.remove(id)
             android.util.Log.w("GrowQuiz", "tts speak failed", e)
             dev.plume.DiagLog.event("tts_speak_fail", e.message ?: e.javaClass.simpleName)
             false
@@ -172,23 +185,36 @@ object QuizVoice {
     private fun watchSynthesis(e: TextToSpeech) {
         try {
             e.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
-                override fun onError(utteranceId: String?) =
+                override fun onError(utteranceId: String?) {
                     dev.plume.DiagLog.event("tts_speak_fail", "utterance $utteranceId")
+                    utteranceId?.let { callbacks.remove(it)?.invoke() }
+                }
 
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?, errorCode: Int) {
                     dev.plume.DiagLog.event("tts_speak_fail", "utterance $utteranceId code=$errorCode")
                     reconnectAfterError(errorCode)
+                    utteranceId?.let { callbacks.remove(it)?.invoke() }
                 }
 
-                override fun onStart(utteranceId: String?) {}
-                override fun onDone(utteranceId: String?) {}
+                override fun onStart(utteranceId: String?) {
+                    playedAt = SystemClock.elapsedRealtime()
+                }
+
+                override fun onDone(utteranceId: String?) {
+                    utteranceId?.let { callbacks.remove(it)?.invoke() }
+                }
+
+                override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                    utteranceId?.let { callbacks.remove(it) }
+                }
             })
         } catch (_: Exception) {
         }
     }
 
     fun stop() {
+        callbacks.clear()
         try { engine?.stop() } catch (e: Exception) {}
     }
 }

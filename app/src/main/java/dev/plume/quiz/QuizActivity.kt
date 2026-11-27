@@ -33,7 +33,7 @@ import dev.plume.Qr
 import dev.plume.QuizReturn
 import dev.plume.voice.Voice
 
-/** Full-screen, remote-first quiz. A wrong answer advances to a different question. */
+/** Full-screen, remote-first quiz. A wrong answer speaks the explanation before advancing to a different question. */
 class QuizActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var questionText: TextView
@@ -47,6 +47,10 @@ class QuizActivity : Activity() {
     private var pending: Question? = null
     private var solved = false
     private var changing = false
+    private var explaining = false
+    private var explainToken = 0
+    private var explainRetries = 0
+    private var pendingRestMinutes = 0
     private var lockActive = false
     private lateinit var answerGrid: GridLayout
     private var restPanel: LinearLayout? = null // admin address + QR, visible only while resting
@@ -284,14 +288,16 @@ class QuizActivity : Activity() {
         // still tell a rebuilt page from one that came back from memory.
         QuizPrefs(this).lastQuizOpenAt = System.currentTimeMillis()
         dev.plume.DiagLog.event("quiz_open", "", mapOf("reuse" to "1"))
-        // A parent can start a rest while a question is already open; switch to it immediately.
-        if (restRemaining() > 0L) {
+        // A parent-forced rest takes over immediately; an anti-guess rest waits while the wrong
+        // answer's explanation is still speaking, then takes over when showNextQuestion() runs.
+        if (QuizLock.shouldInterruptForRest(restRemaining() > 0L, explaining, QuizPrefs(this).restForced)) {
             showRestScreen()
             return
         }
         if (solved) {
             solved = false
             changing = false
+            explaining = false
             bank?.let { showNextQuestion() }
         }
     }
@@ -305,7 +311,11 @@ class QuizActivity : Activity() {
         // answers, so the guard is put back here instead of from a background wake-up (see
         // QuizGuardService.sync). Idempotent: a running guard is left alone.
         QuizGuardService.sync(this)
-        if (!changing && !solved) startReading() // resume narration only on the visible, bright page
+        if (explaining && !solved) {
+            startWrongExplanation() // finish speaking the explanation before switching questions
+        } else if (!changing && !solved) {
+            startReading() // resume narration only on the visible, bright page
+        }
         reclaimAttempt = 0 // the page is in front: the next escape gets the quick first retry again
         noteSnapBack() // a comeback that was on its way has arrived: that is the proof the console shows
         ui.removeCallbacks(guardLoop) // one watchdog, started here, re-posted by itself
@@ -331,6 +341,7 @@ class QuizActivity : Activity() {
         isForeground = false
         val now = SystemClock.elapsedRealtime()
         lastPauseAt = now
+        explainToken++ // pause any post-explanation advance; onResume replays the explanation if still owed
         stopReading() // screen-off and covered pages never keep talking over the family's other audio
         // A singleTask relaunch initiated by our own alarm/rest/HomeOverride pauses briefly before
         // onNewIntent; skipping comeBack() avoids bouncing ourselves and faking snapback_ok.
@@ -475,6 +486,8 @@ class QuizActivity : Activity() {
         }
         val quiz = bank ?: return
         changing = false
+        explaining = false
+        pendingRestMinutes = 0
         answerGrid.visibility = View.VISIBLE
         restPanel?.visibility = View.GONE
         if (qrShown) adminQr.visibility = View.VISIBLE
@@ -500,6 +513,12 @@ class QuizActivity : Activity() {
         answerButtons.first().requestFocus()
         startThinkWindow()
         startReading()
+        if (prefs.voice) {
+            Voice.warmClip(
+                SpeechText.forExplanation(next, Voice.isBilingual()),
+                offlineWhenIdle = !voiceAppliesTo(next),
+            )
+        }
     }
 
     /**
@@ -549,6 +568,9 @@ class QuizActivity : Activity() {
     private fun showRestScreen() {
         solved = false // a rest started during the correct-answer farewell still owns the screen
         changing = true
+        explaining = false
+        pendingRestMinutes = 0
+        explainToken++
         stopReading()
         restLoop?.let { ui.removeCallbacks(it) }
         restSessionForced = QuizPrefs(this).restForced
@@ -693,21 +715,111 @@ class QuizActivity : Activity() {
                 prefs.snapWrongs = if (snap) prefs.snapWrongs + 1 else 0
             }
             answerButtons[index].backgroundTintList = ColorStateList.valueOf(Color.rgb(217, 83, 79))
+            if (question.answerIndex in answerButtons.indices) {
+                answerButtons[question.answerIndex].backgroundTintList = ColorStateList.valueOf(Color.rgb(46, 158, 107))
+            }
             val restMinutes = if (prefs.restGuard) QuizRules.restMinutes(prefs.wrongStreak) else 0
+            pendingRestMinutes = restMinutes
             if (restMinutes > 0) {
                 prefs.restUntil = now + restMinutes * 60_000L
-                feedbackText.text = "连续答错 ${prefs.wrongStreak} 题，休息 $restMinutes 分钟后再来"
-            } else {
-                feedbackText.text = "这题不对，换一题再试试"
             }
+            feedbackText.text = QuizRules.wrongFeedback(question, prefs.wrongStreak, restMinutes)
             feedbackText.setTextColor(Color.rgb(255, 180, 170))
-            ui.postDelayed({ if (!isFinishing) showNextQuestion() }, if (restMinutes > 0) 2_000L else 750L)
+            explaining = true
+            startWrongExplanation()
+        }
+    }
+
+    /**
+     * Speaks the wrong-answer explanation and refreshes to the next question (or enforced rest)
+     * only after playback completes. Falls back to readable screen time when voice is disabled,
+     * unavailable, or wedged.
+     */
+    private fun startWrongExplanation() {
+        val question = current ?: run {
+            advanceAfterWrong()
+            return
+        }
+        val token = ++explainToken
+        explainRetries = 0
+        trySpeakExplanation(question, token)
+    }
+
+    private fun trySpeakExplanation(question: Question, token: Int) {
+        if (isFinishing || isDestroyed || solved || !explaining || token != explainToken) return
+        if (!QuizLock.shouldNarrate(screenInteractive(), inForeground)) return
+        val prefs = QuizPrefs(this)
+        if (!prefs.voice) {
+            scheduleAdvanceAfterWrong(token, QuizRules.silentExplanationDelayMs(question.explanation))
+            return
+        }
+        if (Voice.isUnusable()) {
+            ttsMissing()
+            scheduleAdvanceAfterWrong(token, QuizRules.silentExplanationDelayMs(question.explanation))
+            return
+        }
+        if (!Voice.isReady()) {
+            if (explainRetries++ < EXPLAIN_TTS_RETRY_LIMIT) {
+                ui.postDelayed({ trySpeakExplanation(question, token) }, TTS_RETRY_MS)
+            } else {
+                scheduleAdvanceAfterWrong(token, QuizRules.silentExplanationDelayMs(question.explanation))
+            }
+            return
+        }
+        val speech = SpeechText.forExplanation(question, Voice.isBilingual())
+        val startedAt = SystemClock.elapsedRealtime()
+        ui.postDelayed({
+            if (explaining && token == explainToken && !isFinishing && !isDestroyed && !solved) {
+                dev.plume.DiagLog.event("tts_explain_timeout")
+                advanceAfterWrong()
+            }
+        }, EXPLAIN_MAX_WAIT_MS)
+        val started = Voice.speak(speech, flush = true) {
+            ui.post {
+                if (explaining && token == explainToken && !isFinishing && !isDestroyed && !solved) {
+                    val elapsed = SystemClock.elapsedRealtime() - startedAt
+                    scheduleAdvanceAfterWrong(token, QuizRules.delayAfterExplanationSpeech(elapsed, question.explanation))
+                }
+            }
+        }
+        if (started) {
+            if (pendingRestMinutes == 0 && voiceAppliesTo(question)) prefetchNext(question)
+        } else {
+            scheduleAdvanceAfterWrong(token, QuizRules.silentExplanationDelayMs(question.explanation))
+        }
+    }
+
+    private fun scheduleAdvanceAfterWrong(token: Int, delayMs: Long) {
+        ui.postDelayed({
+            if (explaining && token == explainToken && !isFinishing && !isDestroyed && !solved) {
+                advanceAfterWrong()
+            }
+        }, delayMs)
+    }
+
+    private fun advanceAfterWrong() {
+        if (!explaining) return
+        explaining = false
+        explainToken++
+        val owedRest = pendingRestMinutes
+        pendingRestMinutes = 0
+        if (owedRest > 0) {
+            val prefs = QuizPrefs(this)
+            if (prefs.restUntil > 0L && !prefs.restForced) {
+                prefs.restUntil = System.currentTimeMillis() + owedRest * 60_000L
+            }
+        }
+        if (!isFinishing && !isDestroyed && !solved) {
+            showNextQuestion()
         }
     }
 
     /** Ends a parent-cancelled quiz or a parent-timed rest and uncovers the original player. */
     private fun closeSession(event: String) {
         solved = true // a deliberate parent action is not an abandoned question
+        explaining = false
+        pendingRestMinutes = 0
+        explainToken++
         justFinished = true // returning to the desktop must not raise the startup admin prompt
         releaseSound()
         dev.plume.DiagLog.event(event)
@@ -836,7 +948,9 @@ class QuizActivity : Activity() {
 
     /** Back means "let me out". The answer is always the same sentence; the page stays. */
     private fun blockBack() {
-        feedbackText.text = if (restRemaining() > 0L) "休息结束后，答对一题才能退出" else "答对一题后才能退出"
+        if (!explaining) {
+            feedbackText.text = if (restRemaining() > 0L) "休息结束后，答对一题才能退出" else "答对一题后才能退出"
+        }
         if (!backNoted) {
             backNoted = true
             dev.plume.DiagLog.event("quiz_back_blocked")
@@ -988,6 +1102,8 @@ class QuizActivity : Activity() {
         private const val READ_REPEAT_MS = 20_000L // after the first reading, repeat question + options every 20 s
         private const val TTS_RETRY_MS = 250L // the engine is still loading: ask again this soon
         private const val TTS_RETRY_LIMIT = 80 // 20 s of short retries (cold neural model load takes 7-13 s on low-end TVs)
+        private const val EXPLAIN_TTS_RETRY_LIMIT = 12 // up to 3 s waiting for a cold offline engine before silent fallback
+        private const val EXPLAIN_MAX_WAIT_MS = 25_000L // hard ceiling if a third-party TTS service never calls onDone
         /** Above this age a question is not read aloud: the child reads it from the screen. */
         private const val VOICE_MAX_AGE = 10
         private const val GUARD_POLL_MS = 1_000L // while a quiz or rest is up, check the foreground every second

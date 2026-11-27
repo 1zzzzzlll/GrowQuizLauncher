@@ -89,6 +89,20 @@
     .danger-fold{border:1px dashed rgba(217,83,79,.5);border-radius:12px;padding:12px 14px;font-size:14px;color:#ffb3b3;display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;margin-top:14px}
     .danger-zone{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
+    /* ---- 软件禁用管控 ---- */
+    .app-bar{display:grid;grid-template-columns:1fr 130px auto;gap:10px;margin-bottom:10px}
+    .app-bar input,.app-bar select{padding:11px 12px;font-size:14px}
+    .app-bar button{width:auto;padding:11px 14px;font-size:13px;white-space:nowrap}
+    .app-row{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.02)}
+    .app-row:last-child{border-bottom:0}
+    .app-row.blocked{background:rgba(217,83,79,.08)}
+    .app-row input.apchk{width:auto;flex:none;transform:scale(1.2)}
+    .app-ic{width:40px;height:40px;border-radius:10px;flex:none;object-fit:cover;background:rgba(255,255,255,.06)}
+    .app-ic-fb{width:40px;height:40px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;background:rgba(61,123,253,.18);color:#a9c6ff;font-weight:700;font-size:17px}
+    .app-warn{margin-bottom:12px;padding:12px 14px;border-radius:12px;background:rgba(255,209,102,.1);border:1px solid rgba(255,209,102,.35);font-size:13px;line-height:1.55;color:#ffe6a3;display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .app-warn button{width:auto;flex:none;padding:8px 12px;font-size:12px;border-radius:8px}
+    @media (max-width:640px){.app-bar{grid-template-columns:1fr 1fr}.app-bar input{grid-column:1/-1}}
+
     /* ---- 环境检测：右上角按钮 + 居中弹窗 ---- */
     .env-btn{margin-left:auto;width:auto;padding:9px 16px;font-size:14px;flex:none}
     .modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:18px}
@@ -192,6 +206,10 @@
           <div class="pill"><div class="k">语音朗读</div><div id="stTts" class="v">--</div></div>
           <div class="pill"><div class="k">开机答题</div><div id="stBoot" class="v">--</div></div>
           <div class="pill"><div class="k">防蒙题休息</div><div id="stRest" class="v">--</div></div>
+          <div class="pill" id="stAppsPill" style="grid-column:1/-1;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px">
+            <div><div class="k">软件运行管控</div><div id="stBlockedApps" class="v">--</div></div>
+            <span class="muted" style="font-size:13px;flex:none">去管理 ›</span>
+          </div>
         </div>
         <div class="check-line" id="envLine" style="cursor:pointer">
           <div id="envHead" class="check-h">环境检测：--</div>
@@ -255,7 +273,40 @@
       </div>
     </div>
 
-    <!-- ============ Tab 2：设置 ============ -->
+    <!-- ============ Tab 2：软件禁用管控 ============ -->
+    <div id="tab-apps" class="tabpage hidden">
+      <div class="card">
+        <div class="sync-bar" style="background:rgba(61,123,253,.09);border-color:rgba(61,123,253,.32)">
+          <div class="smain">
+            <div class="stitle" id="apTitle" style="color:#a9c6ff">🚫 禁用软件运行管控</div>
+            <div class="muted" id="apMeta">正在读取本机部署的非系统软件…</div>
+          </div>
+          <button id="apRefresh" class="ghost">🔄 刷新</button>
+        </div>
+        <div id="apWarn" class="app-warn hidden">
+          <div id="apWarnText"></div>
+          <button id="apWarnBtn" class="ghost">查看授权</button>
+        </div>
+        <div class="app-bar">
+          <input id="apSearch" type="search" placeholder="搜索软件名称或包名…">
+          <select id="apState">
+            <option value="all">全部软件</option>
+            <option value="blocked">已禁用</option>
+            <option value="allowed">允许运行</option>
+          </select>
+        </div>
+        <div id="apMsg" class="msg"></div>
+        <div id="apList" class="qlist hidden"></div>
+        <div class="batchbar">
+          <button id="apPickAll" class="ghost">全选 / 全不选</button>
+          <button id="apAllowSel" class="success">解除选中</button>
+          <button id="apBlockSel" class="danger">禁用选中</button>
+        </div>
+        <div class="footer">仅列出本机现有部署的非系统软件（系统设置、桌面与语音引擎自动排除）。被禁用的软件一旦运行，系统会自动关闭该软件并弹出提醒窗口同时播报语音，点击「确定」后关闭提醒弹窗；若该软件此刻正在运行，点「禁用」也会立即关闭它。</div>
+      </div>
+    </div>
+
+    <!-- ============ Tab 3：设置 ============ -->
     <div id="tab-settings" class="tabpage hidden">
       <div class="card">
         <h3>答题设置</h3>
@@ -286,7 +337,7 @@
           <div class="sw"><input id="enabled" type="checkbox"><i></i></div>
         </div>
         <div class="set-row">
-          <div class="nm">语音朗读题目<div class="hint">关闭后答题时只显示文字，不再念题。只对 10 岁及以下的题目朗读</div></div>
+          <div class="nm">语音朗读题目<div class="hint">关闭后只显示文字，不再念题和解析。题目朗读仅限 10 岁及以下，答错时播报解析后换题</div></div>
           <div class="sw"><input id="voice" type="checkbox"><i></i></div>
         </div>
         <div class="set-row">
@@ -497,7 +548,7 @@
         </div>
         <div class="field">
           <label>解析（可选）</label>
-          <input id="cqExplanation" placeholder="答对后显示给宝贝看">
+          <input id="cqExplanation" placeholder="答对显示、答错语音播报给宝贝听">
         </div>
       </div>
       <div style="display:flex;gap:12px">
@@ -521,6 +572,7 @@
   <!-- ============ 底部 Tab 栏 ============ -->
   <div id="tabbar" class="tabbar hidden">
     <div class="tab on" data-tab="home"><span class="ic">🏠</span>总览</div>
+    <div class="tab" data-tab="apps"><span class="ic">🚫</span>软件</div>
     <div class="tab" data-tab="settings"><span class="ic">⚙️</span>设置</div>
     <div class="tab" data-tab="bank"><span class="ic">📚</span>题库</div>
     <div class="tab" data-tab="stats"><span class="ic">📊</span>报告</div>
@@ -531,10 +583,10 @@
     const msg = (el, text, ok) => { el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'err'); };
     const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const AUTH_CARDS = ['setup', 'login'];
-    const TABS = ['home', 'settings', 'bank', 'stats'];
+    const TABS = ['home', 'apps', 'settings', 'bank', 'stats'];
     let authed = false;
     let currentTab = 'home';
-    const loaded = { bank: false, stats: false }; // 懒加载：切到该 Tab 才拉数据
+    const loaded = { apps: false, bank: false, stats: false }; // 懒加载：切到该 Tab 才拉数据
 
     // ---------- 路由与视图切换 ----------
     const show = name => {
@@ -546,6 +598,7 @@
       if (!isAuthView) {
         currentTab = name;
         document.querySelectorAll('.tab').forEach(el => el.classList.toggle('on', el.dataset.tab === name));
+        if (name === 'apps' && !loaded.apps) { loaded.apps = true; loadApps(); }
         if (name === 'bank' && !loaded.bank) { loaded.bank = true; loadBank(); }
         if (name === 'stats' && !loaded.stats) { loaded.stats = true; loadStats(); }
       }
@@ -770,12 +823,17 @@
         : '';
       // 环境检测：明细与操作指引都在右上角「环境检测」弹窗里，这里只留一行汇总。
       // 判定逻辑与电视端 EnvCheck.kt 保持一致；guardMissing 的名称与 quiz/QuizLock.Need 一一对应。
+      const bc = s.blockedAppCount || 0, hits = s.appBlockHits || 0;
+      $('stBlockedApps').textContent = bc > 0
+        ? ('已禁用 ' + bc + ' 款软件' + (hits > 0 ? ' · 已拦截 ' + hits + ' 次' : ''))
+        : '未设置禁用软件';
       lastStatus = s;
       renderOnlineBank(s.onlineBank);
       envSummary(s);
       authed = true;
       route();
       await loadCategories(s.categories || []);
+      if (loaded.apps && currentTab === 'apps') await loadApps();
       if (loaded.bank) await loadBank();
       loadToday();
     }
@@ -934,6 +992,128 @@
     };
 
     $('refreshBtn').onclick = refresh;
+    $('stAppsPill').onclick = () => { location.hash = '#/apps'; };
+
+    // ---------- 软件禁用管控 ----------
+    let apAll = [];
+
+    async function loadApps() {
+      try {
+        const j = await get('/api/apps');
+        apAll = j.apps || [];
+        const bc = j.blockedCount || 0, hits = j.hitCount || 0;
+        $('apTitle').textContent = '🚫 禁用软件运行管控（已禁用 ' + bc + ' / 共 ' + apAll.length + ' 款）';
+        $('apMeta').textContent = hits > 0
+          ? ('累计拦截并关闭 ' + hits + ' 次 · 最近一次：' + (j.lastHitName || '--') + (j.lastHitAt ? '（' + ago(j.lastHitAt) + '）' : ''))
+          : '选择本机现有非系统软件进行禁用；监听到运行时自动关闭并弹窗+语音提醒';
+        const needA11y = !j.a11y, needOverlay = j.overlay !== true;
+        const warnBox = $('apWarn');
+        if (needA11y || needOverlay) {
+          const miss = [needA11y ? '主屏幕键服务' : '', needOverlay ? '悬浮窗权限' : ''].filter(Boolean).join('、');
+          $('apWarnText').textContent = '提示：当前「' + miss + '」尚未就绪。桌面内点击禁用软件已可直接拦截；补齐授权后，从遥控器快捷键、语音助手或外部跳转运行的软件也能实时监听并自动关闭弹窗。';
+          warnBox.classList.remove('hidden');
+        } else {
+          warnBox.classList.add('hidden');
+        }
+        renderApps();
+      } catch (e) {
+        msg($('apMsg'), e.message, false);
+      }
+    }
+
+    function renderApps() {
+      const kw = ($('apSearch').value || '').trim().toLowerCase();
+      const st = $('apState').value;
+      const filtered = apAll.filter(a => {
+        if (st === 'blocked' && !a.blocked) return false;
+        if (st === 'allowed' && a.blocked) return false;
+        if (kw && !String(a.name || '').toLowerCase().includes(kw) && !String(a.pkg || '').toLowerCase().includes(kw)) return false;
+        return true;
+      });
+      if (apAll.length === 0) {
+        $('apList').classList.add('hidden');
+        msg($('apMsg'), '本机当前没有检测到已部署的非系统软件', true);
+        return;
+      }
+      msg($('apMsg'), filtered.length ? ('当前显示 ' + filtered.length + ' 款软件') : '没有匹配筛选条件的软件', true);
+      const list = $('apList');
+      list.classList.toggle('hidden', filtered.length === 0);
+      list.innerHTML = filtered.map(a => {
+        const ch = esc((a.name || a.pkg || '?').trim().charAt(0).toUpperCase());
+        const ver = a.version ? (' · v' + esc(a.version)) : '';
+        const badge = a.blocked ? '<span class="badge off">🚫 已禁用</span>' : '<span class="badge online">允许运行</span>';
+        const actionBtn = a.blocked
+          ? `<button class="qdel success" data-ap-toggle="${esc(a.pkg)}" data-ap-want="0">解除禁用</button>`
+          : `<button class="qdel danger" data-ap-toggle="${esc(a.pkg)}" data-ap-want="1">禁用</button>`;
+        return `<div class="app-row ${a.blocked ? 'blocked' : ''}">
+          <input type="checkbox" class="apchk" value="${esc(a.pkg)}">
+          <img class="app-ic" src="/api/apps/icon?pkg=${encodeURIComponent(a.pkg)}" alt="" loading="lazy" data-fb="${ch}">
+          <div class="qmain">
+            <div class="qtitle">${esc(a.name || a.pkg)}</div>
+            <div class="qmeta">${esc(a.pkg)}${ver}</div>
+          </div>
+          ${badge}${actionBtn}
+        </div>`;
+      }).join('');
+      list.querySelectorAll('img.app-ic').forEach(img => {
+        img.onerror = () => {
+          const fb = document.createElement('div');
+          fb.className = 'app-ic-fb';
+          fb.textContent = img.dataset.fb || '?';
+          img.replaceWith(fb);
+        };
+      });
+      list.querySelectorAll('[data-ap-toggle]').forEach(btn => {
+        btn.onclick = async () => {
+          const pkg = btn.dataset.apToggle;
+          const wantBlocked = btn.dataset.apWant === '1';
+          btn.disabled = true;
+          try {
+            await api('/api/apps/state', { pkgs: [pkg], blocked: wantBlocked });
+            await loadApps();
+            const s = await status();
+            lastStatus = s;
+            const bc = s.blockedAppCount || 0, hits = s.appBlockHits || 0;
+            $('stBlockedApps').textContent = bc > 0
+              ? ('已禁用 ' + bc + ' 款软件' + (hits > 0 ? ' · 已拦截 ' + hits + ' 次' : ''))
+              : '未设置禁用软件';
+            msg($('apMsg'), wantBlocked ? '已禁用该软件（若正在运行已自动关闭并提醒）' : '已解除禁用', true);
+          } catch (e) {
+            btn.disabled = false;
+            msg($('apMsg'), e.message, false);
+          }
+        };
+      });
+    }
+
+    $('apRefresh').onclick = loadApps;
+    $('apWarnBtn').onclick = openEnv;
+    $('apSearch').oninput = renderApps;
+    $('apState').onchange = renderApps;
+    $('apPickAll').onclick = () => {
+      const boxes = [...document.querySelectorAll('.apchk')];
+      const target = boxes.some(c => !c.checked);
+      boxes.forEach(c => c.checked = target);
+    };
+    const setAppsBatch = async blocked => {
+      const pkgs = [...document.querySelectorAll('.apchk:checked')].map(c => c.value);
+      if (!pkgs.length) return msg($('apMsg'), '请先勾选软件', false);
+      try {
+        await api('/api/apps/state', { pkgs, blocked });
+        await loadApps();
+        const s = await status();
+        lastStatus = s;
+        const bc = s.blockedAppCount || 0, hits = s.appBlockHits || 0;
+        $('stBlockedApps').textContent = bc > 0
+          ? ('已禁用 ' + bc + ' 款软件' + (hits > 0 ? ' · 已拦截 ' + hits + ' 次' : ''))
+          : '未设置禁用软件';
+        msg($('apMsg'), (blocked ? '已禁用 ' : '已解除禁用 ') + pkgs.length + ' 款软件', true);
+      } catch (e) {
+        msg($('apMsg'), e.message, false);
+      }
+    };
+    $('apBlockSel').onclick = () => setAppsBatch(true);
+    $('apAllowSel').onclick = () => setAppsBatch(false);
 
     // ---------- 设置页工具与账号 ----------
     async function ttsTest(target) {
