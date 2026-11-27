@@ -49,4 +49,14 @@ class VendorTest {
         assertEquals(Vendor.OTHER, Vendor.identify("acme", "acme"))
         assertEquals(Vendor.OTHER, Vendor.identify(null, null))
     }
+
+    @Test
+    fun `dead accessibility revive is gated to verified brands only`() {
+        org.junit.Assert.assertTrue(Vendor.revivesDeadA11y(Vendor.TCL))
+        org.junit.Assert.assertTrue(Vendor.revivesDeadA11y(Vendor.KONKA))
+        org.junit.Assert.assertFalse(Vendor.revivesDeadA11y(Vendor.XIAOMI))
+        org.junit.Assert.assertFalse(Vendor.revivesDeadA11y(Vendor.HUAWEI))
+        org.junit.Assert.assertFalse(Vendor.revivesDeadA11y(Vendor.SKYWORTH))
+        org.junit.Assert.assertFalse(Vendor.revivesDeadA11y(Vendor.OTHER))
+    }
 }

@@ -58,4 +58,36 @@ class TtsDiagnosisTest {
     fun `the named engine is not retried again`() {
         assertEquals(null, TtsDiagnosis.explicitEngine("com.a.tts", listOf("com.a.tts")))
     }
+
+    @Test
+    fun `transient tts failure retries only when an engine exists and cooldown passed`() {
+        val gap = TtsDiagnosis.RETRY_GAP_MS
+        org.junit.Assert.assertTrue(
+            TtsDiagnosis.shouldRetryInit("no-language", enginesAvailable = true, retries = 0, lastFailElapsedMs = 10_000, nowElapsedMs = 10_000 + gap),
+        )
+        // Too soon after failure -> wait.
+        org.junit.Assert.assertFalse(
+            TtsDiagnosis.shouldRetryInit("no-language", enginesAvailable = true, retries = 0, lastFailElapsedMs = 10_000, nowElapsedMs = 10_000 + gap - 1),
+        )
+        // No engine installed on the TV -> never retry or spam tts_missing.
+        org.junit.Assert.assertFalse(
+            TtsDiagnosis.shouldRetryInit("no-engine", enginesAvailable = false, retries = 0, lastFailElapsedMs = 10_000, nowElapsedMs = 100_000),
+        )
+        // Hit retry cap -> stop spinning.
+        org.junit.Assert.assertFalse(
+            TtsDiagnosis.shouldRetryInit("no-language", enginesAvailable = true, retries = TtsDiagnosis.MAX_AUTO_RETRIES, lastFailElapsedMs = 10_000, nowElapsedMs = 100_000),
+        )
+        // No failure -> nothing to retry.
+        org.junit.Assert.assertFalse(
+            TtsDiagnosis.shouldRetryInit(null, enginesAvailable = true, retries = 0, lastFailElapsedMs = 10_000, nowElapsedMs = 100_000),
+        )
+    }
+
+    @Test
+    fun `service drop error codes trigger reconnect`() {
+        org.junit.Assert.assertTrue(TtsDiagnosis.isReconnectableError(-5))
+        org.junit.Assert.assertTrue(TtsDiagnosis.isReconnectableError(-9))
+        org.junit.Assert.assertFalse(TtsDiagnosis.isReconnectableError(-1))
+        org.junit.Assert.assertFalse(TtsDiagnosis.isReconnectableError(0))
+    }
 }

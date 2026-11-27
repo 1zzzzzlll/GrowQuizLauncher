@@ -66,22 +66,80 @@ object QuizLock {
         !solved && pageAlive && screenInteractive && !lockTaskActive
 
     /**
+     * Grace window after a due time before the watchdog treats the alarm as missing.
+     *
+     * Without a grace margin, a watchdog tick that lands milliseconds after the due time races
+     * with AlarmManager's own broadcast: the watchdog reschedules 15 minutes ahead, and 19 ms
+     * later the real alarm fires and reads the newly pushed due time as a huge negative lateMs.
+     */
+    const val OVERDUE_GRACE_MS = 60_000L
+
+    /**
      * Whether the quiz alarm is gone and must be set again.
      *
      * A reboot clears every alarm in the system. The app normally re-schedules from BOOT_COMPLETED, but
      * some firmwares never deliver that broadcast to a third-party app: a Huawei vision screen stayed
      * silent for 21 hours after a reboot and only came back when someone opened it by hand. Two cases
      * need a new alarm:
-     *  - the time it was due has passed (nothing fired), or
+     *  - the time it was due has passed by more than [graceMs] (nothing fired), or
      *  - it was last set before this boot, so the reboot cleared it.
      *
      * [bootAt] is now minus elapsed realtime, i.e. when this uptime began.
      */
-    fun alarmLost(now: Long, bootAt: Long, nextTriggerAt: Long, lastScheduleAt: Long): Boolean {
+    fun alarmLost(
+        now: Long,
+        bootAt: Long,
+        nextTriggerAt: Long,
+        lastScheduleAt: Long,
+        graceMs: Long = OVERDUE_GRACE_MS,
+    ): Boolean {
         if (nextTriggerAt <= 0L) return true // nothing is due: one has to be scheduled
-        if (nextTriggerAt <= now) return true // due and never fired
+        if (nextTriggerAt <= now - graceMs) return true // overdue past grace and never fired
         return lastScheduleAt < bootAt // set before this boot: the reboot cleared it
     }
+
+    /**
+     * Whether the watchdog should open an overdue quiz right now instead of only pushing the next
+     * alarm further into the future.
+     *
+     * Field reports from Hisense VIDAA (13 consecutive watchdog restores in 14 h with zero
+     * alarm_fired) and Konka V812 (3 restores while awake) showed firmwares that silently swallow
+     * AlarmManager.setAlarmClock while still running persisted JobScheduler ticks. Catching up is
+     * only safe when the missed alarm was armed during THIS boot, is past [graceMs], the screen is
+     * on, and no quiz or rest session is already active.
+     */
+    fun watchdogCatchUp(
+        now: Long,
+        bootAt: Long,
+        nextTriggerAt: Long,
+        lastScheduleAt: Long,
+        screenInteractive: Boolean,
+        sessionActive: Boolean,
+        graceMs: Long = OVERDUE_GRACE_MS,
+    ): Boolean =
+        screenInteractive &&
+            !sessionActive &&
+            nextTriggerAt > 0L &&
+            now - nextTriggerAt >= graceMs &&
+            lastScheduleAt >= bootAt
+
+    /**
+     * Whether an alarm or parent command should call startActivity for QuizActivity.
+     *
+     * When the question page is already visibly in front of the child and this is a routine alarm
+     * (not a parent-triggered forced rest), relaunching singleTask QuizActivity causes an
+     * onPause -> onNewIntent -> onResume bounce that trips the snap-back watchdog (124 fake
+     * snapback_ok + 249 quiz_open on a Xiaomi TV in one night).
+     */
+    fun shouldRelaunchForAlarm(quizForeground: Boolean, resting: Boolean): Boolean =
+        resting || !quizForeground
+
+    /**
+     * Whether an onPause was caused by our own internal intent to QuizActivity (e.g. a parent rest
+     * or HomeOverride bringing the quiz forward), rather than the child escaping to another app.
+     */
+    fun isExpectedSelfPause(expectedAtMs: Long, nowMs: Long, windowMs: Long = 2_000L): Boolean =
+        expectedAtMs > 0L && nowMs - expectedAtMs in 0..windowMs
 
     /**
      * The permissions the "answer on time" promise rests on, in the order the console shows them.

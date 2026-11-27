@@ -380,6 +380,7 @@ object WebAdminServer {
                         .put("snapBack", prefs.snapBack)
                         .put("snapOkAt", prefs.snapOkAt)
                         .put("snapOkCount", prefs.snapOkCount)
+                        .put("popupBlockedAt", prefs.popupLoggedFor)
                         .put("overlay", android.provider.Settings.canDrawOverlays(context))
                         .put("a11y", dev.plume.HomeOverride.running != null)
                         // GrowQuiz: day-one reports showed nearly every Android 12+ TV without the
@@ -770,7 +771,10 @@ object WebAdminServer {
             path == "/api/voice_install" && method == "POST" -> {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
                 val stage = dev.plume.voice.PackStore.state().stage
-                if (stage == dev.plume.voice.PackStore.Stage.DOWNLOADING || stage == dev.plume.voice.PackStore.Stage.UNPACKING) {
+                if (stage == dev.plume.voice.PackStore.Stage.DOWNLOADING ||
+                    stage == dev.plume.voice.PackStore.Stage.UNPACKING ||
+                    dev.plume.voice.EmbeddedTts.isLoading()
+                ) {
                     return reply(out, 200, "application/json; charset=utf-8", JSONObject().put("ok", true).put("started", false).toString())
                 }
                 main.post {

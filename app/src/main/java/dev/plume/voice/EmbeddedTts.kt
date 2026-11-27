@@ -6,6 +6,7 @@ import android.media.AudioFormat
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.SystemClock
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
@@ -82,7 +83,7 @@ object EmbeddedTts {
         loading = true
         startWorker()
         Thread {
-            val began = System.currentTimeMillis()
+            val began = SystemClock.elapsedRealtime()
             try {
                 val vits = OfflineTtsVitsModelConfig(
                     model = File(dir, VoicePacks.MODEL).absolutePath,
@@ -97,12 +98,14 @@ object EmbeddedTts {
                 val built = OfflineTts(assetManager = null, config = config)
                 sampleRate = built.sampleRate()
                 engine = built
-                DiagLog.event("tts_local_ready", "sr=$sampleRate ms=${System.currentTimeMillis() - began}")
+                DiagLog.event("tts_local_ready", "sr=$sampleRate ms=${SystemClock.elapsedRealtime() - began}")
             } catch (e: Throwable) {
                 // UnsatisfiedLinkError included: this APK carries no library for an x86 box, and the
                 // report is the only way to learn that a device family needs one.
                 failure = e.message ?: e.javaClass.simpleName
                 DiagLog.event("tts_local_fail", "${e.javaClass.simpleName} ${e.message.orEmpty()}".trim())
+                // Fall back to the system TTS engine when the bundled model cannot load here.
+                app?.let { dev.plume.quiz.QuizVoice.warm(it) }
             } finally {
                 loading = false
             }
@@ -174,13 +177,13 @@ object EmbeddedTts {
         val engine = engine ?: return
         if (say.gen != gen) return
         val pcm = cachedClip(context, say.text) ?: run {
-            val began = System.currentTimeMillis()
+            val began = SystemClock.elapsedRealtime()
             val audio = engine.generate(say.text, speaker, SPEED)
             val data = toPcm(audio.samples)
             if (data.isEmpty()) return
             // A synthesis that took longer than the audio lasts is worth knowing about: it is the
             // difference between a TV that reads the question and one that talks over the next one.
-            val ms = System.currentTimeMillis() - began
+            val ms = SystemClock.elapsedRealtime() - began
             if (ms > 2500) DiagLog.event("tts_local_slow", "chars=${say.text.length} ms=$ms")
             runCatching { writeClip(context, say.text, data) }
             data
@@ -224,7 +227,7 @@ object EmbeddedTts {
                 .setBufferSizeInBytes(buffer)
                 .build()
             track.play()
-            playedAt = System.currentTimeMillis()
+            playedAt = SystemClock.elapsedRealtime()
             var at = 0
             while (at < pcm.size && mine == gen) {
                 val n = track.write(pcm, at, minOf(CHUNK, pcm.size - at))
@@ -234,8 +237,8 @@ object EmbeddedTts {
             // A stream write returns when the samples are buffered, not when they are heard. Stopping
             // here cut the last syllable of every sentence; wait for the head to reach the end instead,
             // and give up at once when a newer sentence arrived ([gen] moved).
-            val deadline = System.currentTimeMillis() + 1_000L + pcm.size * 1000L / sampleRate
-            while (mine == gen && track.playbackHeadPosition < pcm.size && System.currentTimeMillis() < deadline) {
+            val deadline = SystemClock.elapsedRealtime() + 1_000L + pcm.size * 1000L / sampleRate
+            while (mine == gen && track.playbackHeadPosition < pcm.size && SystemClock.elapsedRealtime() < deadline) {
                 Thread.sleep(20)
             }
         } catch (e: Exception) {
@@ -311,6 +314,7 @@ object EmbeddedTts {
     fun release() {
         gen++
         queue.clear()
+        failure = null
         runCatching { engine?.release() }
         engine = null
     }

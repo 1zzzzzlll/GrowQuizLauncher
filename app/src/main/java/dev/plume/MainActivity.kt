@@ -748,7 +748,7 @@ class MainActivity : Activity() {
             if (HomeOverride.running != null || !homeServiceOn()) return@postDelayed
             // Enabled in the list but not bound after several seconds: the service is dead.
             DiagLog.event("a11y_dead", "", mapOf("vendor" to Vendor.current))
-            if (!Vendor.isTcl()) return@postDelayed // the rewrite fix is verified on TCL only
+            if (!Vendor.revivesDeadA11y()) return@postDelayed // gated to verified brands (TCL, Konka)
             val me = ComponentName(this, HomeOverride::class.java)
             val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
             // Take ours out, then put it back: the value must change, or nothing is bound again.
@@ -761,7 +761,11 @@ class MainActivity : Activity() {
                 Settings.Secure.putString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, parts.distinct().joinToString(":"))
                 Settings.Secure.putInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
                 ui.postDelayed({
-                    DiagLog.event(if (HomeOverride.running != null) "a11y_revived" else "a11y_revive_fail")
+                    DiagLog.event(
+                        if (HomeOverride.running != null) "a11y_revived" else "a11y_revive_fail",
+                        "",
+                        mapOf("vendor" to Vendor.current),
+                    )
                 }, 3_000)
             }, 300)
         }, 3_000)
@@ -775,7 +779,11 @@ class MainActivity : Activity() {
     private fun setupPendingLines(): List<String>? {
         val lines = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 23 && !Settings.canDrawOverlays(this)) {
-            lines.add("· 「显示在其他应用上层」权限未授予，切走后答题页回不来")
+            val blocked = dev.plume.quiz.QuizPrefs(this).popupLoggedFor > 0L
+            lines.add(
+                if (blocked) "· 已检测到定时弹题被系统拦截！请先授予「显示在其他应用上层」权限（见手机控制台环境检测）"
+                else "· 「显示在其他应用上层」权限未授予，看视频时到点可能弹不出答题页，切走也回不来",
+            )
         }
         if (Build.VERSION.SDK_INT >= 31 &&
             getSystemService(android.app.AlarmManager::class.java)?.canScheduleExactAlarms() == false
@@ -4007,14 +4015,26 @@ class MainActivity : Activity() {
             return
         } catch (e: Exception) {
         }
-        // Some TV firmwares ship no Settings app at all (first seen on a Huawei vision screen,
-        // where the top-bar settings button crashed the launcher three times in a row).
+        // Some TV firmwares ship no standard Settings intent at all (Huawei vision, XGIMI, TCL ak30a5,
+        // Xiaomi MiTV-ASTP1). Try ACTION_SETTINGS first, then verified vendor packages before giving up.
         try {
             startActivity(Intent(Settings.ACTION_SETTINGS))
+            return
         } catch (e: Exception) {
-            dev.plume.DiagLog.event("settings_open_fail", action)
-            toast(getString(R.string.settings_missing), long = true, system = true)
         }
+        for (pkg in SettingsApps.vendorFallbackPackages(Vendor.current)) {
+            val launch = packageManager.getLeanbackLaunchIntentForPackage(pkg)
+                ?: packageManager.getLaunchIntentForPackage(pkg)
+                ?: continue
+            try {
+                startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                dev.plume.DiagLog.event("settings_open_fallback", pkg, mapOf("action" to action, "vendor" to Vendor.current))
+                return
+            } catch (_: Exception) {
+            }
+        }
+        dev.plume.DiagLog.event("settings_open_fail", action)
+        toast(getString(R.string.settings_missing), long = true, system = true)
     }
 
     // ---------- apps row ----------
@@ -4884,6 +4904,7 @@ class MainActivity : Activity() {
             tts = dev.plume.quiz.TtsProbe.describe(),
             ttsWanted = quiz.voice,
             pack = packState(),
+            popupBlocked = quiz.popupLoggedFor > 0L,
         )
         val open = EnvCheck.openCount(items)
         popupMenu(anchor, below = true) { dismiss ->

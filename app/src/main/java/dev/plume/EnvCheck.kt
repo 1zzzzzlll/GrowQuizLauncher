@@ -74,6 +74,7 @@ object EnvCheck {
         tts: String,
         ttsWanted: Boolean,
         pack: String = "",
+        popupBlocked: Boolean = false,
     ): List<Item> {
         val tv = form != DeviceForm.PHONE && form != DeviceForm.TABLET
         // TV: the adb commands are the fix, so every row carries them; phone: the settings page is.
@@ -92,7 +93,8 @@ object EnvCheck {
         val out = ArrayList<Item>(8)
         out += grant(
             Key.OVERLAY, "悬浮窗权限", overlay, "已允许", "未允许",
-            "没有它，答题页无法盖在其他应用上。",
+            if (popupBlocked) "已检测到定时弹题被系统拦截！没有它，看视频时到点弹不出答题页，切走后也回不来。"
+            else "没有它，看视频时到点可能弹不出答题页，切走后也回不来。",
             "设置 → 应用 → 特殊应用权限 → 显示在其他应用上层", ADB_OVERLAY,
         )
         if (sdk >= 31) out += grant(

@@ -52,9 +52,9 @@ object ReportUpload {
             try {
                 val ok = send(app, prefs)
                 prefs.edit().putBoolean(KEY_LAST_OK, ok).apply()
-                if (!ok) DiagLog.event("report_upload_fail")
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 prefs.edit().putBoolean(KEY_LAST_OK, false).apply()
+                DiagLog.event("report_upload_fail", e.message ?: e.javaClass.simpleName)
             } finally {
                 sending = false
             }
@@ -76,7 +76,10 @@ object ReportUpload {
             .put("crash", CrashLog.peek(context) ?: "")
             .put("events", events)
             .toString()
-        if (body.length > MAX_BODY) return false // a flood stays on disk; the trim keeps the newest
+        if (body.length > MAX_BODY) {
+            DiagLog.event("report_upload_fail", "too_large ${body.length}")
+            return false // a flood stays on disk; the trim keeps the newest
+        }
         val conn = (URL(URL).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 10_000

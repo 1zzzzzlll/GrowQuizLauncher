@@ -62,6 +62,7 @@ class HomeOverride : AccessibilityService() {
                 restForced = prefs.restForced,
             )) {
             DiagLog.event("boot_catchup_quiz")
+            dev.plume.quiz.QuizActivity.markExpectedIntent()
             startActivity(
                 Intent(this, dev.plume.quiz.QuizActivity::class.java).addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,
@@ -213,6 +214,8 @@ class HomeOverride : AccessibilityService() {
         if (quizRunning()) {
             // Do not insert the desktop between the quiz and the player: finishing the quiz then
             // uncovers the player again. This also consumes repeated Home presses without a home flash.
+            if (dev.plume.quiz.QuizActivity.isForeground) return
+            dev.plume.quiz.QuizActivity.markExpectedIntent()
             startActivity(
                 Intent(this, dev.plume.quiz.QuizActivity::class.java).addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT,

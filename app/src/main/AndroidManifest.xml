@@ -75,6 +75,12 @@
             <action android:name="android.settings.WIFI_SETTINGS" />
         </intent>
         <package android:name="com.google.android.apps.tv.launcherx" />
+        <!-- Vendor Settings packages verified in field reports; queried only when standard Settings intents fail. -->
+        <package android:name="com.xiaomi.mitv.settings" />
+        <package android:name="com.tcl.settings" />
+        <package android:name="com.skyworth.setting" />
+        <package android:name="com.coocaa.os.softsettings" />
+        <package android:name="com.konka.tvsettings" />
         <!-- Fire OS's input switch, for the HDMI tiles (Remap.openInput) -->
         <package android:name="com.amazon.tv.inputpreference.service" />
         <!-- The TV provider (Watch Next, app channels). Stock Android TV makes it visible to all apps;

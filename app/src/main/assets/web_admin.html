@@ -603,8 +603,11 @@
         adb: ok || !tv ? [] : adb
       });
       const rows = [];
+      const blocked = s.overlay !== true && (s.popupBlockedAt || 0) > 0;
       rows.push(grant('悬浮窗权限', s.overlay === true, '已允许', '未允许',
-        '没有它，答题页无法盖在其他应用上。',
+        blocked
+          ? '已检测到定时弹题被系统拦截！没有它，看视频时到点弹不出答题页，切走后也回不来。'
+          : '没有它，看视频时到点可能弹不出答题页，切走后也回不来。',
         '设置 → 应用 → 特殊应用权限 → 显示在其他应用上层',
         ['adb shell appops set ' + PKG + ' SYSTEM_ALERT_WINDOW allow']));
       if (sdk >= 31) rows.push(grant('闹钟和提醒', s.exactAlarm === true, '已允许', '未允许',
@@ -665,7 +668,9 @@
       } else {
         head.className = 'check-h chk-bad';
         head.textContent = '环境检测：' + bad.length + ' 项未通过';
-        how.textContent = '未通过：' + bad.map(r => r.name).join('、') + '。点本行查看解决办法。';
+        how.textContent = (s.overlay !== true && (s.popupBlockedAt || 0) > 0)
+          ? '已检测到定时弹题被系统拦截！请先点本行授予「悬浮窗权限」（共 ' + bad.length + ' 项未通过）。'
+          : '未通过：' + bad.map(r => r.name).join('、') + '。点本行查看解决办法。';
       }
     }
 
@@ -733,7 +738,7 @@
       const tts = { 'available': '可用（电视引擎）', 'embedded': '可用（内置语音）', 'initializing': '检测中…' }[s.tts] || (s.tts === 'no-engine' ? '不可用（无引擎）' : s.tts === 'no-language' ? '不可用（缺中文语音）' : s.tts);
       $('stTts').textContent = s.voice === false ? '已关闭' : tts;
       $('voiceHint').textContent = voiceHintText(s);
-      if (s.pack === 'downloading' || s.pack === 'unpacking') startVoicePoll();
+      if (s.pack === 'downloading' || s.pack === 'unpacking' || (s.pack === 'ready' && s.tts === 'initializing')) startVoicePoll();
       $('stBoot').textContent = s.bootQuiz === false ? '已关闭' : '开启';
       const restMs = s.restRemainingMs || 0;
       const resting = (s.restGuard !== false || s.restForced === true) && restMs > 0;
@@ -945,8 +950,11 @@
       if (pack === 'downloading') return '正在下载 ' + pctVal + '%，下完自动启用，可以关掉这个页面';
       if (pack === 'unpacking') return '正在安装，马上就好';
       if (pack === 'failed') return '上次下载没有完成，点这里重新下载（会接着上次的进度）';
-      if (pack === 'ready' && !s.voiceEmbedded && s.tts !== 'initializing') return '内置语音已下载，但这台电视加载不了，暂时用自带引擎；点这里再试一次';
+      if (pack === 'ready' && s.tts === 'initializing') return '内置语音已下载，正在加载模型（约 10 秒），请稍候…';
       if (s.tts === 'embedded') return '正在使用内置语音，离线也能朗读；点这里试听';
+      if (pack === 'ready' && s.voiceEmbedded) return '内置语音已就绪，点这里试听';
+      if (pack === 'ready' && !s.voiceEmbedded && s.tts !== 'initializing') return '内置语音已下载，但这台电视加载不了，暂时用自带引擎；点这里再试一次';
+      if (s.tts === 'initializing') return '语音正在初始化，请稍候…';
       if (s.tts === 'available') return '电视自带引擎可用；点这里可加载内置语音（约 28 MB，声音更统一）';
       return '这台电视没有可用的中文语音，点这里下载内置语音（约 28 MB，不用装任何软件）';
     }
@@ -958,15 +966,28 @@
           const s = await status();
           lastStatus = s;
           $('voiceHint').textContent = voiceHintText(s);
-          if (s.pack === 'downloading' || s.pack === 'unpacking') {
+          if (s.pack === 'downloading') {
             msg($('voiceMsg'), '正在下载 ' + (s.packPct || 0) + '%…', true);
             return;
           }
+          if (s.pack === 'unpacking') {
+            msg($('voiceMsg'), '正在解压安装，请稍候…', true);
+            return;
+          }
+          // 解压完成后模型还要在电视上加载 7-13 秒；必须等到 tts === 'embedded' 再试听，
+          // 否则 tts_test 会返回 spoke:false 误导家长反复点击重新下载 28 MB。
+          if (s.pack === 'ready' && s.tts === 'initializing') {
+            msg($('voiceMsg'), '下载完成，正在加载语音模型（约 10 秒）…', true);
+            $('stTts').textContent = '加载中…';
+            return;
+          }
           stopVoicePoll();
-          if (s.pack === 'ready') {
-            msg($('voiceMsg'), '内置语音已就绪，已经启用', true);
+          if (s.pack === 'ready' && s.tts === 'embedded') {
+            msg($('voiceMsg'), '内置语音已就绪，正在试听…', true);
             $('stTts').textContent = '可用（内置语音）';
             ttsTest($('voiceMsg'));
+          } else if (s.pack === 'ready') {
+            msg($('voiceMsg'), '内置语音加载未成功，已退回电视自带引擎', false);
           } else if (s.pack === 'failed') {
             msg($('voiceMsg'), '下载失败：网络断开或服务器连不上，点一次重试', false);
           }
@@ -978,7 +999,12 @@
       const s = lastStatus;
       if (s.tts === 'embedded') return ttsTest($('voiceMsg'));
       if (s.pack === 'downloading' || s.pack === 'unpacking') {
-        return msg($('voiceMsg'), '正在下载 ' + (s.packPct || 0) + '%…', true);
+        startVoicePoll();
+        return msg($('voiceMsg'), s.pack === 'unpacking' ? '正在解压安装，请稍候…' : ('正在下载 ' + (s.packPct || 0) + '%…'), true);
+      }
+      if (s.pack === 'ready' && s.tts === 'initializing') {
+        startVoicePoll();
+        return msg($('voiceMsg'), '内置语音模型正在加载中，请稍候几秒…', true);
       }
       try {
         msg($('voiceMsg'), '正在通知电视…', true);

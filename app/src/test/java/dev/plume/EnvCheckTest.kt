@@ -108,4 +108,14 @@ class EnvCheckTest {
         // A working engine keeps the row green even while an unused pack sits on disk.
         assertEquals(State.PASS, items(tts = "available", pack = "ready").first { it.key == Key.TTS }.state)
     }
+
+    @Test fun silentPopupBlockEscalatesMissingOverlayHint() {
+        val row = EnvCheck.items(
+            sdk = 30, form = DeviceForm.TV, overlay = false, exactAlarm = true, batteryFree = true,
+            notifications = true, fullScreen = true, a11yEnabled = false, a11yBound = false,
+            snapBack = true, snapOkCount = 0, tts = "embedded", ttsWanted = true, popupBlocked = true,
+        ).first { it.key == Key.OVERLAY }
+        assertEquals(State.FAIL, row.state)
+        assertTrue(row.fix.contains("已检测到定时弹题被系统拦截"))
+    }
 }

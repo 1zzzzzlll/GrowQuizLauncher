@@ -104,7 +104,65 @@ class QuizLockTest {
 
     @Test
     fun `a due time that never fired is lost`() {
-        assertTrue(QuizLock.alarmLost(now = 1_000_000, bootAt = 900_000, nextTriggerAt = 990_000, lastScheduleAt = 950_000))
+        assertTrue(
+            QuizLock.alarmLost(
+                now = 1_000_000,
+                bootAt = 800_000,
+                nextTriggerAt = 1_000_000 - QuizLock.OVERDUE_GRACE_MS,
+                lastScheduleAt = 850_000,
+            ),
+        )
+    }
+
+    // A watchdog tick milliseconds after the due time must leave AlarmManager alone, or it pushes
+    // nextTriggerAt ahead and makes the real alarm log a huge negative lateMs.
+    @Test
+    fun `an alarm inside the grace window is not stolen by the watchdog`() {
+        assertFalse(QuizLock.alarmLost(now = 1_000_000, bootAt = 800_000, nextTriggerAt = 999_980, lastScheduleAt = 850_000))
+        assertFalse(QuizLock.alarmLost(now = 1_000_000, bootAt = 800_000, nextTriggerAt = 950_000, lastScheduleAt = 850_000))
+    }
+
+    // Hisense VIDAA & Konka V812: AlarmManager never fires while the TV is awake, so the watchdog
+    // must open the overdue quiz instead of pushing the deadline forward forever.
+    @Test
+    fun `watchdog catches up an overdue alarm from this boot while screen is on`() {
+        assertTrue(
+            QuizLock.watchdogCatchUp(
+                now = 1_000_000,
+                bootAt = 500_000,
+                nextTriggerAt = 900_000,
+                lastScheduleAt = 600_000,
+                screenInteractive = true,
+                sessionActive = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `watchdog does not catch up after a reboot, with screen off, or during an active session`() {
+        // Set before this boot -> reboot recovery only, do not ambush boot.
+        assertFalse(QuizLock.watchdogCatchUp(1_000_000, bootAt = 700_000, nextTriggerAt = 900_000, lastScheduleAt = 600_000, screenInteractive = true, sessionActive = false))
+        // Screen off -> reschedule only, never wake a dark screen.
+        assertFalse(QuizLock.watchdogCatchUp(1_000_000, bootAt = 500_000, nextTriggerAt = 900_000, lastScheduleAt = 600_000, screenInteractive = false, sessionActive = false))
+        // Already in quiz/rest -> do not bounce an open session.
+        assertFalse(QuizLock.watchdogCatchUp(1_000_000, bootAt = 500_000, nextTriggerAt = 900_000, lastScheduleAt = 600_000, screenInteractive = true, sessionActive = true))
+        // Inside grace window -> let AlarmManager fire first.
+        assertFalse(QuizLock.watchdogCatchUp(1_000_000, bootAt = 500_000, nextTriggerAt = 990_000, lastScheduleAt = 600_000, screenInteractive = true, sessionActive = false))
+    }
+
+    @Test
+    fun `routine alarm skips relaunch when quiz is already foreground, forced rest still delivers`() {
+        assertFalse(QuizLock.shouldRelaunchForAlarm(quizForeground = true, resting = false))
+        assertTrue(QuizLock.shouldRelaunchForAlarm(quizForeground = false, resting = false))
+        assertTrue(QuizLock.shouldRelaunchForAlarm(quizForeground = true, resting = true))
+    }
+
+    @Test
+    fun `self-triggered pause window distinguishes internal intents from real escapes`() {
+        assertTrue(QuizLock.isExpectedSelfPause(expectedAtMs = 10_000, nowMs = 10_050))
+        assertTrue(QuizLock.isExpectedSelfPause(expectedAtMs = 10_000, nowMs = 12_000))
+        assertFalse(QuizLock.isExpectedSelfPause(expectedAtMs = 10_000, nowMs = 12_001))
+        assertFalse(QuizLock.isExpectedSelfPause(expectedAtMs = 0, nowMs = 10_050))
     }
 
     // The Huawei vision screen, 2026-11-10: the alarm was set at 21:25 the night before, the set

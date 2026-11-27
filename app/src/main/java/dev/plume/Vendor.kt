@@ -53,4 +53,11 @@ object Vendor {
 
     fun matches(vendor: String): Boolean = current == vendor
     fun isTcl(): Boolean = matches(TCL)
+
+    /**
+     * Makers whose firmware leaves an enabled accessibility service unbound ("Crashed services" /
+     * "forbid bind service") until the secure setting is toggled off and back on. Verified in field
+     * reports on TCL (tcl_mt5879_cn, ak30a5) and Konka (V812, v1.20.3: 3x a11y_dead).
+     */
+    fun revivesDeadA11y(vendor: String = current): Boolean = vendor == TCL || vendor == KONKA
 }

@@ -43,4 +43,22 @@ class QuizReturnTest {
     fun `a record from the future is ignored`() {
         assertNull(QuizReturn.pick("com.ktcp.video", appAt = 2_000_000, desktopAt = 0, now = 1_000_000, maxAgeMs = 6 * hour))
     }
+
+    @Test
+    fun `monotonic boot-aware pick discards records from an earlier boot`() {
+        // Same boot: works normally even at low uptime right after boot.
+        assertEquals(
+            "com.xiaodianshi.tv.yst",
+            QuizReturn.pick("com.xiaodianshi.tv.yst", appAt = 20_000, appBoot = 5, desktopAt = 10_000, desktopBoot = 5, now = 40_000, currentBoot = 5, maxAgeMs = 6 * hour),
+        )
+        // App recorded in boot 4 must be ignored in boot 5 even though elapsedRealtime is small.
+        assertNull(
+            QuizReturn.pick("com.xiaodianshi.tv.yst", appAt = 20_000, appBoot = 4, desktopAt = 0, desktopBoot = 5, now = 40_000, currentBoot = 5, maxAgeMs = 6 * hour),
+        )
+        // Desktop timestamp from an earlier boot must not block a fresh app from the current boot.
+        assertEquals(
+            "com.xiaodianshi.tv.yst",
+            QuizReturn.pick("com.xiaodianshi.tv.yst", appAt = 20_000, appBoot = 5, desktopAt = 999_000, desktopBoot = 4, now = 40_000, currentBoot = 5, maxAgeMs = 6 * hour),
+        )
+    }
 }

@@ -13,6 +13,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.provider.Settings
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -124,10 +126,18 @@ class QuizActivity : Activity() {
             }
             if (!inForeground) {
                 comeBack()
-                if (snapPrefs?.snapBack != false && ++snapMisses == 10 && !snapLossNoted) {
+                // Only count missed reclaims while the screen is on: turning a tablet screen off
+                // leaves the activity paused by design and must not report false foreground_lost.
+                if (snapPrefs?.snapBack != false && screenInteractive() && ++snapMisses == 10 && !snapLossNoted) {
                     // Ten seconds without regaining the front: report once per episode, not per tick.
                     snapLossNoted = true
-                    dev.plume.DiagLog.event("foreground_lost")
+                    dev.plume.DiagLog.event(
+                        "foreground_lost", "",
+                        mapOf(
+                            "overlay" to Settings.canDrawOverlays(this@QuizActivity).toString(),
+                            "attempts" to reclaimAttempt.toString(),
+                        ),
+                    )
                 }
             }
             ui.postDelayed(this, GUARD_POLL_MS)
@@ -148,7 +158,7 @@ class QuizActivity : Activity() {
         if (!screenInteractive()) return // the screen is off: the child is not looking at anything
         // Rate limited: a page the firmware keeps down would otherwise start an activity every second,
         // which drains the battery and never succeeds faster.
-        val now = System.currentTimeMillis()
+        val now = SystemClock.elapsedRealtime()
         if (now - lastComeBackAt < QuizLock.retryDelay(reclaimAttempt)) return
         lastComeBackAt = now
         reclaimAttempt++
@@ -172,7 +182,7 @@ class QuizActivity : Activity() {
         val started = snapPendingAt
         if (started == 0L) return
         snapPendingAt = 0L
-        if (System.currentTimeMillis() - started > SNAP_OK_MS) return // too late to be our doing
+        if (SystemClock.elapsedRealtime() - started > SNAP_OK_MS) return // too late to be our doing
         snapMisses = 0
         snapLossNoted = false
         dev.plume.DiagLog.event("snapback_ok")
@@ -208,7 +218,7 @@ class QuizActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        openedAt = System.currentTimeMillis()
+        openedAt = SystemClock.elapsedRealtime()
         // GrowQuiz: remember what this page covers. When the question is over, the desktop hands it
         // back if the TV's memory manager took the player during a long question (see QuizReturn).
         QuizReturn.capture(this)
@@ -265,6 +275,8 @@ class QuizActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // Consume our internal launch marker; a routine newIntent is never a child snap-back.
+        expectedIntentAt = 0L
         // GrowQuiz: the alarm brings this page back instead of building it again, so onCreate's
         // quiz_open never runs. Nine hours on a tablet showed the cost: 150 quiz_popup_blocked
         // lines, each followed by the snapback_ok only a live page writes. The page was up; the
@@ -287,6 +299,8 @@ class QuizActivity : Activity() {
     override fun onResume() {
         super.onResume()
         inForeground = true
+        isForeground = true
+        expectedIntentAt = 0L
         // The page is visible: this is the moment a foreground-service start is one the firmware
         // answers, so the guard is put back here instead of from a background wake-up (see
         // QuizGuardService.sync). Idempotent: a running guard is left alone.
@@ -314,8 +328,13 @@ class QuizActivity : Activity() {
     override fun onPause() {
         super.onPause()
         inForeground = false
-        lastPauseAt = System.currentTimeMillis()
+        isForeground = false
+        val now = SystemClock.elapsedRealtime()
+        lastPauseAt = now
         stopReading() // screen-off and covered pages never keep talking over the family's other audio
+        // A singleTask relaunch initiated by our own alarm/rest/HomeOverride pauses briefly before
+        // onNewIntent; skipping comeBack() avoids bouncing ourselves and faking snapback_ok.
+        if (QuizLock.isExpectedSelfPause(expectedIntentAt, now)) return
         // Back at once, without waiting for the next tick of the loop: at this instant the page still has
         // a window on screen, which is the one case Android still allows a start from the background. It
         // beats the loop by up to a second on TVs without "display over other apps".
@@ -880,21 +899,26 @@ class QuizActivity : Activity() {
         // GrowQuiz: a page that dies with a question unanswered — a system kill, a power cut, an
         // update install — leaves quizActive set, so the page comes back; the report says which.
         // A crash has its own event, and a screen rotation is rare on a TV and counts as neither.
-        if (!solved && !justFinished) dev.plume.DiagLog.event("quiz_abandoned",
-            "",
-            mapOf(
-                "finishing" to isFinishing.toString(),
-                // Seconds since the question appeared: a page that dies two seconds in never got used,
-                // which reads differently from one the child left after a minute.
-                "age" to ((System.currentTimeMillis() - openedAt) / 1000).toString(),
-                // The parent pressed Home/Recents or opened another app: a deliberate way out.
-                "leave" to leftByUser.toString(),
-                // Seconds since it was last paused, or -1 when it never left the front: a page the
-                // system took while it was still on screen reads differently from one swiped out of
-                // Recents a minute after it went to the background.
-                "bg" to if (lastPauseAt == 0L) "-1"
-                else ((System.currentTimeMillis() - lastPauseAt) / 1000).toString(),
-            ))
+        if (!solved && !justFinished) {
+            val now = SystemClock.elapsedRealtime()
+            dev.plume.DiagLog.event(
+                "quiz_abandoned",
+                "",
+                mapOf(
+                    "finishing" to isFinishing.toString(),
+                    // Seconds since the question appeared: a page that dies two seconds in never got used,
+                    // which reads differently from one the child left after a minute.
+                    "age" to ((now - openedAt).coerceAtLeast(0L) / 1000).toString(),
+                    // The parent pressed Home/Recents or opened another app: a deliberate way out.
+                    "leave" to leftByUser.toString(),
+                    // Seconds since it was last paused, or -1 when it never left the front: a page the
+                    // system took while it was still on screen reads differently from one swiped out of
+                    // Recents a minute after it went to the background.
+                    "bg" to if (lastPauseAt == 0L) "-1"
+                    else ((now - lastPauseAt).coerceAtLeast(0L) / 1000).toString(),
+                ),
+            )
+        }
         // The engine itself stays up: it belongs to the app, and shutting it down here would make the next
         // quiz pay the model load again.
         super.onDestroy()
@@ -961,7 +985,7 @@ class QuizActivity : Activity() {
     companion object {
         private const val READ_REPEAT_MS = 20_000L // after the first reading, repeat question + options every 20 s
         private const val TTS_RETRY_MS = 250L // the engine is still loading: ask again this soon
-        private const val TTS_RETRY_LIMIT = 40 // 10 s of short retries, then give up and keep quiet
+        private const val TTS_RETRY_LIMIT = 80 // 20 s of short retries (cold neural model load takes 7-13 s on low-end TVs)
         /** Above this age a question is not read aloud: the child reads it from the screen. */
         private const val VOICE_MAX_AGE = 10
         private const val GUARD_POLL_MS = 1_000L // while a quiz or rest is up, check the foreground every second
@@ -971,5 +995,15 @@ class QuizActivity : Activity() {
 
         /** Set when a quiz is completed; MainActivity reads (and clears) it to skip the admin prompt then. */
         @Volatile var justFinished = false
+
+        /** True while QuizActivity is resumed on screen; prevents routine alarms from bouncing singleTask. */
+        @Volatile var isForeground = false
+
+        /** Monotonic timestamp of our own internal startActivity(QuizActivity), to skip self-triggered onPause comeBack. */
+        @Volatile private var expectedIntentAt = 0L
+
+        fun markExpectedIntent() {
+            expectedIntentAt = SystemClock.elapsedRealtime()
+        }
     }
 }

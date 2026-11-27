@@ -21,4 +21,17 @@ object SettingsApps {
     fun merge(installed: List<String>, handlers: List<String>): List<String> =
         (installed.filter { it.contains("settings", ignoreCase = true) } + handlers)
             .distinct().sorted()
+
+    /**
+     * Vendor Settings package names confirmed in field `settingsApps` reports (since v1.18.3).
+     * Tried only after standard ACTION_SETTINGS fails, and gated strictly by [Vendor] so one
+     * brand's workaround never alters another brand's behaviour.
+     */
+    fun vendorFallbackPackages(vendor: String): List<String> = when (vendor) {
+        Vendor.XIAOMI -> listOf("com.xiaomi.mitv.settings")
+        Vendor.TCL -> listOf("com.tcl.settings")
+        Vendor.SKYWORTH -> listOf("com.skyworth.setting", "com.coocaa.os.softsettings")
+        Vendor.KONKA -> listOf("com.konka.tvsettings")
+        else -> emptyList()
+    }
 }

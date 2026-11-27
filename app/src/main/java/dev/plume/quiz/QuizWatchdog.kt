@@ -6,11 +6,15 @@ import android.app.job.JobScheduler
 import android.app.job.JobService
 import android.content.ComponentName
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import dev.plume.DiagLog
 
 /**
- * Puts the quiz alarm back after a reboot that nobody told the app about.
+ * Puts the quiz alarm back after a reboot that nobody told the app about, and catches up when a
+ * firmware drops AlarmManager while the TV is awake.
  *
  * A reboot clears every alarm. The app re-schedules from BOOT_COMPLETED, but some firmwares never
  * deliver that broadcast to a third-party app — a Huawei vision screen sat silent for 21 hours after
@@ -19,7 +23,9 @@ import dev.plume.DiagLog
  * does not depend on the firmware's goodwill.
  *
  * It is a watchdog, not a scheduler: it only acts when the alarm it can see is wrong or gone
- * (see [QuizLock.alarmLost]), so a healthy schedule is never pushed forward.
+ * (see [QuizLock.alarmLost]), so a healthy schedule is never pushed forward. When an alarm armed
+ * during this boot is genuinely overdue while the screen is on (seen on Hisense VIDAA and Konka
+ * V812), it also opens the missed quiz instead of silently pushing the deadline forward forever.
  */
 class QuizWatchdog : JobService() {
 
@@ -30,16 +36,34 @@ class QuizWatchdog : JobService() {
             if (prefs.enabled) {
                 val now = System.currentTimeMillis()
                 val uptime = SystemClock.elapsedRealtime()
+                val bootAt = now - uptime
                 val due = prefs.nextTriggerAt
-                if (QuizLock.alarmLost(now, now - uptime, due, prefs.lastScheduleAt)) {
+                val lastSched = prefs.lastScheduleAt
+                if (QuizLock.alarmLost(now, bootAt, due, lastSched)) {
+                    val interactive = ctx.getSystemService(PowerManager::class.java)?.isInteractive ?: true
+                    val session = QuizLock.sessionActive(
+                        quizActive = prefs.quizActive,
+                        restGuard = prefs.restGuard,
+                        restUntil = prefs.restUntil,
+                        now = now,
+                        restForced = prefs.restForced,
+                    )
+                    val catchUp = QuizLock.watchdogCatchUp(now, bootAt, due, lastSched, interactive, session)
                     QuizScheduler.reschedule(ctx)
                     // lateMin: how long the due time was already behind. 0 means the alarm was only
                     // cleared by the reboot and the quiz is not late yet.
                     val late = if (due in 1..now) (now - due) / 60_000L else 0L
                     DiagLog.event(
-                        "alarm_restored", "",
+                        "alarm_restored",
+                        if (catchUp) "catchup" else "",
                         mapOf("lateMin" to late.toString(), "uptimeMin" to (uptime / 60_000L).toString()),
                     )
+                    if (catchUp) {
+                        dev.plume.voice.Voice.warm(ctx)
+                        QuizAlarmReceiver.auditSwallowed(ctx)
+                        prefs.lastAlarmAt = now
+                        QuizAlarmReceiver.openQuiz(ctx)
+                    }
                 }
                 // The guard is what keeps the process alive until the next question; after a reboot
                 // nothing else has started it (see QuizGuardService).
@@ -61,22 +85,39 @@ class QuizWatchdog : JobService() {
         /** Android's floor for a periodic job. A missed quiz can be up to this late; never lost. */
         private const val PERIOD_MS = 15 * 60 * 1000L
 
+        /** Delay before one retry when schedule() hits a transient "No such service" during install/boot. */
+        private const val RETRY_DELAY_MS = 5_000L
+
+        @Volatile private var retryPosted = false
+
         /**
          * Registers the watchdog once. Persisted, so the system restores it after every reboot even
          * when BOOT_COMPLETED never reaches the app. Safe to call from anywhere and as often as
          * wanted: an existing job is left alone, so its period is not restarted on every process start.
          */
-        fun ensure(context: Context) {
-            val js = context.getSystemService(JobScheduler::class.java) ?: return
+        fun ensure(context: Context) = scheduleJob(context.applicationContext, allowRetry = true)
+
+        private fun scheduleJob(app: Context, allowRetry: Boolean) {
+            val js = app.getSystemService(JobScheduler::class.java) ?: return
             if (js.allPendingJobs.any { it.id == JOB_ID }) return
-            val info = JobInfo.Builder(JOB_ID, ComponentName(context, QuizWatchdog::class.java))
+            val info = JobInfo.Builder(JOB_ID, ComponentName(app, QuizWatchdog::class.java))
                 .setPeriodic(PERIOD_MS)
                 .setPersisted(true)
                 .build()
             try {
                 js.schedule(info)
             } catch (e: Exception) {
-                DiagLog.event("alarm_restore_fail", "job:" + (e.message ?: e.javaClass.simpleName))
+                // Seen once on Skyworth during package replacement ("No such service"): retry once
+                // shortly after before treating it as a permanent registration failure.
+                if (allowRetry && !retryPosted) {
+                    retryPosted = true
+                    Handler(Looper.getMainLooper()).postDelayed(
+                        { scheduleJob(app, allowRetry = false) },
+                        RETRY_DELAY_MS,
+                    )
+                } else {
+                    DiagLog.event("alarm_restore_fail", "job:" + (e.message ?: e.javaClass.simpleName))
+                }
             }
         }
     }

@@ -20,12 +20,13 @@ import dev.plume.quiz.QuizVoice
 object Voice {
     @Volatile private var app: Context? = null
 
-    /** Called when a page comes up: start the engine, and the pack when it is the chosen voice. */
+    /** Called when a page comes up: start the chosen voice (skip system TTS when bundled voice is active). */
     fun warm(context: Context) {
         val app = context.applicationContext
         this.app = app
-        QuizVoice.warm(app)
-        usesEmbedded() // loads the pack when it is wanted, and adopts it when the engine is gone
+        // A TV with a bundled voice pack enabled has no reason to initialize Android's missing
+        // system TTS on every cold start — doing so logged false tts_missing(status=-1) every boot.
+        if (!usesEmbedded()) QuizVoice.warm(app)
     }
 
     /**
@@ -122,6 +123,11 @@ object Voice {
         QuizPrefs(context.applicationContext).embeddedVoice = on
         val app = context.applicationContext
         this.app = app
-        if (on) PackStore.ready(app)?.let { EmbeddedTts.prepare(app, it) } else EmbeddedTts.stop()
+        if (on) {
+            PackStore.ready(app)?.let { EmbeddedTts.prepare(app, it) }
+        } else {
+            EmbeddedTts.stop()
+            QuizVoice.warm(app)
+        }
     }
 }

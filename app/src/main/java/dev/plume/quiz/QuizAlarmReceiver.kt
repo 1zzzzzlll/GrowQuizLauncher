@@ -37,6 +37,8 @@ class QuizAlarmReceiver : BroadcastReceiver() {
         val kv = mutableMapOf<String, String>()
         if (due > 0) kv["lateMs"] = (System.currentTimeMillis() - due).toString()
         DiagLog.event("alarm_fired", "", kv)
+        // Give the bundled neural voice a head start while the activity window opens.
+        dev.plume.voice.Voice.warm(context)
         openQuiz(context)
     }
 
@@ -48,6 +50,15 @@ class QuizAlarmReceiver : BroadcastReceiver() {
 
         /** Opens a question or a parent-timed rest directly, with the alarm notification as the fallback. */
         fun openQuiz(context: Context, resting: Boolean = false) {
+            if (!QuizLock.shouldRelaunchForAlarm(QuizActivity.isForeground, resting)) {
+                // Already visibly on screen: record proof for PopupAudit without bouncing singleTask
+                // through onPause/onNewIntent/onResume (which caused fake snapback_ok storms).
+                QuizPrefs(context).lastQuizOpenAt = System.currentTimeMillis()
+                DiagLog.event("quiz_open", "", mapOf("reuse" to "1", "fg" to "1"))
+                context.getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+                return
+            }
+            QuizActivity.markExpectedIntent()
             try {
                 context.startActivity(
                     Intent(context, QuizActivity::class.java).addFlags(

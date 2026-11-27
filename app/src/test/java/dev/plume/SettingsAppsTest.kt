@@ -61,4 +61,17 @@ class SettingsAppsTest {
             ),
         )
     }
+
+    @Test
+    fun `vendor settings fallbacks are strictly gated to verified brands`() {
+        assertEquals(listOf("com.xiaomi.mitv.settings"), SettingsApps.vendorFallbackPackages(Vendor.XIAOMI))
+        assertEquals(listOf("com.tcl.settings"), SettingsApps.vendorFallbackPackages(Vendor.TCL))
+        assertEquals(
+            listOf("com.skyworth.setting", "com.coocaa.os.softsettings"),
+            SettingsApps.vendorFallbackPackages(Vendor.SKYWORTH),
+        )
+        assertEquals(listOf("com.konka.tvsettings"), SettingsApps.vendorFallbackPackages(Vendor.KONKA))
+        assertEquals(emptyList<String>(), SettingsApps.vendorFallbackPackages(Vendor.HUAWEI))
+        assertEquals(emptyList<String>(), SettingsApps.vendorFallbackPackages(Vendor.OTHER))
+    }
 }

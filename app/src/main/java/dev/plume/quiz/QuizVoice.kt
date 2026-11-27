@@ -1,6 +1,7 @@
 package dev.plume.quiz
 
 import android.content.Context
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import java.util.Locale
 
@@ -13,21 +14,37 @@ import java.util.Locale
  * is warm by the time a question appears, and the next question speaks at once.
  */
 object QuizVoice {
+    private var appCtx: Context? = null
     private var engine: TextToSpeech? = null
+    private var lastEngineName: String? = null
     private var starting = false
     @Volatile private var ready = false
     /** "no-engine" or "no-language" once the engine is known to be unusable; null while it works. */
     @Volatile private var failure: String? = null
+    private var autoRetries = 0
+    private var lastFailElapsedMs = 0L
     private var utterance = 0
     private var rate = 0.85f
 
     /** Counts engine creations, so a callback from a replaced engine is ignored (see [start]). */
     private var generation = 0
 
-    /** Starts the engine, or does nothing when it is already up. Safe to call from every screen. */
+    /** Starts the engine, or retries a transient failure when an engine is installed. Safe to call often. */
+    @Synchronized
     fun warm(context: Context) {
-        if (engine != null || starting) return
-        start(context.applicationContext, null)
+        val app = context.applicationContext
+        appCtx = app
+        if (ready || starting) return
+        if (engine != null) {
+            val engines = TtsDiagnosis.names(TtsProbe.engineNames(app))
+            val now = SystemClock.elapsedRealtime()
+            if (!TtsDiagnosis.shouldRetryInit(failure, engines.isNotEmpty(), autoRetries, lastFailElapsedMs, now)) return
+            autoRetries++
+            failure = null
+            runCatching { engine?.shutdown() }
+            engine = null
+        }
+        start(app, null)
     }
 
     /**
@@ -38,8 +55,10 @@ object QuizVoice {
      * [generation] makes the retry safe: an engine that answers during its own constructor must not
      * leave the field pointing at the instance that just failed.
      */
+    @Synchronized
     private fun start(app: Context, engineName: String?) {
         starting = true
+        lastEngineName = engineName
         val gen = ++generation
         val listener = TextToSpeech.OnInitListener { status ->
             if (gen == generation) onInit(app, engineName, status)
@@ -49,6 +68,7 @@ object QuizVoice {
         if (gen == generation) engine = created else runCatching { created.shutdown() }
     }
 
+    @Synchronized
     private fun onInit(app: Context, engineName: String?, status: Int) {
         starting = false
         if (status != TextToSpeech.SUCCESS) {
@@ -66,12 +86,14 @@ object QuizVoice {
             }
             android.util.Log.w("GrowQuiz", "tts init failed: $status engines=${engines.joinToString(",")}")
             failure = "no-engine"
+            lastFailElapsedMs = SystemClock.elapsedRealtime()
             dev.plume.DiagLog.event(TtsDiagnosis.typeFor(engines), TtsDiagnosis.msg(status, engines))
             return
         }
         configure()
     }
 
+    @Synchronized
     private fun configure() {
         val e = engine ?: return
         if (ready) return
@@ -82,12 +104,15 @@ object QuizVoice {
         if (!ok) {
             android.util.Log.w("GrowQuiz", "tts has no usable language")
             failure = "no-language"
+            lastFailElapsedMs = SystemClock.elapsedRealtime()
             dev.plume.DiagLog.event("tts_no_language")
             return
         }
         // A little slower than default: at full speed the four options run into each other.
         e.setSpeechRate(rate)
         e.setPitch(1f)
+        failure = null
+        autoRetries = 0
         ready = true
         watchSynthesis(e) // synthesis failures after the queue accepted the text land in the report
     }
@@ -124,6 +149,22 @@ object QuizVoice {
         }
     }
 
+    /** Rebuilds the engine after a dropped TTS service connection (e.g. Samsung SMT code=-5). */
+    @Synchronized
+    private fun reconnectAfterError(errorCode: Int) {
+        if (!TtsDiagnosis.isReconnectableError(errorCode)) return
+        val app = appCtx ?: return
+        val now = SystemClock.elapsedRealtime()
+        if (autoRetries >= TtsDiagnosis.MAX_AUTO_RETRIES) return
+        if (lastFailElapsedMs > 0L && now - lastFailElapsedMs < TtsDiagnosis.RETRY_GAP_MS) return
+        autoRetries++
+        lastFailElapsedMs = now
+        ready = false
+        runCatching { engine?.shutdown() }
+        engine = null
+        start(app, lastEngineName)
+    }
+
     /**
      * GrowQuiz: an engine takes the text and then fails in the synthesis, which [speak] cannot see —
      * the report needs the utterance callback for that. Installed once, when the engine is up.
@@ -135,8 +176,10 @@ object QuizVoice {
                     dev.plume.DiagLog.event("tts_speak_fail", "utterance $utteranceId")
 
                 @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?, errorCode: Int) =
+                override fun onError(utteranceId: String?, errorCode: Int) {
                     dev.plume.DiagLog.event("tts_speak_fail", "utterance $utteranceId code=$errorCode")
+                    reconnectAfterError(errorCode)
+                }
 
                 override fun onStart(utteranceId: String?) {}
                 override fun onDone(utteranceId: String?) {}

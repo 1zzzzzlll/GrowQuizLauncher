@@ -37,4 +37,35 @@ object TtsDiagnosis {
     /** The message that goes with [typeFor]: the status, plus the engines when there are any. */
     fun msg(status: Int, engines: List<String>): String =
         if (engines.isEmpty()) "status=$status" else "status=$status engines=${engines.joinToString(",")}"
+
+    /** Minimum wait before retrying a transient TTS failure (boot-time no-language or service drop). */
+    const val RETRY_GAP_MS = 30_000L
+
+    /** Cap automatic rebuilds per process so a permanently broken engine cannot spin forever. */
+    const val MAX_AUTO_RETRIES = 3
+
+    /**
+     * Whether a failed system TTS engine is worth initializing again.
+     *
+     * Field reports on UNP-SJA8 (Sherpa) and Samsung SM-T860 (Samsung SMT) showed setLanguage()
+     * failing right after boot (boot=18..90 s) while the engine worked fine later — keeping the
+     * permanent failure left the whole session silent for up to 148 quizzes. Never retries when
+     * no engine is installed at all.
+     */
+    fun shouldRetryInit(
+        failure: String?,
+        enginesAvailable: Boolean,
+        retries: Int,
+        lastFailElapsedMs: Long,
+        nowElapsedMs: Long,
+    ): Boolean {
+        if (failure == null || !enginesAvailable) return false
+        if (retries >= MAX_AUTO_RETRIES) return false
+        if (lastFailElapsedMs > 0L && nowElapsedMs - lastFailElapsedMs < RETRY_GAP_MS) return false
+        return true
+    }
+
+    /** Utterance error codes where tearing down and rebinding the TTS service can recover speech. */
+    fun isReconnectableError(errorCode: Int): Boolean =
+        errorCode == -5 /* TextToSpeech.ERROR_SERVICE */ || errorCode == -9 /* ERROR_NOT_INSTALLED_YET */
 }
