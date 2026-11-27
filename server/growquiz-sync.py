@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """GrowQuiz 更新与在线题库同步：
 1) 把 GitHub 仓库最新 release 的 APK 与发版说明拉到 nginx 更新目录；
-2) 从 GitHub 仓库 `question-bank/` 文件夹同步在线教材题库池与人工补充题，按当前日期自动推算本学期教学周进度，
-   生成 `/root/nginx/web/growquiz/questions/manifest.json` 与 `age_<7..15>.json` 供客户端后台随机拉取。
+2) 从 GitHub 仓库 `question-bank/` 文件夹同步在线教材题库池与人工补充题（带本地缓存与 GitHub API 兜底），
+   按当前日期自动推算本学期教学周进度，生成 `/root/nginx/web/growquiz/questions/manifest.json` 与 `age_<7..15>.json`。
 
 源:
   - Release: https://github.com/1zzzzzlll/GrowQuizLauncher/releases/latest
-  - 题库目录: https://raw.githubusercontent.com/1zzzzzlll/GrowQuizLauncher/main/question-bank/
+  - 题库目录: https://github.com/1zzzzzlll/GrowQuizLauncher/tree/main/question-bank
 目标:
   - /root/nginx/web/growquiz/（Caddy :8443/growquiz/* -> nginx :8088 静态站点）
 产出:
@@ -19,28 +19,43 @@
 import hashlib
 import json
 import sys
+import time
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 REPO = "1zzzzzlll/GrowQuizLauncher"
 DEST = Path("/root/nginx/web/growquiz")
+CACHE_DIR = Path("/root/growquiz/bank-cache")
 API = f"https://api.github.com/repos/{REPO}/releases/latest"
+CONTENTS_API = f"https://api.github.com/repos/{REPO}/contents/question-bank"
 RAW_BANK_BASE = f"https://raw.githubusercontent.com/{REPO}/main/question-bank"
 TZ_CN = timezone(timedelta(hours=8))
 TOTAL_WEEKS = 18
 
 
-def fetch(url: str, accept: str = "*/*", dest=None) -> bytes:
-    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "growquiz-sync/2.0"})
-    with urllib.request.urlopen(req, timeout=300) as r:
-        if dest is None:
-            return r.read()
-        while True:
-            chunk = r.read(1 << 20)
-            if not chunk:
-                return b""
-            dest.write(chunk)
+def fetch(url: str, accept: str = "*/*", dest=None, timeout: int = 30) -> bytes:
+    last_err: Exception | None = None
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": "growquiz-sync/2.1"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                if dest is None:
+                    return r.read()
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        return b""
+                    dest.write(chunk)
+        except Exception as exc:
+            last_err = exc
+            if dest is not None:
+                dest.seek(0)
+                dest.truncate(0)
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+    assert last_err is not None
+    raise last_err
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
@@ -50,6 +65,34 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     tmp.replace(path)
 
 
+def git_blob_sha1(data: bytes) -> str:
+    h = hashlib.sha1()
+    h.update(f"blob {len(data)}\0".encode("ascii"))
+    h.update(data)
+    return h.hexdigest()
+
+
+def sync_bank_subdir(subdir: str) -> None:
+    """用 GitHub Contents API 按 git blob sha 增量同步 question-bank/<subdir>，仅拉取变更文件。"""
+    listing = json.loads(fetch(f"{CONTENTS_API}/{subdir}", "application/vnd.github+json", timeout=20).decode("utf-8"))
+    if not isinstance(listing, list):
+        return
+    for item in listing:
+        if item.get("type") != "file":
+            continue
+        name = item["name"]
+        remote_sha = item.get("sha", "")
+        local_path = CACHE_DIR / subdir / name
+        if local_path.is_file() and remote_sha and git_blob_sha1(local_path.read_bytes()) == remote_sha:
+            continue
+        # 优先走 Contents API raw（国内访问比 raw.githubusercontent.com 更稳），失败回退 raw 域名
+        try:
+            data = fetch(f"{CONTENTS_API}/{subdir}/{name}", "application/vnd.github.raw+json", timeout=25)
+        except Exception:
+            data = fetch(f"{RAW_BANK_BASE}/{subdir}/{name}", "application/json", timeout=25)
+        atomic_write_bytes(local_path, data)
+
+
 def estimate_progress(today: date) -> dict:
     """根据义务教育校历预估当前所处学期与教学周进度（共 18 教学周）。"""
     y, m, d = today.year, today.month, today.day
@@ -57,7 +100,6 @@ def estimate_progress(today: date) -> dict:
         start_year = y
         sep1 = date(y, 9, 1)
         days = (today - sep1).days
-        # 扣除国庆假期约 7 天有效教学停课
         oct_pause = max(0, min(7, (today - date(y, 10, 1)).days + 1))
         eff_days = max(0, days - oct_pause)
         week = max(1, min(TOTAL_WEEKS, 1 + eff_days // 7))
@@ -70,7 +112,7 @@ def estimate_progress(today: date) -> dict:
             "progressPct": round(week * 100 / TOTAL_WEEKS),
             "versionTag": f"{start_year}-fall-w{week:02d}",
         }
-    if (m == 1 and d <= 18):
+    if m == 1 and d <= 18:
         start_year = y - 1
         sep1 = date(start_year, 9, 1)
         eff_days = max(0, (today - sep1).days - 7)
@@ -130,7 +172,7 @@ def unlocked(question: dict, phase: str, week: int) -> bool:
         return term == "fall" and q_week <= week
     if phase == "spring":
         return term == "fall" or (term == "spring" and q_week <= week)
-    return True  # summer: 上下册全开
+    return True
 
 
 def valid_question(q: dict, expected_age: int) -> bool:
@@ -151,7 +193,7 @@ def valid_question(q: dict, expected_age: int) -> bool:
 
 
 def sync_release() -> None:
-    rel = json.loads(fetch(API, "application/vnd.github+json"))
+    rel = json.loads(fetch(API, "application/vnd.github+json", timeout=25))
     version = rel["tag_name"].lstrip("v")
     asset = next((a for a in rel["assets"] if a["name"].endswith(".apk")), None)
     if asset is None:
@@ -163,7 +205,7 @@ def sync_release() -> None:
     if not (current.get("version") == version and target.is_file() and target.stat().st_size == asset["size"]):
         tmp = DEST / (asset["name"] + ".part")
         with open(tmp, "wb") as f:
-            fetch(asset["url"], "application/octet-stream", dest=f)
+            fetch(asset["url"], "application/octet-stream", dest=f, timeout=300)
         if tmp.stat().st_size != asset["size"]:
             tmp.unlink()
             raise RuntimeError(f"下载不完整: {asset['name']}")
@@ -178,14 +220,24 @@ def sync_release() -> None:
 
 
 def sync_question_bank(dest_root: Path = DEST) -> None:
+    try:
+        sync_bank_subdir("pool")
+        sync_bank_subdir("manual")
+    except Exception as net_exc:
+        if not (CACHE_DIR / "pool" / "index.json").is_file():
+            raise
+        print(f"远端题库增量拉取异常（使用本机缓存继续推进学期进度）: {net_exc}", file=sys.stderr)
+
     today = datetime.now(TZ_CN).date()
     prog = estimate_progress(today)
-    pool_index = json.loads(fetch(f"{RAW_BANK_BASE}/pool/index.json", "application/json").decode("utf-8"))
+    pool_index = json.loads((CACHE_DIR / "pool" / "index.json").read_text(encoding="utf-8"))
 
-    # 拉取手工补充题库（若存在）
     manual_by_age: dict[int, list[dict]] = {}
     for m_file in pool_index.get("manualFiles", []):
-        raw_m = json.loads(fetch(f"{RAW_BANK_BASE}/{m_file.lstrip('/')}", "application/json").decode("utf-8"))
+        m_path = CACHE_DIR / m_file.lstrip("/")
+        if not m_path.is_file():
+            continue
+        raw_m = json.loads(m_path.read_text(encoding="utf-8"))
         items = raw_m if isinstance(raw_m, list) else raw_m.get("questions", [])
         for item in items:
             age = int(item.get("age", 0))
@@ -205,7 +257,7 @@ def sync_question_bank(dest_root: Path = DEST) -> None:
     for entry in pool_index.get("pools", []):
         age = int(entry["age"])
         rel_path = entry["file"].lstrip("/")
-        pool_data = json.loads(fetch(f"{RAW_BANK_BASE}/{rel_path}", "application/json").decode("utf-8"))
+        pool_data = json.loads((CACHE_DIR / rel_path).read_text(encoding="utf-8"))
         raw_questions = list(pool_data.get("questions", [])) + manual_by_age.pop(age, [])
 
         seen_ids: set[str] = set()
@@ -257,7 +309,6 @@ def sync_question_bank(dest_root: Path = DEST) -> None:
             "sha256": sha,
         })
 
-    # 若人工补充题涉及 5–6 岁等不在教材池里的年龄段，同样生成对应分片
     for age in sorted(manual_by_age.keys()):
         active = [q for q in manual_by_age[age] if valid_question(q, age)]
         if not active:
