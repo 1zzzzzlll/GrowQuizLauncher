@@ -47,6 +47,31 @@ VOICES = {
 DEFAULT_VOICE = "zh-CN-XiaoyiNeural"
 # XiaoyiNeural's raw +0% cadence is brisk (~4.2 chars/s); -8% lands at standard ~3.8 chars/s normal speech.
 SPEECH_RATE = "-8%"
+_PROXY_ENV_KEYS = ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
+
+
+def _init_network_env() -> tuple[str, str]:
+    """Strip inherited system proxies so edge-tts connects directly to Microsoft's domestic edge.
+
+    Returns (explicit_proxy, fallback_proxy):
+    - explicit_proxy: set only when GROWQUIZ_TTS_PROXY is intentionally configured;
+    - fallback_proxy: any stripped HTTP(S) proxy from the environment, kept strictly as last resort.
+    """
+    explicit = os.environ.get("GROWQUIZ_TTS_PROXY", "").strip()
+    inherited_http = (
+        os.environ.get("HTTPS_PROXY")
+        or os.environ.get("https_proxy")
+        or os.environ.get("HTTP_PROXY")
+        or os.environ.get("http_proxy")
+        or ""
+    ).strip()
+    for key in _PROXY_ENV_KEYS:
+        os.environ.pop(key, None)
+    return explicit, inherited_http
+
+
+EXPLICIT_PROXY, FALLBACK_PROXY = _init_network_env()
+_SYNTH_SEM = threading.BoundedSemaphore(3)
 
 
 def _load_tokens() -> tuple[str, ...]:
@@ -147,10 +172,17 @@ def _normalize_mp3(raw_mp3: bytes) -> bytes:
         return raw_mp3
 
 
-async def _edge_synth_once(text: str, voice: str) -> bytes:
-    # Fresh IPv4 connector per call: avoids broken IPv6 SYN delays and aiohttp connector_owner close.
+async def _edge_synth_once(text: str, voice: str, proxy: str = "") -> bytes:
+    # Fresh IPv4 connector with trust_env=False: avoids broken IPv6 SYN delays and accidental proxy hijacking.
     conn = aiohttp.TCPConnector(family=socket.AF_INET)
-    comm = edge_tts.Communicate(text, voice=voice, rate=SPEECH_RATE, volume="+20%", connector=conn)
+    comm = edge_tts.Communicate(
+        text,
+        voice=voice,
+        rate=SPEECH_RATE,
+        volume="+20%",
+        connector=conn,
+        proxy=proxy,
+    )
     buf = bytearray()
     async for chunk in comm.stream():
         if chunk.get("type") == "audio":
@@ -161,14 +193,20 @@ async def _edge_synth_once(text: str, voice: str) -> bytes:
 
 
 def _synthesize(text: str, voice: str) -> bytes:
+    primary = EXPLICIT_PROXY
+    attempts: list[tuple[str, float]] = [(primary, 8.0), (primary, 8.0)]
+    if not primary and FALLBACK_PROXY:
+        attempts.append((FALLBACK_PROXY, 10.0))
     last_err: Exception | None = None
-    for _ in range(2):
-        try:
-            raw = asyncio.run(asyncio.wait_for(_edge_synth_once(text, voice), timeout=12.0))
-            return _normalize_mp3(raw)
-        except Exception as e:
-            last_err = e
-            time.sleep(0.15)
+    with _SYNTH_SEM:
+        for idx, (proxy, timeout_s) in enumerate(attempts):
+            try:
+                raw = asyncio.run(asyncio.wait_for(_edge_synth_once(text, voice, proxy=proxy), timeout=timeout_s))
+                return _normalize_mp3(raw)
+            except Exception as e:
+                last_err = e
+                if idx + 1 < len(attempts):
+                    time.sleep(0.12)
     raise RuntimeError(f"synth failed: {last_err}")
 
 
@@ -234,19 +272,27 @@ def get_or_create_mp3(text: str, voice: str) -> tuple[bytes, bool]:
         return mp3, False
 
 
+class TtsHTTPServer(ThreadingHTTPServer):
+    request_queue_size = 64
+    daemon_threads = True
+
+
 class Handler(BaseHTTPRequestHandler):
-    server_version = "growquiz-tts/1.0"
+    server_version = "growquiz-tts/1.1"
 
     def log_message(self, fmt, *args):
         pass
 
     def _reply_json(self, code: int, obj: dict) -> None:
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_GET(self) -> None:
         profile = f"{NORM_VERSION}|{DEFAULT_VOICE}|{SPEECH_RATE}"
@@ -287,13 +333,16 @@ class Handler(BaseHTTPRequestHandler):
         if not hit:
             print(f"{time.strftime('%F %T')} tts_miss voice={voice} chars={len(text)} bytes={len(mp3)} ms={ms}", flush=True)
 
-        self.send_response(200)
-        self.send_header("Content-Type", "audio/mpeg")
-        self.send_header("Content-Length", str(len(mp3)))
-        self.send_header("X-TTS-Cache", "HIT" if hit else "MISS")
-        self.send_header("X-TTS-Profile", f"{NORM_VERSION}|{voice}|{SPEECH_RATE}")
-        self.end_headers()
-        self.wfile.write(mp3)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Length", str(len(mp3)))
+            self.send_header("X-TTS-Cache", "HIT" if hit else "MISS")
+            self.send_header("X-TTS-Profile", f"{NORM_VERSION}|{voice}|{SPEECH_RATE}")
+            self.end_headers()
+            self.wfile.write(mp3)
+        except (BrokenPipeError, ConnectionResetError):
+            print(f"{time.strftime('%F %T')} tts_client_abort chars={len(text)} ms={ms}", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
@@ -303,4 +352,4 @@ if __name__ == "__main__":
             f"{TOKEN_FILE}（见 server/README.md）后再启动。"
         )
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    ThreadingHTTPServer(LISTEN, Handler).serve_forever()
+    TtsHTTPServer(LISTEN, Handler).serve_forever()

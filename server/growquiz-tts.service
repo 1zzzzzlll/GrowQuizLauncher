@@ -5,6 +5,8 @@ Wants=network-online.target
 
 [Service]
 # 与 growquiz-report 共用 /root/growquiz/report.env 中的 GROWQUIZ_REPORT_TOKEN，缺少口令拒绝启动。
+# 显式剥离宿主机的全局代理环境变量：edge-tts 走国内微软边缘节点直连稳定低延迟，经境外代理反而触发空音频或超时。
+UnsetEnvironment=http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
 EnvironmentFile=-/root/growquiz/report.env
 ExecStart=/root/growquiz/venv/bin/python /root/growquiz/growquiz-tts.py
 Restart=always

@@ -16,7 +16,10 @@ object TtsProbe {
     fun start(context: Context) = Voice.warm(context)
 
     /** Reads a sentence aloud (the console's test button); false when it could not be spoken. */
-    fun speak(text: String): Boolean = Voice.speak(text, flush = true)
+    fun speak(text: String): Boolean {
+        dev.plume.voice.CloudTts.resetCooldown()
+        return Voice.speak(text, flush = true)
+    }
 
     /** "embedded" / "available" / "no-engine" / "no-language" / "initializing", the values the console knows. */
     fun describe(): String = Voice.describe()

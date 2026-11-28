@@ -14,6 +14,10 @@ Write every entry in ASD-STE100 Simplified Technical English:
 
 Put changes that are not released under `## Unreleased`. Rename that heading to the version number when you release.
 
+## 1.22.2
+
+- **修复云端神经语音偶发超时与误回退离线语音。** 服务端合成剥离全局代理并直连微软国内边缘节点，消除代理空音频与长耗时超时；客户端在前台请求遇到空闲连接断开时自动新建连接重试一次，后台预取改为单线程顺序拉取且不再误触发全局冷却，本地已缓存语音在断网冷却期照常高清播放。
+
 ## 1.22.1
 
 - **答题弹出时可靠暂停视频，答完自动恢复播放。** 改用独占媒体音频焦点并在整个答题会话期间保持不中断，对忽略暂停键的播放器自动补发播放状态校验；答题结束后先归还音频焦点并等待视频页面回到前台，再按实际播放状态自动续播。

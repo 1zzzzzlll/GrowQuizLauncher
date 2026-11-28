@@ -30,10 +30,13 @@ object Voice {
         if (!usesCloud() && !usesEmbedded()) QuizVoice.warm(app)
     }
 
+    private fun cloudEnabled(app: Context): Boolean =
+        CloudTts.isConfigured() && QuizPrefs(app).cloudVoice
+
     /** Whether the next sentence goes through the 24 kHz cloud neural voice. */
     fun usesCloud(): Boolean {
         val app = app ?: return false
-        return CloudTts.isConfigured() && QuizPrefs(app).cloudVoice && !CloudTts.isCoolingDown()
+        return cloudEnabled(app) && !CloudTts.isCoolingDown()
     }
 
     /** True when the active engine pronounces English words and option letters A..D natively. */
@@ -91,7 +94,7 @@ object Voice {
             ({ if (called.compareAndSet(false, true)) cb() })
         }
         val app = app ?: return QuizVoice.speak(text, flush, doneOnce)
-        if (usesCloud()) {
+        if (cloudEnabled(app) && (!CloudTts.isCoolingDown() || CloudTts.hasCached(app, text))) {
             val ok = CloudTts.speak(
                 context = app,
                 text = text,
@@ -119,7 +122,7 @@ object Voice {
             if (rest.isNotBlank()) QuizVoice.speak(rest, flush = false)
             return
         }
-        if (usesCloud()) {
+        if (cloudEnabled(app) && (!CloudTts.isCoolingDown() || CloudTts.hasCachedParts(app, first, rest))) {
             val ok = CloudTts.speakParts(app, first, rest) {
                 speakPartsOfflineFallback(app, first, rest)
             }
@@ -221,7 +224,9 @@ object Voice {
         val app = context.applicationContext
         this.app = app
         QuizPrefs(app).cloudVoice = on
-        if (!on) {
+        if (on) {
+            CloudTts.resetCooldown()
+        } else {
             CloudTts.stop()
             if (!usesEmbedded()) QuizVoice.warm(app)
         }

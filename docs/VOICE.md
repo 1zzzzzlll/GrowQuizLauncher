@@ -16,7 +16,7 @@
 
 | 位置 | 职责 |
 | --- | --- |
-| `voice/CloudTts.kt` | 24 kHz 云端神经语音（服务端 `edge-tts` + 响度归一化 + 双端缓存），题干先播、选项并行预取，断网 45 秒熔断回退离线语音 |
+| `voice/CloudTts.kt` | 24 kHz 云端神经语音（服务端直连 `edge-tts` + 响度归一化 + 双端缓存），题干先播、后续单线程顺序预取，前台断连自动重试一次，离线或失败 12 秒冷却回退离线语音（已缓存片段仍直接播放） |
 | `app/libs/sherpa-onnx.aar` | 官方 sherpa-onnx 2.0.2 静态链接 AAR，裁到 `arm64-v8a` + `armeabi-v7a` 两个 ABI（Apache-2.0），负责离线兜底 |
 | `voice/VoicePack.kt` | 纯 JVM：清单解析、URL 解析、大小文案、SHA-256、zip 条目校验、片段缓存名（支持 VITS 与 Matcha） |
 | `voice/PackStore.kt` | 下载（断点续传）、校验、解压、原子替换、删除；`state()` 供界面轮询 |

@@ -289,9 +289,9 @@ object EmbeddedTts {
             android.util.Log.w("GrowQuiz", "voice stream failed (sr=$sampleRate)", e)
             DiagLog.event("tts_local_play_fail", e.message ?: e.javaClass.simpleName)
         } finally {
-            speaking = false
             runCatching { track?.stop() }
             runCatching { track?.release() }
+            speaking = false
             if (focus != null) manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
         }
     }
@@ -321,9 +321,9 @@ object EmbeddedTts {
             android.util.Log.w("GrowQuiz", "voice play failed (sr=$sampleRate frames=${pcm.size})", e)
             DiagLog.event("tts_local_play_fail", e.message ?: e.javaClass.simpleName)
         } finally {
-            speaking = false
             runCatching { track?.stop() }
             runCatching { track?.release() }
+            speaking = false
             if (focus != null) manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
         }
     }

@@ -6,7 +6,7 @@
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
   <img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3ddc84">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-100%25-7f52ff">
-  <img alt="Version" src="https://img.shields.io/badge/version-1.22.1-brightgreen">
+  <img alt="Version" src="https://img.shields.io/badge/version-1.22.2-brightgreen">
   <img alt="Questions" src="https://img.shields.io/badge/%E9%A2%98%E5%BA%93-33000%20%E9%81%93-f2c14e">
   <img alt="Offline" src="https://img.shields.io/badge/%E8%BF%90%E8%A1%8C-%E7%A6%BB%E7%BA%BF%E6%97%A0%E9%9C%80%E7%99%BB%E5%BD%95-lightgrey">
 </p>

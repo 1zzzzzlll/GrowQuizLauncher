@@ -43,8 +43,8 @@ ssh mylinux 'printf "GROWQUIZ_REPORT_TOKEN=%s,%s\n" "<新口令>" "<旧口令>" 
 ## growquiz-tts：云端神经语音合成与缓存（v1.21.0 起）
 
 - `growquiz-tts.py`：HTTP 服务监听 `127.0.0.1:8093`，Caddy `:8443/growquiz/tts/speak` 反代进来。共用 `/root/growquiz/report.env` 的 `X-Report-Token` 鉴权，无口令拒绝启动。
-- 音频与缓存：调用 `/root/growquiz/venv` 中的 `edge-tts`（默认 `zh-CN-XiaoyiNeural` 24 kHz 少儿亲切女声），经 `ffmpeg` 做整句响度归一化与软限幅后落盘 `/root/growquiz-tts-cache/`（上限 1.5 GiB，命中缓存几十毫秒返回）。
-- `growquiz-tts.service`：常驻，`systemctl enable --now growquiz-tts`。
+- 音频与缓存：默认剥离宿主机全局代理，由 `/root/growquiz/venv` 中的 `edge-tts` 直连微软国内边缘节点（默认 `zh-CN-XiaoyiNeural` 24 kHz 少儿亲切女声），经 `ffmpeg` 做整句响度归一化与软限幅后落盘 `/root/growquiz-tts-cache/`（上限 1.5 GiB，命中缓存几毫秒返回）。
+- `growquiz-tts.service`：常驻（`UnsetEnvironment` 屏蔽代理环境变量），`systemctl enable --now growquiz-tts`。
 
 ## 部署
 

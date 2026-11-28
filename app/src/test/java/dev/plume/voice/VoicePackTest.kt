@@ -90,4 +90,28 @@ class VoicePackTest {
         val cb = SherpaCallback { samples -> samples.size }
         assertEquals(3, cb.invoke(floatArrayOf(0.1f, 0.2f, 0.3f)))
     }
+
+    @Test fun cloudTtsRetriesForegroundOnlyAndNeverTripsCooldownOnBackgroundPrefetch() {
+        assertEquals(2, CloudTts.maxAttempts(background = false))
+        assertEquals(1, CloudTts.maxAttempts(background = true))
+        assertTrue(CloudTts.shouldTripCooldown(background = false))
+        assertFalse(CloudTts.shouldTripCooldown(background = true))
+
+        assertFalse(CloudTts.isCoolingDownAt(untilMs = 0L, nowMs = 1_000L))
+        assertTrue(CloudTts.isCoolingDownAt(untilMs = 5_000L, nowMs = 4_999L))
+        assertFalse(CloudTts.isCoolingDownAt(untilMs = 5_000L, nowMs = 5_000L))
+    }
+
+    @Test fun cloudTtsAcceptsOnlyNonTrivialCachedMp3Files() {
+        val tiny = File.createTempFile("cloud_short", ".mp3").apply {
+            writeBytes(ByteArray(120))
+            deleteOnExit()
+        }
+        val valid = File.createTempFile("cloud_ok", ".mp3").apply {
+            writeBytes(ByteArray(512))
+            deleteOnExit()
+        }
+        assertFalse(CloudTts.hasValidCachedFile(tiny))
+        assertTrue(CloudTts.hasValidCachedFile(valid))
+    }
 }
