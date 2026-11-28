@@ -42,6 +42,12 @@
     <!-- Lets the parents exempt the app from battery optimisation in one tap, from the quiz settings
          page. Without it a maker's power manager freezes the guard and no question arrives. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Parental app-blocking console must discover every installed app on Android 11+, including
+         pre-installed system games, cloud-gaming containers, and VOD apps launched via custom schemes
+         or voice assistants rather than standard MAIN+LAUNCHER icons. -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
 
     <uses-feature android:name="android.software.leanback" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

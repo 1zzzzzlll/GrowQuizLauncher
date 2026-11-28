@@ -76,6 +76,9 @@ object Voice {
     /** When a sentence last started playing out of the speaker (cloud, bundled offline, or system TTS). */
     fun playedAt(): Long = maxOf(CloudTts.playedAt(), EmbeddedTts.playedAt(), QuizVoice.playedAt())
 
+    /** True while any of our speech engines is actively outputting audio. */
+    fun isSpeaking(): Boolean = CloudTts.isSpeaking() || EmbeddedTts.isSpeaking() || QuizVoice.isSpeaking()
+
     /**
      * Speaks [text]. When [CloudTts] fails mid-request (e.g. Wi-Fi dropped), falls back immediately
      * to [EmbeddedTts] or [QuizVoice] so the child still hears the sentence. [onDone] runs once on a

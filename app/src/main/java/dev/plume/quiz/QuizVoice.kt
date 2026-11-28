@@ -26,6 +26,7 @@ object QuizVoice {
     private var utterance = 0
     private var rate = 0.85f
     @Volatile private var playedAt = 0L
+    @Volatile private var speaking = false
     private val callbacks = java.util.concurrent.ConcurrentHashMap<String, () -> Unit>()
 
     /** Counts engine creations, so a callback from a replaced engine is ignored (see [start]). */
@@ -113,6 +114,14 @@ object QuizVoice {
         // A little slower than default: at full speed the four options run into each other.
         e.setSpeechRate(rate)
         e.setPitch(1f)
+        runCatching {
+            e.setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build(),
+            )
+        }
         failure = null
         autoRetries = 0
         ready = true
@@ -133,6 +142,8 @@ object QuizVoice {
     fun failureReason(): String? = failure
 
     fun playedAt(): Long = playedAt
+
+    fun isSpeaking(): Boolean = speaking
 
     /**
      * Speaks [text]. With [flush] the current sentence stops and this one starts at once, which is what a
@@ -186,26 +197,31 @@ object QuizVoice {
         try {
             e.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onError(utteranceId: String?) {
+                    speaking = false
                     dev.plume.DiagLog.event("tts_speak_fail", "utterance $utteranceId")
                     utteranceId?.let { callbacks.remove(it)?.invoke() }
                 }
 
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?, errorCode: Int) {
+                    speaking = false
                     dev.plume.DiagLog.event("tts_speak_fail", "utterance $utteranceId code=$errorCode")
                     reconnectAfterError(errorCode)
                     utteranceId?.let { callbacks.remove(it)?.invoke() }
                 }
 
                 override fun onStart(utteranceId: String?) {
+                    speaking = true
                     playedAt = SystemClock.elapsedRealtime()
                 }
 
                 override fun onDone(utteranceId: String?) {
+                    speaking = false
                     utteranceId?.let { callbacks.remove(it)?.invoke() }
                 }
 
                 override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                    speaking = false
                     utteranceId?.let { callbacks.remove(it) }
                 }
             })
@@ -214,6 +230,7 @@ object QuizVoice {
     }
 
     fun stop() {
+        speaking = false
         callbacks.clear()
         try { engine?.stop() } catch (e: Exception) {}
     }

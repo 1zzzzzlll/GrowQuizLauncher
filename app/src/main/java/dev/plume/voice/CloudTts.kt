@@ -63,6 +63,8 @@ object CloudTts {
 
     fun playedAt(): Long = playedAt
 
+    fun isSpeaking(): Boolean = activePlayer != null
+
     fun speak(
         context: Context,
         text: String,
@@ -231,15 +233,21 @@ object CloudTts {
     /** Returns true when playback finished on its own; false when cancelled or handed to [onFallback]. */
     private fun playMp3(context: Context, file: File, mine: Int, onFallback: (() -> Unit)?): Boolean {
         val manager = context.getSystemService(AudioManager::class.java)
-        val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build(),
-            )
-            .build()
-        manager?.let { runCatching { it.requestAudioFocus(focus) } }
+        val requestOwnFocus = !dev.plume.quiz.MediaPlaybackRules.shouldSkipUtteranceAudioFocus(
+            quizHoldingFocus = dev.plume.quiz.QuizMediaControl.holdingFocus,
+            blockedAlertForeground = dev.plume.quiz.BlockedAppActivity.isForeground,
+        )
+        val focus = if (requestOwnFocus) {
+            AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                )
+                .build()
+        } else null
+        if (focus != null) manager?.let { runCatching { it.requestAudioFocus(focus) } }
         val done = CountDownLatch(1)
         val player = MediaPlayer()
         var failed = false
@@ -291,7 +299,7 @@ object CloudTts {
             if (activePlayer === player) activePlayer = null
             runCatching { player.stop() }
             runCatching { player.release() }
-            manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
+            if (focus != null) manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
         }
     }
 

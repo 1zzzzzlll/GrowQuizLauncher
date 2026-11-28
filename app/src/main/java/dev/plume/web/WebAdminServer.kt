@@ -764,7 +764,7 @@ object WebAdminServer {
 
             path == "/api/apps" && method == "GET" -> {
                 if (!valid(cookie(headers))) return reply(out, 401, "application/json; charset=utf-8", error("not logged in"))
-                val apps = dev.plume.quiz.AppBlock.listNonSystemApps(context)
+                val apps = dev.plume.quiz.AppBlock.listControllableApps(context)
                 val arr = JSONArray()
                 for (item in apps) {
                     arr.put(
@@ -772,7 +772,9 @@ object WebAdminServer {
                             .put("pkg", item.pkg)
                             .put("name", item.label)
                             .put("version", item.version)
-                            .put("blocked", item.blocked),
+                            .put("blocked", item.blocked)
+                            .put("system", item.isSystem)
+                            .put("game", item.isGame),
                     )
                 }
                 val json = JSONObject()

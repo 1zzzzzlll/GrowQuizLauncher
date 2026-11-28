@@ -6,9 +6,6 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
-import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -16,7 +13,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
-import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -46,6 +42,11 @@ class QuizActivity : Activity() {
     /** The next question, drawn while this one is on screen so its voice can be synthesised in time. */
     private var pending: Question? = null
     private var solved = false
+        set(value) {
+            field = value
+            sessionSolved = value
+        }
+    private var coveredPkg: String? = null
     private var changing = false
     private var explaining = false
     private var explainToken = 0
@@ -143,6 +144,8 @@ class QuizActivity : Activity() {
                         ),
                     )
                 }
+            } else {
+                QuizMediaControl.ensurePausedWhileActive(this@QuizActivity)
             }
             ui.postDelayed(this, GUARD_POLL_MS)
         }
@@ -222,10 +225,11 @@ class QuizActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        sessionSolved = false
         openedAt = SystemClock.elapsedRealtime()
         // GrowQuiz: remember what this page covers. When the question is over, the desktop hands it
         // back if the TV's memory manager took the player during a long question (see QuizReturn).
-        QuizReturn.capture(this)
+        coveredPkg = QuizReturn.capture(this)
         // Android 13+ routes Back through OnBackInvokedDispatcher; with targetSdk 36 the legacy
         // onBackPressed() override is never called and Back finishes the page (first seen on an
         // Android 17 phone: the quiz task was simply gone, quiz_abandoned with finishing=true).
@@ -239,7 +243,7 @@ class QuizActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(createContent())
         immersive()
-        holdSound() // stop the video that is playing before the first question is read out
+        QuizMediaControl.acquireAndPause(this, coveredPkg) // stop the video that is playing before the first question is read out
         snapPrefs = QuizPrefs(applicationContext) // the console may switch the watchdog off mid-question
         // A question or a rest is open from now on: a power cut leaves this flag set, and the
         // launcher brings the page back after the next power-on (see MainActivity.onResume).
@@ -281,6 +285,7 @@ class QuizActivity : Activity() {
         super.onNewIntent(intent)
         // Consume our internal launch marker; a routine newIntent is never a child snap-back.
         expectedIntentAt = 0L
+        QuizReturn.capture(this)?.let { coveredPkg = it }
         // GrowQuiz: the alarm brings this page back instead of building it again, so onCreate's
         // quiz_open never runs. Nine hours on a tablet showed the cost: 150 quiz_popup_blocked
         // lines, each followed by the snapback_ok only a live page writes. The page was up; the
@@ -292,13 +297,17 @@ class QuizActivity : Activity() {
         // answer's explanation is still speaking, then takes over when showNextQuestion() runs.
         if (QuizLock.shouldInterruptForRest(restRemaining() > 0L, explaining, QuizPrefs(this).restForced)) {
             showRestScreen()
+            QuizMediaControl.acquireAndPause(this, coveredPkg)
             return
         }
         if (solved) {
             solved = false
             changing = false
             explaining = false
+            QuizMediaControl.acquireAndPause(this, coveredPkg)
             bank?.let { showNextQuestion() }
+        } else {
+            QuizMediaControl.acquireAndPause(this, coveredPkg)
         }
     }
 
@@ -307,6 +316,9 @@ class QuizActivity : Activity() {
         inForeground = true
         isForeground = true
         expectedIntentAt = 0L
+        if (!solved && !isFinishing) {
+            QuizMediaControl.acquireAndPause(this, coveredPkg)
+        }
         // The page is visible: this is the moment a foreground-service start is one the firmware
         // answers, so the guard is put back here instead of from a background wake-up (see
         // QuizGuardService.sync). Idempotent: a running guard is left alone.
@@ -821,7 +833,8 @@ class QuizActivity : Activity() {
         pendingRestMinutes = 0
         explainToken++
         justFinished = true // returning to the desktop must not raise the startup admin prompt
-        releaseSound()
+        stopReading()
+        QuizMediaControl.releaseAndResume(this)
         dev.plume.DiagLog.event(event)
         QuizPrefs(this).apply {
             quizActive = false
@@ -843,7 +856,8 @@ class QuizActivity : Activity() {
             return
         }
         justFinished = true // MainActivity skips the admin prompt right after a quiz
-        releaseSound() // hand the sound back before the video is shown again
+        stopReading()
+        QuizMediaControl.releaseAndResume(this) // hand the sound back and auto-resume the video once uncovered
         dev.plume.DiagLog.event("quiz_done") // the happy end; anything else is quiz_abandoned below
         QuizPrefs(this).apply {
             wrongStreak = 0 // a finished session proves real work: every anti-guess counter resets
@@ -1010,8 +1024,9 @@ class QuizActivity : Activity() {
 
     override fun onDestroy() {
         ui.removeCallbacksAndMessages(null)
+        if (isForeground) isForeground = false
         stopReading()
-        releaseSound()
+        QuizMediaControl.abandonOnly(this)
         // GrowQuiz: a page that dies with a question unanswered — a system kill, a power cut, an
         // update install — leaves quizActive set, so the page comes back; the report says which.
         // A crash has its own event, and a screen rotation is rare on a TV and counts as neither.
@@ -1038,45 +1053,6 @@ class QuizActivity : Activity() {
         // The engine itself stays up: it belongs to the app, and shutting it down here would make the next
         // quiz pay the model load again.
         super.onDestroy()
-    }
-
-    // GrowQuiz: the quiz takes the sound away from whatever is playing, so a video stops instead of talking
-    // over the question reading. Asking for audio focus is what makes a well-behaved player pause; the media
-    // key is the fallback for the players that ignore focus (TCL's own player does). Both are undone when the
-    // question is answered, so the video picks up where it stopped.
-    private var focusRequest: AudioFocusRequest? = null
-    private var pausedMedia = false
-
-    private fun holdSound() {
-        val am = getSystemService(AudioManager::class.java) ?: return
-        if (focusRequest == null) {
-            focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build(),
-                )
-                .build()
-        }
-        val focusGranted = am.requestAudioFocus(focusRequest!!) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        val musicActive = am.isMusicActive
-        // isMusicActive is false on some TV players even while they are audible. PAUSE is explicit (not
-        // a play/pause toggle), so sending it with no player is harmless and is safer than skipping it.
-        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
-        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
-        pausedMedia = true
-        android.util.Log.i("GrowQuiz", "quiz audio focus=$focusGranted musicActive=$musicActive; pause sent")
-    }
-
-    private fun releaseSound() {
-        val am = getSystemService(AudioManager::class.java) ?: return
-        if (pausedMedia) {
-            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY))
-            am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY))
-            pausedMedia = false
-        }
-        focusRequest?.let { am.abandonAudioFocusRequest(it) }
     }
 
     private fun text(value: String, size: Float, color: Int) = TextView(this).apply {
@@ -1116,6 +1092,9 @@ class QuizActivity : Activity() {
 
         /** True while QuizActivity is resumed on screen; prevents routine alarms from bouncing singleTask. */
         @Volatile var isForeground = false
+
+        /** Mirrors instance [solved] so [QuizMediaControl] never reclaims audio focus during the farewell delay. */
+        @Volatile var sessionSolved = false
 
         /** Monotonic timestamp of our own internal startActivity(QuizActivity), to skip self-triggered onPause comeBack. */
         @Volatile private var expectedIntentAt = 0L

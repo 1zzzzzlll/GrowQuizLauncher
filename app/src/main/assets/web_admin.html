@@ -279,7 +279,7 @@
         <div class="sync-bar" style="background:rgba(61,123,253,.09);border-color:rgba(61,123,253,.32)">
           <div class="smain">
             <div class="stitle" id="apTitle" style="color:#a9c6ff">🚫 禁用软件运行管控</div>
-            <div class="muted" id="apMeta">正在读取本机部署的非系统软件…</div>
+            <div class="muted" id="apMeta">正在读取本机可管控软件…</div>
           </div>
           <button id="apRefresh" class="ghost">🔄 刷新</button>
         </div>
@@ -291,6 +291,7 @@
           <input id="apSearch" type="search" placeholder="搜索软件名称或包名…">
           <select id="apState">
             <option value="all">全部软件</option>
+            <option value="game">游戏应用</option>
             <option value="blocked">已禁用</option>
             <option value="allowed">允许运行</option>
           </select>
@@ -302,7 +303,7 @@
           <button id="apAllowSel" class="success">解除选中</button>
           <button id="apBlockSel" class="danger">禁用选中</button>
         </div>
-        <div class="footer">仅列出本机现有部署的非系统软件（系统设置、桌面与语音引擎自动排除）。被禁用的软件一旦运行，系统会自动关闭该软件并弹出提醒窗口同时播报语音，点击「确定」后关闭提醒弹窗；若该软件此刻正在运行，点「禁用」也会立即关闭它。</div>
+        <div class="footer">列出本机除系统关键组件（桌面、系统设置、输入法、语音引擎与底层服务）外的全部软件，含预装系统游戏、内置影视及第三方应用。被禁用的软件一旦运行，系统会自动关闭该软件并弹出提醒窗口同时播报语音，点击「确定」后关闭提醒弹窗；若该软件此刻正在运行，点「禁用」也会立即关闭它。</div>
       </div>
     </div>
 
@@ -1005,7 +1006,7 @@
         $('apTitle').textContent = '🚫 禁用软件运行管控（已禁用 ' + bc + ' / 共 ' + apAll.length + ' 款）';
         $('apMeta').textContent = hits > 0
           ? ('累计拦截并关闭 ' + hits + ' 次 · 最近一次：' + (j.lastHitName || '--') + (j.lastHitAt ? '（' + ago(j.lastHitAt) + '）' : ''))
-          : '选择本机现有非系统软件进行禁用；监听到运行时自动关闭并弹窗+语音提醒';
+          : '已排除系统关键组件；支持禁用预装游戏、内置影视与第三方软件，运行时自动关闭并语音提醒';
         const needA11y = !j.a11y, needOverlay = j.overlay !== true;
         const warnBox = $('apWarn');
         if (needA11y || needOverlay) {
@@ -1025,6 +1026,7 @@
       const kw = ($('apSearch').value || '').trim().toLowerCase();
       const st = $('apState').value;
       const filtered = apAll.filter(a => {
+        if (st === 'game' && !a.game) return false;
         if (st === 'blocked' && !a.blocked) return false;
         if (st === 'allowed' && a.blocked) return false;
         if (kw && !String(a.name || '').toLowerCase().includes(kw) && !String(a.pkg || '').toLowerCase().includes(kw)) return false;
@@ -1032,7 +1034,7 @@
       });
       if (apAll.length === 0) {
         $('apList').classList.add('hidden');
-        msg($('apMsg'), '本机当前没有检测到已部署的非系统软件', true);
+        msg($('apMsg'), '本机当前没有检测到可管控的软件', true);
         return;
       }
       msg($('apMsg'), filtered.length ? ('当前显示 ' + filtered.length + ' 款软件') : '没有匹配筛选条件的软件', true);
@@ -1041,6 +1043,9 @@
       list.innerHTML = filtered.map(a => {
         const ch = esc((a.name || a.pkg || '?').trim().charAt(0).toUpperCase());
         const ver = a.version ? (' · v' + esc(a.version)) : '';
+        const tagBadge = a.game
+          ? '<span class="badge custom">🎮 游戏</span>'
+          : (a.system ? '<span class="badge auto">系统预装</span>' : '');
         const badge = a.blocked ? '<span class="badge off">🚫 已禁用</span>' : '<span class="badge online">允许运行</span>';
         const actionBtn = a.blocked
           ? `<button class="qdel success" data-ap-toggle="${esc(a.pkg)}" data-ap-want="0">解除禁用</button>`
@@ -1052,7 +1057,7 @@
             <div class="qtitle">${esc(a.name || a.pkg)}</div>
             <div class="qmeta">${esc(a.pkg)}${ver}</div>
           </div>
-          ${badge}${actionBtn}
+          ${tagBadge}${badge}${actionBtn}
         </div>`;
       }).join('');
       list.querySelectorAll('img.app-ic').forEach(img => {

@@ -7,14 +7,19 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.media.AudioManager
+import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.util.LruCache
 import android.view.KeyEvent
+import android.view.inputmethod.InputMethodManager
 import dev.plume.DiagLog
 import dev.plume.HomeOverride
 import dev.plume.HomeWatch
@@ -25,9 +30,10 @@ import dev.plume.voice.Voice
 import java.io.ByteArrayOutputStream
 
 /**
- * Manages parental software blocking: lists deployed non-system apps, persists the blocked package
- * set with an O(1) in-memory mirror for the accessibility window watcher, and closes any blocked
- * app as soon as it enters the foreground (or the moment a parent disables it while it is running).
+ * Manages parental software blocking: lists all controllable apps (third-party apps as well as
+ * pre-installed system apps and system games, excluding critical OS components), persists the
+ * blocked package set with an O(1) in-memory mirror for the accessibility window watcher, and
+ * closes any blocked app as soon as it enters the foreground (or the moment a parent disables it).
  */
 object AppBlock {
     private const val PREFS = "grow_quiz_app_block"
@@ -39,13 +45,14 @@ object AppBlock {
     const val NOTIFICATION_ID = 11
 
     private const val FG_MAX_AGE_MS = 6 * 60 * 60 * 1000L
+    private const val CATEGORY_TV_LAUNCHER = "android.intent.category.TV_LAUNCHER"
 
     @Volatile private var cachedBlocked: Set<String>? = null
     @Volatile private var lastFgPkg: String? = null
     @Volatile private var lastFgElapsed: Long = 0L
     @Volatile private var lastLaunchElapsed: Long = 0L
 
-    private val iconPngCache = object : LruCache<String, ByteArray>(384 * 1024) {
+    private val iconPngCache = object : LruCache<String, ByteArray>(512 * 1024) {
         override fun sizeOf(key: String, value: ByteArray): Int = value.size
     }
 
@@ -76,7 +83,7 @@ object AppBlock {
     /** Updates the blocked state of [pkgs] and returns the updated full blocked set. */
     fun setBlocked(context: Context, pkgs: Collection<String>, blocked: Boolean): Set<String> {
         val app = context.applicationContext
-        val protected = protectedPackages(app)
+        val protected = protectedPackages(app) + queryCriticalSystemPackages(app)
         val cleanTargets = AppBlockRules.sanitizeBlockedTargets(pkgs, app.packageName, protected)
         val updated = synchronized(this) {
             val current = blockedPackages(app)
@@ -95,74 +102,146 @@ object AppBlock {
         return updated
     }
 
-    /** Lists all deployed non-system software on this device with each item's current blocked flag. */
-    fun listNonSystemApps(context: Context): List<AppBlockRules.ListedApp> {
+    /**
+     * Lists all controllable apps on this device (third-party apps, pre-installed system apps, and
+     * system games — even those without a plain `MAIN+LAUNCHER` icon — while excluding critical
+     * system components) with each item's current blocked flag.
+     */
+    fun listNonSystemApps(context: Context): List<AppBlockRules.ListedApp> = listControllableApps(context)
+
+    fun listControllableApps(context: Context): List<AppBlockRules.ListedApp> {
         val app = context.applicationContext
         val pm = app.packageManager
         val homePkgs = queryHomePackages(app)
         val settingsPkgs = querySettingsPackages(app)
         val ttsPkgs = queryTtsPackages(app)
+        val imePkgs = queryInputMethodPackages(app)
+        val blocked = blockedPackages(app)
 
-        fun queryLauncher(category: String) = runCatching {
+        fun queryLauncher(category: String): List<ResolveInfo> = runCatching {
             pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(category), 0)
         }.getOrDefault(emptyList())
 
         val launcherEntries = preferTvApps(
             queryLauncher(Intent.CATEGORY_LEANBACK_LAUNCHER),
-            queryLauncher(Intent.CATEGORY_LAUNCHER),
+            queryLauncher(Intent.CATEGORY_LAUNCHER) + queryLauncher(CATEGORY_TV_LAUNCHER),
         ) { it.activityInfo.packageName }
 
-        val candidates = ArrayList<AppBlockRules.Candidate>(launcherEntries.size + 8)
-        val seen = HashSet<String>(launcherEntries.size)
-
+        val launcherByPkg = LinkedHashMap<String, ResolveInfo>(launcherEntries.size)
         for (ri in launcherEntries) {
-            val ai = ri.activityInfo?.applicationInfo ?: continue
-            val pkg = ai.packageName
+            val pkg = ri.activityInfo?.packageName ?: continue
+            launcherByPkg.putIfAbsent(pkg, ri)
+        }
+
+        val installed = queryInstalledPackagesWithActivities(pm)
+        val candidates = ArrayList<AppBlockRules.Candidate>(maxOf(installed.size, launcherByPkg.size + 8))
+        val seen = HashSet<String>(installed.size + launcherByPkg.size)
+
+        for (pi in installed) {
+            val ai = pi.applicationInfo ?: continue
+            val pkg = pi.packageName?.trim().orEmpty()
+            if (pkg.isEmpty() || !seen.add(pkg)) continue
+            if (!ai.enabled && pkg !in blocked) continue
+
+            val ri = launcherByPkg[pkg]
+            val activities = pi.activities.orEmpty()
+            val hasLauncher = ri != null ||
+                pm.getLeanbackLaunchIntentForPackage(pkg) != null ||
+                pm.getLaunchIntentForPackage(pkg) != null
+            val hasExportedActivity = hasLauncher ||
+                activities.any { it.enabled && it.exported && it.permission.isNullOrEmpty() }
+            if (!hasLauncher && !hasExportedActivity && pkg !in blocked) continue
+
+            val label = ri?.let {
+                runCatching { it.loadLabel(pm).toString().trim() }.getOrNull()?.takeIf { s -> s.isNotEmpty() }
+            } ?: runCatching { pm.getApplicationLabel(ai).toString().trim() }.getOrDefault(pkg)
+
+            val activityNames = activities.mapNotNull { it.name }
+            @Suppress("DEPRECATION")
+            val isGameFlag = (ai.flags and ApplicationInfo.FLAG_IS_GAME) != 0 ||
+                ai.category == ApplicationInfo.CATEGORY_GAME
+            val isGame = isGameFlag || AppBlockRules.looksLikeGame(pkg, label, activityNames)
+
+            candidates += AppBlockRules.Candidate(
+                pkg = pkg,
+                label = label,
+                version = pi.versionName.orEmpty(),
+                isSystem = ai.flags and ApplicationInfo.FLAG_SYSTEM != 0,
+                isUpdatedSystem = ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0,
+                isPersistent = ai.flags and ApplicationInfo.FLAG_PERSISTENT != 0,
+                isGame = isGame,
+                hasLauncher = hasLauncher,
+                hasExportedActivity = hasExportedActivity,
+                isHome = pkg in homePkgs,
+                isSettings = pkg in settingsPkgs,
+                isTtsEngine = pkg in ttsPkgs,
+                isInputMethod = pkg in imePkgs,
+            )
+        }
+
+        // Fallback if afirmware restricts getInstalledPackages: still surface all launcher & blocked entries.
+        for ((pkg, ri) in launcherByPkg) {
             if (!seen.add(pkg)) continue
+            val ai = ri.activityInfo?.applicationInfo ?: continue
             val label = runCatching { ri.loadLabel(pm).toString().trim() }
                 .getOrNull()
                 ?.takeIf { it.isNotEmpty() }
                 ?: runCatching { pm.getApplicationLabel(ai).toString().trim() }.getOrDefault(pkg)
             val version = runCatching { pm.getPackageInfo(pkg, 0).versionName.orEmpty() }.getOrDefault("")
+            @Suppress("DEPRECATION")
+            val isGame = (ai.flags and ApplicationInfo.FLAG_IS_GAME) != 0 ||
+                ai.category == ApplicationInfo.CATEGORY_GAME ||
+                AppBlockRules.looksLikeGame(pkg, label, listOfNotNull(ri.activityInfo?.name))
             candidates += AppBlockRules.Candidate(
                 pkg = pkg,
                 label = label,
                 version = version,
                 isSystem = ai.flags and ApplicationInfo.FLAG_SYSTEM != 0,
                 isUpdatedSystem = ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0,
+                isPersistent = ai.flags and ApplicationInfo.FLAG_PERSISTENT != 0,
+                isGame = isGame,
                 hasLauncher = true,
+                hasExportedActivity = true,
                 isHome = pkg in homePkgs,
                 isSettings = pkg in settingsPkgs,
                 isTtsEngine = pkg in ttsPkgs,
+                isInputMethod = pkg in imePkgs,
             )
         }
 
-        // Also surface any already-blocked package whose launcher entry is currently hidden/missing.
-        val blocked = blockedPackages(app)
         for (pkg in blocked) {
             if (pkg in seen) continue
             val ai = runCatching { pm.getApplicationInfo(pkg, 0) }.getOrNull() ?: continue
             val label = runCatching { pm.getApplicationLabel(ai).toString().trim() }.getOrDefault(pkg)
             val version = runCatching { pm.getPackageInfo(pkg, 0).versionName.orEmpty() }.getOrDefault("")
+            @Suppress("DEPRECATION")
+            val isGame = (ai.flags and ApplicationInfo.FLAG_IS_GAME) != 0 ||
+                ai.category == ApplicationInfo.CATEGORY_GAME ||
+                AppBlockRules.looksLikeGame(pkg, label)
+            val hasLauncher = pm.getLeanbackLaunchIntentForPackage(pkg) != null || pm.getLaunchIntentForPackage(pkg) != null
             candidates += AppBlockRules.Candidate(
                 pkg = pkg,
                 label = label,
                 version = version,
                 isSystem = ai.flags and ApplicationInfo.FLAG_SYSTEM != 0,
                 isUpdatedSystem = ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0,
-                hasLauncher = pm.getLeanbackLaunchIntentForPackage(pkg) != null || pm.getLaunchIntentForPackage(pkg) != null,
+                isPersistent = ai.flags and ApplicationInfo.FLAG_PERSISTENT != 0,
+                isGame = isGame,
+                hasLauncher = hasLauncher,
+                hasExportedActivity = hasLauncher,
                 isHome = pkg in homePkgs,
                 isSettings = pkg in settingsPkgs,
                 isTtsEngine = pkg in ttsPkgs,
+                isInputMethod = pkg in imePkgs,
             )
         }
 
         return AppBlockRules.selectApps(candidates, blocked, app.packageName)
     }
 
-    /** Count of currently installed non-system apps that are marked disabled. */
+    /** Count of currently installed controllable apps that are marked disabled. */
     fun blockedInstalledCount(context: Context): Int =
-        listNonSystemApps(context).count { it.blocked }
+        listControllableApps(context).count { it.blocked }
 
     /** Renders a small PNG icon for the web console's app list; null if the package is gone. */
     fun iconPng(context: Context, pkg: String, sizePx: Int = 72): ByteArray? {
@@ -299,6 +378,15 @@ object AppBlock {
         pm.getApplicationLabel(ai).toString().trim()
     }.getOrDefault("")
 
+    private fun queryInstalledPackagesWithActivities(pm: PackageManager): List<PackageInfo> = runCatching {
+        if (Build.VERSION.SDK_INT >= 33) {
+            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(PackageManager.GET_ACTIVITIES.toLong()))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledPackages(PackageManager.GET_ACTIVITIES)
+        }
+    }.getOrDefault(emptyList())
+
     private fun stopMediaNow(context: Context) {
         val am = context.getSystemService(AudioManager::class.java) ?: return
         runCatching {
@@ -358,7 +446,22 @@ object AppBlock {
     }
 
     private fun protectedPackages(context: Context): Set<String> =
-        queryHomePackages(context) + querySettingsPackages(context) + queryTtsPackages(context)
+        queryHomePackages(context) + querySettingsPackages(context) + queryTtsPackages(context) + queryInputMethodPackages(context)
+
+    private fun queryCriticalSystemPackages(context: Context): Set<String> = runCatching {
+        val pm = context.packageManager
+        queryInstalledPackagesWithActivities(pm).mapNotNull { pi ->
+            val ai = pi.applicationInfo ?: return@mapNotNull null
+            val pkg = pi.packageName ?: return@mapNotNull null
+            val isSystem = (ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+            val isPersistent = (ai.flags and ApplicationInfo.FLAG_PERSISTENT) != 0
+            @Suppress("DEPRECATION")
+            val isGame = (ai.flags and ApplicationInfo.FLAG_IS_GAME) != 0 ||
+                ai.category == ApplicationInfo.CATEGORY_GAME ||
+                AppBlockRules.looksLikeGame(pkg, "", pi.activities.orEmpty().mapNotNull { it.name })
+            pkg.takeIf { AppBlockRules.isCriticalSystemPackage(pkg, isSystem, isPersistent, isGame) }
+        }.toSet()
+    }.getOrDefault(emptySet())
 
     private fun queryHomePackages(context: Context): Set<String> {
         val pm = context.packageManager
@@ -391,5 +494,19 @@ object AppBlock {
                 .mapNotNull { it.activityInfo?.packageName }
         }.getOrDefault(emptyList())
         return (byService + byCheck + TtsProbe.engineNames(context)).toSet()
+    }
+
+    private fun queryInputMethodPackages(context: Context): Set<String> {
+        val byManager = runCatching {
+            context.getSystemService(InputMethodManager::class.java)
+                ?.inputMethodList
+                ?.mapNotNull { it.packageName }
+                .orEmpty()
+        }.getOrDefault(emptyList())
+        val byService = runCatching {
+            context.packageManager.queryIntentServices(Intent("android.view.InputMethod"), 0)
+                .mapNotNull { it.serviceInfo?.packageName }
+        }.getOrDefault(emptyList())
+        return (byManager + byService).toSet()
     }
 }

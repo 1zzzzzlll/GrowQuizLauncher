@@ -59,6 +59,7 @@ object EmbeddedTts {
     @Volatile private var gen = 0
     /** When a sentence last reached the speaker: the console's test button waits for this to move. */
     @Volatile private var playedAt = 0L
+    @Volatile private var speaking = false
 
     private var worker: Thread? = null
 
@@ -69,6 +70,8 @@ object EmbeddedTts {
     fun reason(): String? = failure
 
     fun playedAt(): Long = playedAt
+
+    fun isSpeaking(): Boolean = speaking
 
     @Synchronized
     fun prepare(context: Context, pack: VoicePack) {
@@ -227,8 +230,12 @@ object EmbeddedTts {
      */
     private fun streamAndCache(context: Context, engine: OfflineTts, text: String, mine: Int) {
         val manager = context.getSystemService(AudioManager::class.java)
-        val focus = focusRequest()
-        manager?.let { runCatching { it.requestAudioFocus(focus) } }
+        val requestOwnFocus = !dev.plume.quiz.MediaPlaybackRules.shouldSkipUtteranceAudioFocus(
+            quizHoldingFocus = dev.plume.quiz.QuizMediaControl.holdingFocus,
+            blockedAlertForeground = dev.plume.quiz.BlockedAppActivity.isForeground,
+        )
+        val focus = if (requestOwnFocus) focusRequest() else null
+        if (focus != null) manager?.let { runCatching { it.requestAudioFocus(focus) } }
         var track: AudioTrack? = null
         val collected = ArrayList<ShortArray>(4)
         var totalFrames = 0
@@ -237,6 +244,7 @@ object EmbeddedTts {
         var firstSoundMs = -1L
         try {
             track = openTrack()
+            speaking = true
             track.play()
             @Suppress("UNCHECKED_CAST")
             val callback = SherpaCallback { chunk ->
@@ -281,19 +289,25 @@ object EmbeddedTts {
             android.util.Log.w("GrowQuiz", "voice stream failed (sr=$sampleRate)", e)
             DiagLog.event("tts_local_play_fail", e.message ?: e.javaClass.simpleName)
         } finally {
+            speaking = false
             runCatching { track?.stop() }
             runCatching { track?.release() }
-            manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
+            if (focus != null) manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
         }
     }
 
     private fun playBuffer(context: Context, pcm: ShortArray, mine: Int) {
         val manager = context.getSystemService(AudioManager::class.java)
-        val focus = focusRequest()
-        manager?.let { runCatching { it.requestAudioFocus(focus) } }
+        val requestOwnFocus = !dev.plume.quiz.MediaPlaybackRules.shouldSkipUtteranceAudioFocus(
+            quizHoldingFocus = dev.plume.quiz.QuizMediaControl.holdingFocus,
+            blockedAlertForeground = dev.plume.quiz.BlockedAppActivity.isForeground,
+        )
+        val focus = if (requestOwnFocus) focusRequest() else null
+        if (focus != null) manager?.let { runCatching { it.requestAudioFocus(focus) } }
         var track: AudioTrack? = null
         try {
             track = openTrack()
+            speaking = true
             track.play()
             playedAt = SystemClock.elapsedRealtime()
             var at = 0
@@ -307,9 +321,10 @@ object EmbeddedTts {
             android.util.Log.w("GrowQuiz", "voice play failed (sr=$sampleRate frames=${pcm.size})", e)
             DiagLog.event("tts_local_play_fail", e.message ?: e.javaClass.simpleName)
         } finally {
+            speaking = false
             runCatching { track?.stop() }
             runCatching { track?.release() }
-            manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
+            if (focus != null) manager?.let { runCatching { it.abandonAudioFocusRequest(focus) } }
         }
     }
 
